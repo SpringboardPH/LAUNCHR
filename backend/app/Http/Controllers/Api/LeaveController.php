@@ -22,11 +22,17 @@ class LeaveController extends Controller
 
         $employee = auth()->user()->employee;
 
+        // Calculate days requested (inclusive)
+        $startDate = \Carbon\Carbon::parse($request->start_date);
+        $endDate = \Carbon\Carbon::parse($request->end_date);
+        $daysRequested = $endDate->diffInDays($startDate) + 1;
+
         $leave = LeaveRequest::create([
             'employee_id' => $employee->id,
             'leave_type' => $request->leave_type,
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
+            'days_requested' => $daysRequested,
             'reason' => $request->reason,
             'status' => 'pending',
         ]);

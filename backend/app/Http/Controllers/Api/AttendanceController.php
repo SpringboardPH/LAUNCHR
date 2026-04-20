@@ -10,6 +10,49 @@ use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
+    // Work hours configuration
+    private const WORK_START_TIME = '09:00:00';  // 9 AM
+    private const WORK_END_TIME = '18:00:00';    // 6 PM
+    private const EARLY_CLOCK_IN = '08:45:00';   // Can clock in 15 min before
+    private const LATE_CLOCK_OUT = '18:15:00';   // Can clock out 15 min after
+    private const REQUIRED_HOURS = 9;            // 9 hours per day
+
+    /**
+     * Calculate work status based on clock times
+     */
+    private function calculateStatus($clockInTime, $clockOutTime)
+    {
+        if (!$clockInTime) {
+            return 'absent';
+        }
+
+        // Parse times
+        [$inH, $inM, $inS] = sscanf($clockInTime, '%d:%d:%d');
+        [$outH, $outM, $outS] = sscanf($clockOutTime, '%d:%d:%d');
+        
+        $inMinutes = $inH * 60 + $inM;
+        $outMinutes = $outH * 60 + $outM;
+        
+        // Work start time is 9 AM (540 minutes)
+        $workStartMinutes = 9 * 60;
+        
+        // Check if late (after 9:00 AM)
+        $isLate = $inMinutes > $workStartMinutes;
+        
+        // Calculate hours worked
+        $diffMinutes = $outMinutes - $inMinutes;
+        $hoursWorked = $diffMinutes / 60;
+        
+        // Determine status
+        if ($isLate) {
+            return 'late';
+        } elseif ($hoursWorked >= self::REQUIRED_HOURS) {
+            return 'completed';
+        } else {
+            return 'incomplete';
+        }
+    }
+
     /**
      * Clock in - record employee arrival
      */
@@ -43,8 +86,18 @@ class AttendanceController extends Controller
             ], 404);
         }
 
-        // Check if already clocked in today
         $today = Carbon::today();
+        
+        // Check if today is a weekday (Monday = 1, Friday = 5)
+        $dayOfWeek = $today->dayOfWeek;
+        if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot clock in on weekends',
+            ], 400);
+        }
+
+        // Check if already clocked in today
         $existingLog = AttendanceLog::where('employee_id', $employee->id)
             ->where('date', $today)
             ->first();
@@ -56,10 +109,32 @@ class AttendanceController extends Controller
             ], 400);
         }
 
+        $clockInTime = now()->toTimeString();
+        
+        // Validate clock in time (8:45 AM to 6:15 PM)
+        [$hour, $minute, $second] = sscanf($clockInTime, '%d:%d:%d');
+        $clockInMinutes = $hour * 60 + $minute;
+        $earlyAllowedMinutes = 8 * 60 + 45;  // 8:45 AM
+        $lateAllowedMinutes = 18 * 60 + 15;   // 6:15 PM
+        
+        if ($clockInMinutes < $earlyAllowedMinutes) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Clock in is only allowed from 8:45 AM',
+            ], 400);
+        }
+        
+        if ($clockInMinutes > $lateAllowedMinutes) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Clock in only allowed until 6:15 PM',
+            ], 400);
+        }
+
         // Create or update attendance log
         $log = AttendanceLog::updateOrCreate(
             ['employee_id' => $employee->id, 'date' => $today],
-            ['clock_in_time' => now()->toTimeString(), 'notes' => $request->notes]
+            ['clock_in_time' => $clockInTime, 'notes' => $request->notes]
         );
 
         return response()->json([
@@ -122,7 +197,32 @@ class AttendanceController extends Controller
             ], 400);
         }
 
-        $log->update(['clock_out_time' => now()->toTimeString()]);
+        $clockOutTime = now()->toTimeString();
+        
+        // Validate clock out time (must be after 6 PM, but allowed until 6:15 PM)
+        [$hour, $minute, $second] = sscanf($clockOutTime, '%d:%d:%d');
+        $clockOutMinutes = $hour * 60 + $minute;
+        $workEndMinutes = 18 * 60;             // 6:00 PM
+        $lateAllowedMinutes = 18 * 60 + 15;   // 6:15 PM
+        
+        if ($clockOutMinutes < $workEndMinutes) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot clock out before 6:00 PM',
+            ], 400);
+        }
+        
+        if ($clockOutMinutes > $lateAllowedMinutes) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Clock out only allowed until 6:15 PM',
+            ], 400);
+        }
+
+        // Update with clock out time and calculate status
+        $log->clock_out_time = $clockOutTime;
+        $log->status = $this->calculateStatus($log->clock_in_time, $clockOutTime);
+        $log->save();
 
         return response()->json([
             'success' => true,
@@ -145,10 +245,11 @@ class AttendanceController extends Controller
         }
         // HR/Admin can see all records
 
-        // Filter by month if provided
+        // Filter by month if provided (expects format: YYYY-MM)
         if ($month = $request->query('month')) {
-            $query->whereYear('date', Carbon::now()->year)
-                  ->whereMonth('date', $month);
+            [$year, $monthNum] = explode('-', $month);
+            $query->whereYear('date', (int)$year)
+                  ->whereMonth('date', (int)$monthNum);
         }
 
         $records = $query->orderBy('date', 'desc')->paginate(15);

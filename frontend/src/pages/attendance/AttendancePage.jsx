@@ -8,6 +8,29 @@ import {
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut } from 'lucide-react'
 
+// Calculate hours worked between two time strings (HH:MM:SS format)
+const calculateHours = (clockInTime, clockOutTime) => {
+  if (!clockInTime || !clockOutTime) return '—'
+  
+  try {
+    const [inH, inM, inS] = clockInTime.split(':').map(Number)
+    const [outH, outM, outS] = clockOutTime.split(':').map(Number)
+    
+    const inMinutes = inH * 60 + inM + inS / 60
+    const outMinutes = outH * 60 + outM + outS / 60
+    const diffMinutes = outMinutes - inMinutes
+    
+    if (diffMinutes < 0) return '—'
+    
+    const hours = Math.floor(diffMinutes / 60)
+    const minutes = Math.round(diffMinutes % 60)
+    
+    return `${hours}h ${minutes}m`
+  } catch {
+    return '—'
+  }
+}
+
 export default function AttendancePage() {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'))
   const qc = useQueryClient()
@@ -15,6 +38,9 @@ export default function AttendancePage() {
   const { data: todayLogs = [], isLoading: todayLoading } = useQuery({
     queryKey: attendanceKeys.todayAll(),
     queryFn: getAttendanceToday,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
     refetchInterval: 30_000,
   })
 
@@ -26,15 +52,24 @@ export default function AttendancePage() {
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
     queryKey: attendanceKeys.list({ month }),
     queryFn: () => getAttendance({ month }),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
   })
 
   const clockInMutation = useMutation({
     mutationFn: (employeeId) => clockIn('', employeeId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
+      qc.invalidateQueries({ queryKey: attendanceKeys.list({ month }) })
+    },
   })
   const clockOutMutation = useMutation({
     mutationFn: (employeeId) => clockOut('', employeeId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
+      qc.invalidateQueries({ queryKey: attendanceKeys.list({ month }) })
+    },
   })
 
   const activeEmployees = employees?.data ?? []
@@ -72,7 +107,7 @@ export default function AttendancePage() {
                       </td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
-                      <td className="py-2.5 pr-4 text-gray-600">—</td>
+                      <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log?.clock_in_time, log?.clock_out_time)}</td>
                       <td className="py-2.5 pr-4">
                         {log ? (
                           log.clock_out_time ? (
@@ -145,12 +180,14 @@ export default function AttendancePage() {
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600">{log.clock_in_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">—</td>
+                    <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
-                      {log.clock_out_time ? (
-                        <span className="badge-gray text-xs px-2 py-1 rounded">Completed</span>
-                      ) : log.clock_in_time ? (
-                        <span className="badge-yellow text-xs px-2 py-1 rounded">In Progress</span>
+                      {log.status === 'completed' ? (
+                        <span className="badge-green text-xs px-2 py-1 rounded">Completed</span>
+                      ) : log.status === 'late' ? (
+                        <span className="badge-yellow text-xs px-2 py-1 rounded">Late</span>
+                      ) : log.status === 'incomplete' ? (
+                        <span className="badge-yellow text-xs px-2 py-1 rounded">Incomplete</span>
                       ) : (
                         <span className="badge-gray text-xs px-2 py-1 rounded">Absent</span>
                       )}
