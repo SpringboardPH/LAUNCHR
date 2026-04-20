@@ -1,0 +1,120 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from 'react-router-dom'
+import { getEmployees, deactivateEmployee, employeeKeys } from '../../api/queries'
+import { PageHeader, PageSpinner, EmptyState, StatusBadge } from '../../components/ui/index.jsx'
+import { Plus, Search, UserX, Pencil, Eye, Users } from 'lucide-react'
+
+export default function EmployeeListPage() {
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+
+  const { data, isLoading } = useQuery({
+    queryKey: employeeKeys.list({ search, status }),
+    queryFn: () => getEmployees({ search, status }),
+  })
+
+  const deactivate = useMutation({
+    mutationFn: deactivateEmployee,
+    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.all }),
+  })
+
+  const employees = data?.data ?? []
+
+  return (
+    <div>
+      <PageHeader
+        title="Employees"
+        description={`${data?.total ?? 0} total employees`}
+        action={
+          <Link to="/employees/new" className="btn-primary">
+            <Plus size={16} /> Add Employee
+          </Link>
+        }
+      />
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-9" placeholder="Search by name, ID, or email…"
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select className="input sm:w-40" value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="terminated">Terminated</option>
+        </select>
+      </div>
+
+      {/* Table */}
+      {isLoading ? <PageSpinner /> : employees.length === 0 ? (
+        <EmptyState icon={Users} title="No employees found"
+          description="Add your first employee to get started"
+          action={<Link to="/employees/new" className="btn-primary"><Plus size={14} /> Add Employee</Link>}
+        />
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {['Employee', 'ID', 'Department', 'Position', 'Type', 'Status', ''].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {employees.map(emp => (
+                  <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-semibold shrink-0">
+                          {emp.first_name.charAt(0)}{emp.last_name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{emp.first_name} {emp.last_name}</p>
+                          <p className="text-xs text-gray-400">{emp.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 font-mono text-xs">{emp.employee_id}</td>
+                    <td className="px-4 py-3 text-gray-600">{emp.department}</td>
+                    <td className="px-4 py-3 text-gray-600">{emp.position}</td>
+                    <td className="px-4 py-3"><StatusBadge status={emp.employment_type} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={emp.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => navigate(`/employees/${emp.id}`)} className="btn-ghost p-1.5" title="View">
+                          <Eye size={14} />
+                        </button>
+                        <button onClick={() => navigate(`/employees/${emp.id}/edit`)} className="btn-ghost p-1.5" title="Edit">
+                          <Pencil size={14} />
+                        </button>
+                        {emp.status === 'active' && (
+                          <button
+                            onClick={() => { if (confirm(`Deactivate ${emp.first_name}?`)) deactivate.mutate(emp.id) }}
+                            className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Deactivate"
+                          >
+                            <UserX size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
