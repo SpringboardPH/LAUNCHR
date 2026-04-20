@@ -29,7 +29,7 @@ export default function EmployeeListPage() {
         title="Employees"
         description={`${data?.total ?? 0} total employees`}
         action={
-          <Link to="/employees/new" className="btn-primary">
+          <Link to="/admin/employees/new" className="btn-primary">
             <Plus size={16} /> Add Employee
           </Link>
         }
@@ -91,10 +91,10 @@ export default function EmployeeListPage() {
                     <td className="px-4 py-3"><StatusBadge status={emp.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => navigate(`/employees/${emp.id}`)} className="btn-ghost p-1.5" title="View">
+                        <button onClick={() => navigate(`/admin/employees/${emp.id}`)} className="btn-ghost p-1.5" title="View">
                           <Eye size={14} />
                         </button>
-                        <button onClick={() => navigate(`/employees/${emp.id}/edit`)} className="btn-ghost p-1.5" title="Edit">
+                        <button onClick={() => navigate(`/admin/employees/${emp.id}/edit`)} className="btn-ghost p-1.5" title="Edit">
                           <Pencil size={14} />
                         </button>
                         {emp.status === 'active' && (

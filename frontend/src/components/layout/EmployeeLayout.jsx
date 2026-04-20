@@ -1,21 +1,16 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import {
-  LayoutDashboard, Users, Clock, CalendarOff,
-  Banknote, LogOut, Menu, X,
-} from 'lucide-react'
+import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
 const NAV = [
-  { to: '/admin',         icon: LayoutDashboard, label: 'Dashboard',  end: true },
-  { to: '/admin/employees', icon: Users,           label: 'Employees' },
-  { to: '/admin/attendance',icon: Clock,           label: 'Attendance' },
-  { to: '/admin/leaves',    icon: CalendarOff,     label: 'Leaves' },
-  { to: '/admin/payroll',   icon: Banknote,        label: 'Payroll' },
+  { to: '/employee', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/employee/attendance', icon: Clock, label: 'Attendance' },
+  { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
 ]
 
-export default function AppLayout() {
+export default function EmployeeLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
@@ -51,19 +46,22 @@ export default function AppLayout() {
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV.map(({ to, icon: Icon, label, end }) => (
-            <NavLink
-              key={to} to={to} end={end}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) => clsx(
+            <a
+              key={to} href={to} onClick={(e) => {
+                e.preventDefault()
+                navigate(to)
+                setOpen(false)
+              }}
+              className={clsx(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                isActive
+                window.location.pathname === to
                   ? 'bg-brand-50 text-brand-700 font-medium'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               )}
             >
               <Icon size={16} />
               {label}
-            </NavLink>
+            </a>
           ))}
         </nav>
 
@@ -75,7 +73,7 @@ export default function AppLayout() {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
-              <p className="text-xs text-gray-500 truncate">{user?.role}</p>
+              <p className="text-xs text-gray-500 truncate">Employee</p>
             </div>
           </div>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">

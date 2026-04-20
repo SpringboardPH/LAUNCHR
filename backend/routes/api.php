@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('attendance')->group(function () {
         Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
+        Route::get('/today', [AttendanceController::class, 'today']);
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
     });
@@ -34,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Leave
     Route::prefix('leaves')->group(function () {
         Route::post('/', [LeaveController::class, 'store']);
+        Route::get('/balance', [LeaveController::class, 'balance']);
         Route::get('/', [LeaveController::class, 'index']);
         Route::get('/{id}', [LeaveController::class, 'show']);
         Route::patch('/{id}/approve', [LeaveController::class, 'approve']);

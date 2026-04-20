@@ -49,7 +49,7 @@ export default function EmployeeFormPage() {
     mutationFn: (data) => isEdit ? updateEmployee(id, data) : createEmployee(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: employeeKeys.all })
-      navigate('/employees')
+      navigate('/admin/employees')
     },
   })
 
@@ -61,7 +61,7 @@ export default function EmployeeFormPage() {
         title={isEdit ? 'Edit Employee' : 'Add Employee'}
         description={isEdit ? `Editing ${emp?.first_name} ${emp?.last_name}` : 'Fill in the details below'}
         action={
-          <button onClick={() => navigate('/employees')} className="btn-secondary">
+          <button onClick={() => navigate('/admin/employees')} className="btn-secondary">
             <ArrowLeft size={14} /> Back
           </button>
         }

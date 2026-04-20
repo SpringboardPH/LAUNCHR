@@ -13,7 +13,7 @@ export default function AttendancePage() {
   const qc = useQueryClient()
 
   const { data: todayLogs = [], isLoading: todayLoading } = useQuery({
-    queryKey: attendanceKeys.today(),
+    queryKey: attendanceKeys.todayAll(),
     queryFn: getAttendanceToday,
     refetchInterval: 30_000,
   })
@@ -29,18 +29,19 @@ export default function AttendancePage() {
   })
 
   const clockInMutation = useMutation({
-    mutationFn: clockIn,
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.today() }),
+    mutationFn: (employeeId) => clockIn('', employeeId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() }),
   })
   const clockOutMutation = useMutation({
-    mutationFn: clockOut,
-    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.today() }),
+    mutationFn: (employeeId) => clockOut('', employeeId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() }),
   })
 
   const activeEmployees = employees?.data ?? []
   const logs = monthlyData?.data ?? []
+  const todayLogsArray = Array.isArray(todayLogs) ? todayLogs : []
 
-  const getClockedIn = (empId) => todayLogs.find(l => l.employee_id === empId)
+  const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
 
   return (
     <div>
@@ -69,14 +70,22 @@ export default function AttendancePage() {
                       <td className="py-2.5 pr-4 font-medium text-gray-900">
                         {emp.first_name} {emp.last_name}
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in ?? '—'}</td>
-                      <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out ?? '—'}</td>
-                      <td className="py-2.5 pr-4 text-gray-600">{log?.hours_worked ?? '—'}</td>
+                      <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
+                      <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
+                      <td className="py-2.5 pr-4 text-gray-600">—</td>
                       <td className="py-2.5 pr-4">
-                        {log ? <StatusBadge status={log.status} /> : <span className="badge-gray">Not yet</span>}
+                        {log ? (
+                          log.clock_out_time ? (
+                            <span className="badge-gray text-xs px-2 py-1 rounded">Done</span>
+                          ) : (
+                            <span className="badge-green text-xs px-2 py-1 rounded">Working</span>
+                          )
+                        ) : (
+                          <span className="badge-gray text-xs px-2 py-1 rounded">Not yet</span>
+                        )}
                       </td>
                       <td className="py-2.5">
-                        {!log ? (
+                        {!log || !log.clock_in_time ? (
                           <button
                             onClick={() => clockInMutation.mutate(emp.id)}
                             disabled={clockInMutation.isPending}
@@ -84,7 +93,7 @@ export default function AttendancePage() {
                           >
                             <LogIn size={12} /> Clock In
                           </button>
-                        ) : !log.clock_out ? (
+                        ) : !log.clock_out_time ? (
                           <button
                             onClick={() => clockOutMutation.mutate(emp.id)}
                             disabled={clockOutMutation.isPending}
@@ -134,10 +143,18 @@ export default function AttendancePage() {
                     <td className="py-2.5 pr-4 font-medium text-gray-900">
                       {log.employee?.first_name} {log.employee?.last_name}
                     </td>
-                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_in ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_out ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{log.hours_worked ?? '—'}</td>
-                    <td className="py-2.5"><StatusBadge status={log.status} /></td>
+                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_in_time ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-gray-600">—</td>
+                    <td className="py-2.5">
+                      {log.clock_out_time ? (
+                        <span className="badge-gray text-xs px-2 py-1 rounded">Completed</span>
+                      ) : log.clock_in_time ? (
+                        <span className="badge-yellow text-xs px-2 py-1 rounded">In Progress</span>
+                      ) : (
+                        <span className="badge-gray text-xs px-2 py-1 rounded">Absent</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {logs.length === 0 && (

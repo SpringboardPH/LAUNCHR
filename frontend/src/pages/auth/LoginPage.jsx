@@ -1,28 +1,47 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/ui/index.jsx'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, user, loading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('admin@hr.com')
   const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  // Redirect if already logged in (only after loading completes)
+  useEffect(() => {
+    if (!loading && user) {
+      // Redirect based on role
+      const redirectPath = user.role === 'employee' ? '/employee' : '/admin'
+      navigate(redirectPath, { replace: true })
+    }
+  }, [user, loading, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
+    setSubmitting(true)
     try {
-      await login(email, password)
-      navigate('/')
+      const newUser = await login(email, password)
+      // Redirect based on role (navigate will trigger useEffect and redirect)
+      const redirectPath = newUser.role === 'employee' ? '/employee' : '/admin'
+      navigate(redirectPath)
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.')
-    } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
+  }
+
+  // Only show loading during initial auth check, not after login submit
+  if (loading && !submitting) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -61,8 +80,8 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
-              {loading ? <Spinner size="sm" /> : 'Sign in'}
+            <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
+              {submitting ? <Spinner size="sm" /> : 'Sign in'}
             </button>
           </form>
         </div>

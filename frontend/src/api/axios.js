@@ -1,9 +1,22 @@
 import axios from 'axios'
 
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+const baseBackendURL = baseURL.replace('/api', '')
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL,
   headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+  withCredentials: true,
 })
+
+// Helper to get CSRF token (calls the root endpoint, not /api)
+export const getCsrfToken = async () => {
+  try {
+    await axios.get(`${baseBackendURL}/sanctum/csrf-cookie`, { withCredentials: true })
+  } catch (err) {
+    console.error('CSRF token fetch failed:', err)
+  }
+}
 
 // Attach stored token on every request
 api.interceptors.request.use(config => {

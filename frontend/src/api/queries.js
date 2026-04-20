@@ -32,7 +32,8 @@ export const deleteEmployee = (id) =>
 // ─── Attendance ──────────────────────────────────────────────
 export const attendanceKeys = {
   all: ['attendance'],
-  today: () => ['attendance', 'today'],
+  today: () => ['attendance', 'today', 'my'],  // Employee's own attendance
+  todayAll: () => ['attendance', 'today', 'all'],  // HR/Admin all employees
   list: (params) => ['attendance', 'list', params],
   monthly: (employeeId, month) => ['attendance', 'monthly', employeeId, month],
 }
@@ -41,16 +42,20 @@ export const getAttendanceToday = () =>
   api.get('/attendance/today').then(r => r.data.data)
 
 export const getAttendance = (params) =>
-  api.get('/attendance', { params }).then(r => r.data.data)
+  api.get('/attendance', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination?.total,
+  }))
 
 export const getMonthlyAttendance = (employeeId, month) =>
   api.get(`/attendance/${employeeId}/monthly`, { params: { month } }).then(r => r.data.data)
 
-export const clockIn = (employeeId) =>
-  api.post('/attendance/clock-in', { employee_id: employeeId }).then(r => r.data)
+export const clockIn = (notes, employeeId = null) =>
+  api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)
 
-export const clockOut = (employeeId) =>
-  api.post('/attendance/clock-out', { employee_id: employeeId }).then(r => r.data)
+export const clockOut = (notes, employeeId = null) =>
+  api.post('/attendance/clock-out', { notes, employee_id: employeeId }).then(r => r.data.data)
 
 // ─── Leaves ──────────────────────────────────────────────────
 export const leaveKeys = {
@@ -61,10 +66,14 @@ export const leaveKeys = {
 }
 
 export const getLeaves = (params) =>
-  api.get('/leaves', { params }).then(r => r.data.data)
+  api.get('/leaves', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination.total,
+  }))
 
-export const getLeaveBalance = (employeeId) =>
-  api.get(`/leaves/balance/${employeeId}`).then(r => r.data.data)
+export const getLeaveBalance = () =>
+  api.get('/leaves/balance').then(r => r.data.data)
 
 export const createLeave = (data) =>
   api.post('/leaves', data).then(r => r.data)
@@ -106,4 +115,4 @@ export const exportPayroll = (id, label) => {
 export const dashboardKeys = { all: ['dashboard'] }
 
 export const getDashboard = () =>
-  api.get('/dashboard').then(r => r.data.data)
+  api.get('/dashboard/summary').then(r => r.data.data)
