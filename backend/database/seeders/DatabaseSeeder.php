@@ -20,5 +20,9 @@ class DatabaseSeeder extends Seeder
             'email' => 'admin@hr.com',
             'password' => 'password',
         ]);
+
+        $this->call([
+            EmployeeSeeder::class,
+        ]);
     }
 }

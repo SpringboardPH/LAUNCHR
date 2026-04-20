@@ -8,7 +8,11 @@ export const employeeKeys = {
 }
 
 export const getEmployees = (params) =>
-  api.get('/employees', { params }).then(r => r.data.data)
+  api.get('/employees', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination.total,
+  }))
 
 export const getEmployee = (id) =>
   api.get(`/employees/${id}`).then(r => r.data.data)

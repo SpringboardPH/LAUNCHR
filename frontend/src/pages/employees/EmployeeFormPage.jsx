@@ -9,15 +9,14 @@ import { PageHeader, FormField, PageSpinner, Spinner } from '../../components/ui
 import { ArrowLeft } from 'lucide-react'
 
 const schema = z.object({
-  first_name:      z.string().min(1, 'Required'),
-  last_name:       z.string().min(1, 'Required'),
-  email:           z.string().email('Invalid email'),
-  phone:           z.string().optional(),
-  position:        z.string().min(1, 'Required'),
-  department:      z.string().min(1, 'Required'),
-  hire_date:       z.string().min(1, 'Required'),
-  employment_type: z.enum(['full_time', 'part_time', 'contractual']),
-  basic_salary:    z.coerce.number().min(0, 'Must be ≥ 0'),
+  first_name:   z.string().min(1, 'Required'),
+  last_name:    z.string().min(1, 'Required'),
+  email:        z.string().email('Invalid email'),
+  phone:        z.string().optional(),
+  position:     z.string().min(1, 'Required'),
+  department:   z.string().min(1, 'Required'),
+  hire_date:    z.string().min(1, 'Required'),
+  basic_salary: z.coerce.number().min(0, 'Must be ≥ 0'),
 })
 
 const DEPARTMENTS = ['Finance', 'Sales', 'IT', 'Operations', 'HR', 'Marketing', 'Admin', 'Other']
@@ -36,7 +35,7 @@ export default function EmployeeFormPage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { employment_type: 'full_time', basic_salary: 0 },
+    defaultValues: { basic_salary: 0 },
   })
 
   useEffect(() => {
@@ -102,18 +101,10 @@ export default function EmployeeFormPage() {
           <FormField label="Hire date" error={errors.hire_date?.message} required>
             <input type="date" {...register('hire_date')} className={`input ${errors.hire_date ? 'input-error' : ''}`} />
           </FormField>
-          <FormField label="Employment type" error={errors.employment_type?.message} required>
-            <select {...register('employment_type')} className="input">
-              <option value="full_time">Full-time</option>
-              <option value="part_time">Part-time</option>
-              <option value="contractual">Contractual</option>
-            </select>
+          <FormField label="Basic salary (₱/month)" error={errors.basic_salary?.message} required>
+            <input type="number" step="0.01" {...register('basic_salary')} className={`input ${errors.basic_salary ? 'input-error' : ''}`} />
           </FormField>
         </div>
-
-        <FormField label="Basic salary (₱/month)" error={errors.basic_salary?.message} required>
-          <input type="number" step="0.01" {...register('basic_salary')} className={`input ${errors.basic_salary ? 'input-error' : ''}`} />
-        </FormField>
 
         {mutation.isError && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">

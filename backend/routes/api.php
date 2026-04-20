@@ -21,6 +21,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Employees
     Route::apiResource('employees', EmployeeController::class);
+    Route::patch('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate']);
     
     // Attendance
     Route::prefix('attendance')->group(function () {

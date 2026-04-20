@@ -64,7 +64,7 @@ export default function EmployeeListPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Employee', 'ID', 'Department', 'Position', 'Type', 'Status', ''].map(h => (
+                  {['Employee', 'ID', 'Department', 'Position', 'Status', ''].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                       {h}
                     </th>
@@ -88,7 +88,6 @@ export default function EmployeeListPage() {
                     <td className="px-4 py-3 text-gray-500 font-mono text-xs">{emp.employee_id}</td>
                     <td className="px-4 py-3 text-gray-600">{emp.department}</td>
                     <td className="px-4 py-3 text-gray-600">{emp.position}</td>
-                    <td className="px-4 py-3"><StatusBadge status={emp.employment_type} /></td>
                     <td className="px-4 py-3"><StatusBadge status={emp.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">

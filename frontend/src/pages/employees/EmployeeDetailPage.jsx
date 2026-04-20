@@ -61,8 +61,7 @@ export default function EmployeeDetailPage() {
               { icon: Phone,    label: 'Phone',           value: emp.phone || '—' },
               { icon: Briefcase,label: 'Department',      value: emp.department },
               { icon: Calendar, label: 'Hire date',       value: format(new Date(emp.hire_date), 'MMM dd, yyyy') },
-              { icon: Briefcase,label: 'Employment type', value: emp.employment_type?.replace(/_/g, ' ') },
-              { icon: Briefcase,label: 'Basic salary',    value: `₱${Number(emp.basic_salary).toLocaleString()}` },
+              { icon: Briefcase,label: 'Salary',         value: `₱${Number(emp.salary).toLocaleString()}` },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-start gap-2">
                 <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
