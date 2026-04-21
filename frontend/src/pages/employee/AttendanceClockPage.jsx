@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { clockIn, clockOut, getAttendanceToday, getMonthlyAttendance, attendanceKeys } from '../../api/queries'
-import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
+import { clockIn, clockOut, getAttendanceToday, getMonthlyAttendance, attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys } from '../../api/queries'
+import { PageHeader, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
+import { getClockWindow } from '../../utils/attendance'
 
 const calculateHours = (clockInTime, clockOutTime) => {
   if (!clockInTime || !clockOutTime) return '—'
@@ -39,10 +40,16 @@ export default function AttendanceClockPage() {
   const employeeId = user?.employee?.id
 
   const { data: todayAttendance, isLoading, refetch } = useQuery({
-    queryKey: attendanceKeys.today(),
-    queryFn: getAttendanceToday,
+    queryKey: attendanceKeys.today(user?.id),
+    queryFn: () => getAttendanceToday({ personal: true }),
     refetchOnWindowFocus: true,
     refetchOnMount: 'stale',
+  })
+
+  const { data: currentSchedule, isLoading: loadingSchedule } = useQuery({
+    queryKey: employeeScheduleKeys.currentForEmployee(user?.employee?.id),
+    queryFn: () => getCurrentScheduleForEmployee(user?.employee?.id),
+    enabled: !!user?.employee?.id,
   })
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
@@ -77,12 +84,15 @@ export default function AttendanceClockPage() {
     },
   })
 
-  if (isLoading) return <PageSpinner />
-  if (authLoading) return <PageSpinner />
+  if (isLoading || authLoading || loadingSchedule) return <PageSpinner />
 
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
   const monthlyLogs = monthlyData?.data ?? []
+  
+  const window = getClockWindow(currentSchedule)
+  const canClockIn = window?.isWithinInWindow
+  const canClockOut = window?.isWithinOutWindow
 
   return (
     <div>
@@ -159,20 +169,20 @@ export default function AttendanceClockPage() {
             {!isClockedIn ? (
               <button
                 onClick={() => inMutation.mutate()}
-                disabled={inMutation.isPending}
-                className="btn btn-primary w-full"
+                disabled={inMutation.isPending || !canClockIn}
+                className={`btn w-full ${!canClockIn ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
               >
                 <Clock size={16} />
-                {inMutation.isPending ? 'Clocking in...' : 'Clock In'}
+                {!canClockIn ? 'Not your scheduled time yet' : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
               </button>
             ) : !isClockedOut ? (
               <button
                 onClick={() => outMutation.mutate()}
-                disabled={outMutation.isPending}
-                className="btn btn-secondary w-full"
+                disabled={outMutation.isPending || !canClockOut}
+                className={`btn w-full ${!canClockOut ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-secondary'}`}
               >
                 <LogOut size={16} />
-                {outMutation.isPending ? 'Clocking out...' : 'Clock Out'}
+                {!canClockOut ? 'Not your scheduled time yet' : (outMutation.isPending ? 'Clocking out...' : 'Clock Out')}
               </button>
             ) : (
               <div className="p-3 bg-gray-50 rounded-lg text-center">
@@ -182,7 +192,12 @@ export default function AttendanceClockPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="card p-6">
+            <h2 className="text-sm font-semibold text-gray-700 mb-6">Assigned Schedule</h2>
+            <ScheduleDisplay schedule={currentSchedule} />
+          </div>
+
           <div className="card p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
@@ -206,27 +221,32 @@ export default function AttendanceClockPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-100">
                     <tr>
-                      {['Date', 'Clock In', 'Clock Out', 'Hours', 'Status'].map(h => (
+                      {['Date', 'Template', 'Clock In', 'Clock Out', 'Hours', 'Status'].map(h => (
                         <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {monthlyLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-gray-50">
+                      <tr key={log.id || log.date} className="hover:bg-gray-50">
                         <td className="py-2.5 pr-4 text-gray-600">{format(parseISO(log.date), 'MMM dd, yyyy')}</td>
+                        <td className="py-2.5 pr-4 text-gray-600">{log.template_name || '—'}</td>
                         <td className="py-2.5 pr-4 text-gray-600">{log.clock_in_time ?? '—'}</td>
                         <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
                         <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                         <td className="py-2.5">
                           {log.status === 'completed' ? (
-                            <span className="badge-green text-xs px-2 py-1 rounded">Completed</span>
+                            <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
+                          ) : log.status === 'working' ? (
+                            <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
+                          ) : log.status === 'on_leave' ? (
+                            <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
                           ) : log.status === 'late' ? (
-                            <span className="badge-yellow text-xs px-2 py-1 rounded">Late</span>
+                            <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
                           ) : log.status === 'incomplete' ? (
-                            <span className="badge-yellow text-xs px-2 py-1 rounded">Incomplete</span>
+                            <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Incomplete</span>
                           ) : (
-                            <span className="badge-gray text-xs px-2 py-1 rounded">Absent</span>
+                            <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
                           )}
                         </td>
                       </tr>

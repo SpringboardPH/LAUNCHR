@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
+use App\Models\LeaveRequest;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -226,7 +227,7 @@ class AttendanceController extends Controller
         // Create or update attendance log
         $log = AttendanceLog::updateOrCreate(
             ['employee_id' => $employee->id, 'date' => $today->toDateString()],
-            ['clock_in_time' => $clockInTime, 'notes' => $request->notes]
+            ['clock_in_time' => $clockInTime, 'notes' => $request->notes, 'status' => 'working']
         );
 
         return response()->json([
@@ -312,7 +313,7 @@ class AttendanceController extends Controller
             }
         } elseif ($schedule && $schedule->template) {
             $template = $schedule->template;
-            $workEndTime = $template->work_end_time ?? $template->end_time ?? self::WORK_END_TIME;
+            $workEndTime = $template->clock_out_start ?? $template->work_end_time ?? $template->end_time ?? self::WORK_END_TIME;
             $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
         }
         $workEndMinutes = $this->parseTimeToMinutes($workEndTime);
@@ -358,20 +359,141 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = AttendanceLog::with('employee');
         $isPersonal = $request->query('personal') === 'true';
+        $includeAbsentees = $request->query('include_absentees') === 'true';
+        $monthStr = $request->query('month');
+
+        $query = AttendanceLog::with('employee');
 
         // Employees only see their own records, or if 'personal' flag is set
         if (!$user->isAdminOrHr() || $isPersonal) {
             $query->where('employee_id', $user->employee->id);
+            // If personal, we can just use the monthly method's logic if it's a report
+            if ($monthStr && $includeAbsentees) {
+                return $this->monthly($request, $user->employee->id);
+            }
         }
-        // HR/Admin can see all records if not requested as personal
 
         // Filter by month if provided (expects format: YYYY-MM)
-        if ($month = $request->query('month')) {
-            [$year, $monthNum] = explode('-', $month);
+        if ($monthStr) {
+            [$year, $monthNum] = explode('-', $monthStr);
             $query->whereYear('date', (int)$year)
                   ->whereMonth('date', (int)$monthNum);
+        }
+
+        // If HR/Admin wants a full report with absentees
+        if ($user->isAdminOrHr() && !$isPersonal && $monthStr && $includeAbsentees) {
+            [$year, $monthNum] = explode('-', $monthStr);
+            $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
+            $endDate = $startDate->copy()->endOfMonth();
+            $generationEndDate = $endDate->isPast() ? $endDate : Carbon::today();
+
+            $employees = Employee::where('status', 'active')->get();
+            $logs = $query->orderBy('date', 'desc')->get()->groupBy('employee_id');
+
+            // Get all approved leaves for these employees in this month
+            $leaves = LeaveRequest::whereIn('employee_id', $employees->pluck('id'))
+                ->where('status', 'approved')
+                ->where(function($q) use ($startDate, $endDate) {
+                    $q->whereBetween('start_date', [$startDate, $endDate])
+                      ->orWhereBetween('end_date', [$startDate, $endDate])
+                      ->orWhere(function($q2) use ($startDate, $endDate) {
+                          $q2->where('start_date', '<=', $startDate)
+                             ->where('end_date', '>=', $endDate);
+                      });
+                })
+                ->get()
+                ->groupBy('employee_id');
+
+            $allRecords = [];
+            foreach ($employees as $employee) {
+                $employeeLogs = $logs->get($employee->id, collect())->keyBy(function($item) {
+                    return Carbon::parse($item->date)->format('Y-m-d');
+                });
+                
+                $employeeLeaves = $leaves->get($employee->id, collect());
+
+                for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+                    $dateStr = $date->format('Y-m-d');
+                    $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
+                    $templateName = $schedule?->template?->name;
+
+                    if ($employeeLogs->has($dateStr)) {
+                        $log = $employeeLogs->get($dateStr);
+                        $log->template_name = $templateName;
+                        $allRecords[] = $log;
+                    } elseif ($date->lte($generationEndDate)) {
+                        // Check for approved leave
+                        $isOnLeave = $employeeLeaves->some(function($leave) use ($date) {
+                            $lStart = Carbon::parse($leave->start_date)->startOfDay();
+                            $lEnd = Carbon::parse($leave->end_date)->endOfDay();
+                            return $date->between($lStart, $lEnd);
+                        });
+
+                        if ($isOnLeave) {
+                            $allRecords[] = [
+                                'employee_id' => $employee->id,
+                                'employee' => $employee,
+                                'date' => $dateStr,
+                                'clock_in_time' => null,
+                                'clock_out_time' => null,
+                                'status' => 'on_leave',
+                                'template_name' => $templateName,
+                            ];
+                            continue;
+                        }
+
+                        if ($schedule && $schedule->template) {
+                            $template = $schedule->template;
+                            $dayOfWeek = $date->dayOfWeek;
+                            $isWorkingDay = false;
+                            if ($template->day_rules) {
+                                foreach ($template->day_rules as $rule) {
+                                    if ($rule['day'] == $dayOfWeek && $rule['enabled']) {
+                                        $isWorkingDay = true;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                $workDays = $template->work_days ?? [];
+                                if (in_array($dayOfWeek, $workDays)) { $isWorkingDay = true; }
+                            }
+
+                            if ($isWorkingDay) {
+                                $shiftEnd = null;
+                                if ($date->isToday()) {
+                                    $shiftEndStr = $template->end_time ?? '18:00:00';
+                                    $shiftEnd = $date->copy()->setTimeFrom(Carbon::parse($shiftEndStr));
+                                }
+
+                                if ($date->isPast() && (!$date->isToday() || (isset($shiftEnd) && now()->isAfter($shiftEnd)))) {
+                                    $allRecords[] = [
+                                        'employee_id' => $employee->id,
+                                        'employee' => $employee,
+                                        'date' => $dateStr,
+                                        'clock_in_time' => null,
+                                        'clock_out_time' => null,
+                                        'status' => 'absent',
+                                        'template_name' => $templateName,
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sort by date desc
+            usort($allRecords, function($a, $b) {
+                return strcmp($b['date'] instanceof Carbon ? $b['date']->format('Y-m-d') : $b['date'], 
+                              $a['date'] instanceof Carbon ? $a['date']->format('Y-m-d') : $a['date']);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $allRecords,
+                'message' => 'Attendance report retrieved',
+            ]);
         }
 
         $records = $query->orderBy('date', 'desc')->paginate(15);
@@ -417,6 +539,10 @@ class AttendanceController extends Controller
 
         if (!$user->isAdminOrHr() || $isPersonal) {
             $employee = $user->employee;
+            if ($employee) {
+                $this->performAutoClockOut($employee->id);
+            }
+            
             if (!$employee) {
                 return response()->json([
                     'success' => true,
@@ -498,22 +624,178 @@ class AttendanceController extends Controller
             ], 403);
         }
 
-        $month = $request->query('month', now()->format('Y-m'));
-        [$year, $monthNum] = explode('-', $month);
+        $this->performAutoClockOut($employeeId);
 
+        $monthStr = $request->query('month', now()->format('Y-m'));
+        [$year, $monthNum] = explode('-', $monthStr);
+
+        $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
+        $endDate = $startDate->copy()->endOfMonth();
+        
+        // Don't generate absent records for future days
+        $today = Carbon::today();
+        $generationEndDate = $endDate->isPast() ? $endDate : $today;
+
+        // Get actual logs
         $logs = AttendanceLog::where('employee_id', $employeeId)
             ->whereYear('date', (int)$year)
             ->whereMonth('date', (int)$monthNum)
-            ->orderBy('date', 'asc')
+            ->get()
+            ->keyBy(function($item) {
+                return Carbon::parse($item->date)->format('Y-m-d');
+            });
+
+        // Get approved leaves for the month
+        $leaves = LeaveRequest::where('employee_id', $employeeId)
+            ->where('status', 'approved')
+            ->where(function($q) use ($startDate, $endDate) {
+                $q->whereBetween('start_date', [$startDate, $endDate])
+                  ->orWhereBetween('end_date', [$startDate, $endDate])
+                  ->orWhere(function($q2) use ($startDate, $endDate) {
+                      $q2->where('start_date', '<=', $startDate)
+                         ->where('end_date', '>=', $endDate);
+                  });
+            })
             ->get();
+
+        $allDays = [];
+        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+            $dateStr = $date->format('Y-m-d');
+            $schedule = EmployeeSchedule::getForEmployeeOnDate($employeeId, $date);
+            $templateName = $schedule?->template?->name;
+            
+            if ($logs->has($dateStr)) {
+                $log = $logs->get($dateStr);
+                $log->template_name = $templateName;
+                $allDays[] = $log;
+            } elseif ($date->lte($generationEndDate)) {
+                // Check for approved leave first
+                $isOnLeave = $leaves->some(function($leave) use ($date) {
+                    $lStart = Carbon::parse($leave->start_date)->startOfDay();
+                    $lEnd = Carbon::parse($leave->end_date)->endOfDay();
+                    return $date->between($lStart, $lEnd);
+                });
+
+                if ($isOnLeave) {
+                    $allDays[] = [
+                        'employee_id' => $employeeId,
+                        'date' => $dateStr,
+                        'clock_in_time' => null,
+                        'clock_out_time' => null,
+                        'status' => 'on_leave',
+                        'template_name' => $templateName,
+                    ];
+                    continue;
+                }
+
+                // Check if they were scheduled
+                if ($schedule && $schedule->template) {
+                     $template = $schedule->template;
+                     $dayOfWeek = $date->dayOfWeek; // 0 (Sun) to 6 (Sat)
+                     
+                     $isWorkingDay = false;
+                     if ($template->day_rules) {
+                         foreach ($template->day_rules as $rule) {
+                             if ($rule['day'] == $dayOfWeek && $rule['enabled']) {
+                                 $isWorkingDay = true;
+                                 break;
+                             }
+                         }
+                     } else {
+                         $workDays = $template->work_days ?? [];
+                         if (in_array($dayOfWeek, $workDays)) {
+                             $isWorkingDay = true;
+                         }
+                     }
+
+                     if ($isWorkingDay) {
+                         // Only mark as absent if it's NOT today, or if it IS today but the shift end has passed
+                         $shiftEnd = null;
+                         if ($date->isToday()) {
+                             $shiftEndStr = $template->end_time ?? '18:00:00';
+                             $shiftEnd = $date->copy()->setTimeFrom(Carbon::parse($shiftEndStr));
+                         }
+
+                         if ($date->isPast() && (!$date->isToday() || (isset($shiftEnd) && now()->isAfter($shiftEnd)))) {
+                             $allDays[] = [
+                                 'employee_id' => $employeeId,
+                                 'date' => $dateStr,
+                                 'clock_in_time' => null,
+                                 'clock_out_time' => null,
+                                 'status' => 'absent',
+                                 'template_name' => $templateName,
+                             ];
+                         }
+                     }
+                }
+            }
+        }
 
         return response()->json([
             'success' => true,
             'data' => [
-                'data' => $logs
+                'data' => $allDays
             ],
             'message' => 'Monthly attendance records retrieved',
         ]);
+    }
+
+    /**
+     * Automatically clock out employees who missed their departure window
+     */
+    private function performAutoClockOut($employeeId)
+    {
+        $openLogs = AttendanceLog::where('employee_id', $employeeId)
+            ->whereNotNull('clock_in_time')
+            ->whereNull('clock_out_time')
+            ->get();
+
+        foreach ($openLogs as $log) {
+            $date = Carbon::parse($log->date);
+            $schedule = EmployeeSchedule::getForEmployeeOnDate($employeeId, $date);
+            if (!$schedule || !$schedule->template) continue;
+
+            $template = $schedule->template;
+            $dayOfWeek = $date->dayOfWeek; // 0 (Sun) to 6 (Sat)
+            
+            $dayRule = null;
+            if ($template->day_rules) {
+                foreach ($template->day_rules as $rule) {
+                    if ($rule['day'] == $dayOfWeek && $rule['enabled']) {
+                        $dayRule = $rule;
+                        break;
+                    }
+                }
+            }
+
+            $clockOutEnd = null;
+            if ($dayRule) {
+                 $targetOut = Carbon::parse($dayRule['clock_out']);
+                 $targetOut = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
+                 
+                 $grace = (int)($dayRule['grace_minutes'] ?? 0);
+                 $type = $dayRule['grace_type'] ?? '-/+';
+                 
+                 $clockOutEnd = $targetOut->copy();
+                 if ($dayRule['grace_enabled'] && ($type === '+' || $type === '-/+')) {
+                     $clockOutEnd->addMinutes($grace);
+                 }
+            } else {
+                 $clockOutEndStr = $template->clock_out_end ?? $template->end_time;
+                 if ($clockOutEndStr) {
+                     $targetOut = Carbon::parse($clockOutEndStr);
+                     $clockOutEnd = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
+                 }
+            }
+
+            if ($clockOutEnd && Carbon::now()->isAfter($clockOutEnd)) {
+                $log->update([
+                    'clock_out_time' => $dayRule ? $dayRule['clock_out'] : ($template->end_time ?? '18:00:00'),
+                    'status' => 'completed',
+                    'notes' => ($log->notes ? $log->notes . "\n" : "") . "[System] Automatically clocked out due to missed departure window."
+                ]);
+            }
+        }
     }
 }
 

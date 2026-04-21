@@ -94,7 +94,7 @@ class LeaveController extends Controller
             'policy' => [
                 'include_weekends' => SystemSettings::get('leave_include_weekends', false),
             ],
-            'leave_types' => $leaveTypes,
+            'leave_types' => $leaveTypes->values(),
         ];
     }
 
@@ -174,10 +174,16 @@ class LeaveController extends Controller
     {
         $query = LeaveRequest::query();
 
-        // Employee can only see their own leaves
-        if (!$request->user()->isAdminOrHr()) {
+        // Employee can only see their own leaves, or if 'personal' flag is set
+        $isPersonal = $request->query('personal') === 'true';
+        if (!$request->user()->isAdminOrHr() || $isPersonal) {
             $employee = $request->user()->employee;
-            $query->where('employee_id', $employee->id);
+            if ($employee) {
+                $query->where('employee_id', $employee->id);
+            } else if ($isPersonal) {
+                // If personal requested but no employee record, return empty
+                $query->whereRaw('1 = 0');
+            }
         }
 
         // HR/Admin can filter by employee

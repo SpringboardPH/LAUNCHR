@@ -42,6 +42,15 @@ class EmployeeScheduleController extends Controller
      */
     public function getCurrentForEmployee($employeeId)
     {
+        $user = request()->user();
+        // Security check: only own records unless Admin/HR
+        if (!$user->isAdminOrHr() && (!$user->employee || $user->employee->id != $employeeId)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to schedule records',
+            ], 403);
+        }
+
         $schedule = EmployeeSchedule::getCurrentForEmployee($employeeId);
 
         return response()->json([

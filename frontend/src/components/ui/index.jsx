@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { X, CalendarDays, Clock, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 
 // ─── PageHeader ───────────────────────────────────────────────
@@ -115,7 +115,73 @@ export function StatusBadge({ status }) {
     full_time:   'badge-blue',
     part_time:   'badge-yellow',
     contractual: 'badge-gray',
+    working:     'badge-green',
+    on_leave:    'badge-blue',
   }
   const label = status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
 }
+import { getClockWindow } from '../../utils/attendance'
+
+// ─── ScheduleDisplay ──────────────────────────────────────────
+export function ScheduleDisplay({ schedule, compact = false }) {
+  const window = getClockWindow(schedule)
+  if (!window) return (
+    <div className="text-xs text-gray-400 italic">No assigned schedule for this week.</div>
+  )
+
+  const { inStart, inEnd, outStart, outEnd, workStart, workEnd, formatTime } = window
+
+  const WindowItem = ({ label, start, end, icon: Icon, color }) => (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <Icon size={12} className={color} /> {label}
+      </div>
+      <div className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+        <p className="text-sm font-bold text-gray-900">{formatTime(start)} – {formatTime(end)}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">Valid window</p>
+      </div>
+    </div>
+  )
+
+  if (compact) {
+    return (
+      <div className="text-xs space-y-1">
+        <div className="flex justify-between">
+          <span className="text-gray-400">IN:</span>
+          <span className="font-medium">{formatTime(inStart)}-{formatTime(inEnd)}</span>
+        </div>
+        <div className="flex justify-between border-t border-gray-50 pt-1">
+          <span className="text-gray-400">OUT:</span>
+          <span className="font-medium">{formatTime(outStart)}-{formatTime(outEnd)}</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center text-brand-600">
+            <CalendarDays size={16} />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-900">{schedule.template?.name}</p>
+            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tight">Assigned Schedule</p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-bold text-gray-900">{workStart} – {workEnd}</p>
+          <p className="text-[10px] text-gray-400">Today's Shift</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <WindowItem label="Clock In" start={inStart} end={inEnd} icon={Clock} color="text-brand-500" />
+        <WindowItem label="Clock Out" start={outStart} end={outEnd} icon={LogOut} color="text-gray-500" />
+      </div>
+    </div>
+  )
+}
+

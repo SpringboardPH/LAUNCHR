@@ -5,7 +5,7 @@ import { Users, Clock, CalendarOff, Banknote, TrendingUp, AlertCircle, Zap } fro
 import { format } from 'date-fns'
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({ queryKey: dashboardKeys.all, queryFn: getDashboard })
+  const { data, isLoading } = useQuery({ queryKey: dashboardKeys.all, queryFn: () => getDashboard() })
 
   if (isLoading) return <PageSpinner />
 

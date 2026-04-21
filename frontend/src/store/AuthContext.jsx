@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import api from '../api/axios'
 
 const AuthContext = createContext(null)
@@ -6,6 +7,7 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const token = localStorage.getItem('hr_token')
@@ -28,6 +30,10 @@ export function AuthProvider({ children }) {
     const { token, user } = res.data.data
     localStorage.setItem('hr_token', token)
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    
+    // Clear any cached data from previous sessions before setting the new user
+    queryClient.clear()
+    
     setUser(user)
     return user
   }
@@ -36,6 +42,10 @@ export function AuthProvider({ children }) {
     try { await api.post('/logout') } catch {}
     localStorage.removeItem('hr_token')
     delete api.defaults.headers.common['Authorization']
+    
+    // Clear cache on logout
+    queryClient.clear()
+    
     setUser(null)
   }
 

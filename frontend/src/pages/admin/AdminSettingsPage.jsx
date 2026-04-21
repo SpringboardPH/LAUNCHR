@@ -231,7 +231,7 @@ export default function AdminSettingsPage() {
   return (
     <div>
       <PageHeader
-        title="System Settings"
+        title="Configure Leave"
         description="Control leave policy, leave types, and employee-specific balances"
       />
 

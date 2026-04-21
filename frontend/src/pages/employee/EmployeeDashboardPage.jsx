@@ -1,27 +1,35 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getAttendanceToday, getLeaveBalance, attendanceKeys, leaveKeys } from '../../api/queries'
-import { PageHeader, StatCard, PageSpinner } from '../../components/ui/index.jsx'
+import { useAuth } from '../../store/AuthContext'
+import { getAttendanceToday, getLeaveBalance, attendanceKeys, leaveKeys, getCurrentScheduleForEmployee, employeeScheduleKeys } from '../../api/queries'
+import { PageHeader, StatCard, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
 import { Clock, CalendarOff, TrendingUp, LogOut, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function EmployeeDashboardPage() {
+  const { user } = useAuth()
   const { data: todayAttendance, isLoading: loadingAttendance } = useQuery({
-    queryKey: attendanceKeys.today(),
-    queryFn: getAttendanceToday,
+    queryKey: attendanceKeys.today(user?.id),
+    queryFn: () => getAttendanceToday({ personal: true }),
     refetchOnWindowFocus: true,
     refetchOnMount: 'stale',
   })
 
   const { data: leaveBalance, isLoading: loadingBalance } = useQuery({
-    queryKey: leaveKeys.balance(),
-    queryFn: getLeaveBalance,
+    queryKey: leaveKeys.balance(user?.id),
+    queryFn: () => getLeaveBalance(),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   })
 
-  if (loadingAttendance || loadingBalance) return <PageSpinner />
+  const { data: currentSchedule, isLoading: loadingSchedule } = useQuery({
+    queryKey: employeeScheduleKeys.currentForEmployee(user?.employee?.id),
+    queryFn: () => getCurrentScheduleForEmployee(user?.employee?.id),
+    enabled: !!user?.employee?.id,
+  })
+
+  if (loadingAttendance || loadingBalance || loadingSchedule) return <PageSpinner />
 
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
@@ -60,6 +68,9 @@ export default function EmployeeDashboardPage() {
         {/* Clock In/Out Card */}
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-6">Today's Attendance</h2>
+          <div className="mb-6 pb-6 border-b border-gray-100">
+            <ScheduleDisplay schedule={currentSchedule} />
+          </div>
           <div className="space-y-3">
             {isClockedIn ? (
               <>

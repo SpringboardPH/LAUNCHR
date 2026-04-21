@@ -28,14 +28,21 @@ const isEmployee = (user) => {
   return !['admin', 'hr'].includes(user.role);
 };
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
     </div>
   )
-  return user ? children : <Navigate to="/login" replace />
+  
+  if (!user) return <Navigate to="/login" replace />
+  
+  if (adminOnly && isEmployee(user)) {
+    return <Navigate to="/employee" replace />
+  }
+  
+  return children
 }
 
 function PublicRoute({ children }) {

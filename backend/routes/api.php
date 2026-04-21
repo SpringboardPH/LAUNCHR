@@ -93,9 +93,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/admin/departments/{id}/restore', [DepartmentController::class, 'restore']);
         Route::delete('/admin/departments/{id}/hard-delete', [DepartmentController::class, 'hardDelete']);
         
-        // Schedule Templates (Admin)
-        Route::apiResource('admin/schedule-templates', ScheduleTemplateController::class);
-        
         // Employee Management (Admin)
         Route::delete('/admin/employees/{id}/hard-delete', [EmployeeController::class, 'hardDelete']);
         Route::patch('/admin/employees/{id}/restore', [EmployeeController::class, 'restore']);
@@ -104,9 +101,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('admin/users', UserController::class);
     });
     
-    // Employee Schedules (Admin + HR)
+    // Employee Schedules & Templates (Admin + HR)
     Route::middleware('role:admin,hr')->group(function () {
         Route::apiResource('admin/employee-schedules', EmployeeScheduleController::class);
-        Route::get('/admin/employee-schedules/employee/{employeeId}/current', [EmployeeScheduleController::class, 'getCurrentForEmployee']);
+        Route::apiResource('admin/schedule-templates', ScheduleTemplateController::class);
     });
+    Route::get('/admin/employee-schedules/employee/{employeeId}/current', [EmployeeScheduleController::class, 'getCurrentForEmployee']);
 });

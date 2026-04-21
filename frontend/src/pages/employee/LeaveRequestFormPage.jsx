@@ -8,6 +8,7 @@ import { createLeave, leaveKeys, getLeaves, getLeaveBalance } from '../../api/qu
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
 import { format } from 'date-fns'
+import { useAuth } from '../../store/AuthContext'
 
 const leaveSchema = z.object({
   leave_type: z.string().min(1, { message: 'Invalid leave type' }),
@@ -26,15 +27,16 @@ export default function LeaveRequestFormPage() {
   const [localError, setLocalError] = useState('')
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { user } = useAuth()
 
   const { data: leavesData, isLoading: isLoadingLeaves } = useQuery({
-    queryKey: leaveKeys.list({}),
-    queryFn: () => getLeaves({}),
+    queryKey: leaveKeys.list({ personal: true, userId: user?.id }),
+    queryFn: () => getLeaves({ personal: true }),
   })
 
   const { data: balanceData } = useQuery({
-    queryKey: leaveKeys.balance(),
-    queryFn: getLeaveBalance,
+    queryKey: leaveKeys.balance(user?.id),
+    queryFn: () => getLeaveBalance(),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,

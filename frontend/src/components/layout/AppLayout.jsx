@@ -17,7 +17,7 @@ const COMMON_NAV = [
 ]
 
 const ADMIN_ONLY_NAV = [
-  { to: '/admin/settings', icon: Settings, label: 'System Settings' },
+  { to: '/admin/settings', icon: Settings, label: 'Configure Leave' },
   { to: '/admin/users', icon: UserCog, label: 'User Management' },
   { to: '/admin/departments', icon: Building2, label: 'Departments' },
   { to: '/admin/schedule-templates', icon: CalendarRange, label: 'Schedule Templates' },

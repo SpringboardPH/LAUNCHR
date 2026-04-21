@@ -8,6 +8,7 @@ import {
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, CalendarDays } from 'lucide-react'
+import { getClockWindow } from '../../utils/attendance'
 
 // Calculate hours worked between two time strings (HH:MM:SS format)
 const calculateHours = (clockInTime, clockOutTime) => {
@@ -38,12 +39,79 @@ export default function AttendancePage() {
 
   const { data: todayLogs = [], isLoading: todayLoading } = useQuery({
     queryKey: attendanceKeys.todayAll(),
-    queryFn: getAttendanceToday,
+    queryFn: () => getAttendanceToday({ personal: false }),
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
     refetchInterval: 30_000,
   })
+
+  // Helper to calculate grace windows (mirroring backend logic)
+  const getDetailedClockWindow = (schedule) => {
+    const template = schedule?.template
+    if (!template) return '—'
+
+    const today = new Date().getDay()
+    const dayRule = (template.day_rules || []).find(r => r.day === today)
+
+    // Helper functions for time math
+    const parse = (t) => {
+      if (!t) return 0
+      const [h, m] = t.split(':').map(Number)
+      return h * 60 + (m || 0)
+    }
+    const formatTime = (m) => {
+      const h = Math.floor(m / 60)
+      const min = m % 60
+      return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
+    }
+
+    let inStart, inEnd, outStart, outEnd
+
+    if (dayRule && dayRule.enabled) {
+      const targetIn = parse(dayRule.clock_in)
+      const targetOut = parse(dayRule.clock_out)
+      const grace = parseInt(dayRule.grace_minutes || 0)
+      const type = dayRule.grace_type || '-/+'
+
+      if (dayRule.grace_enabled) {
+        inStart = targetIn - ((type === '-' || type === '-/+') ? grace : 0)
+        inEnd = targetIn + ((type === '+' || type === '-/+') ? grace : 0)
+        outStart = targetOut - ((type === '-' || type === '-/+') ? grace : 0)
+        outEnd = targetOut + ((type === '+' || type === '-/+') ? grace : 0)
+      } else {
+        inStart = inEnd = targetIn
+        outStart = outEnd = targetOut
+      }
+      
+      return (
+        <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">IN:</span>
+            <span className="font-medium text-gray-700">{formatTime(inStart)} - {formatTime(inEnd)}</span>
+          </div>
+          <div className="flex justify-between gap-2 border-t border-gray-50 pt-0.5">
+            <span className="text-gray-400">OUT:</span>
+            <span className="font-medium text-gray-700">{formatTime(outStart)} - {formatTime(outEnd)}</span>
+          </div>
+        </div>
+      )
+    }
+
+    // Fallback to template fields
+    return (
+      <div className="flex flex-col gap-0.5 text-[10px] leading-tight text-gray-500">
+        <div className="flex justify-between gap-2">
+          <span>IN:</span>
+          <span>{template.clock_in_start?.substring(0, 5) || '—'} - {template.clock_in_end?.substring(0, 5) || '—'}</span>
+        </div>
+        <div className="flex justify-between gap-2 border-t border-gray-50 pt-0.5">
+          <span>OUT:</span>
+          <span>{template.clock_out_start?.substring(0, 5) || '—'} - {template.clock_out_end?.substring(0, 5) || '—'}</span>
+        </div>
+      </div>
+    )
+  }
 
   const { data: employees } = useQuery({
     queryKey: employeeKeys.list({}),
@@ -56,8 +124,8 @@ export default function AttendancePage() {
   })
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
-    queryKey: attendanceKeys.list({ month }),
-    queryFn: () => getAttendance({ month }),
+    queryKey: attendanceKeys.list({ month, include_absentees: true }),
+    queryFn: () => getAttendance({ month, include_absentees: true, personal: false }),
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
@@ -126,7 +194,7 @@ export default function AttendancePage() {
                       {schedule.template?.work_start_time?.substring(0, 5)} - {schedule.template?.work_end_time?.substring(0, 5)}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600">
-                      {schedule.template?.clock_in_start?.substring(0, 5)} - {schedule.template?.clock_in_end?.substring(0, 5)}
+                      {getDetailedClockWindow(schedule)}
                     </td>
                   </tr>
                 ))}
@@ -169,6 +237,9 @@ export default function AttendancePage() {
                             <div className="text-xs text-gray-400">
                               {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd')}
                             </div>
+                            <div className="mt-1.5 border-t border-gray-100 pt-1.5">
+                              {getDetailedClockWindow(schedule)}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-gray-400">No schedule</span>
@@ -185,7 +256,15 @@ export default function AttendancePage() {
                             <span className="badge-green text-xs px-2 py-1 rounded">Working</span>
                           )
                         ) : (
-                          <span className="badge-gray text-xs px-2 py-1 rounded">Not yet</span>
+                          (() => {
+                            const win = getClockWindow(schedule)
+                            const isPastShift = win && win.currentMinutes > win.outEnd
+                            return isPastShift ? (
+                              <span className="badge-red text-xs px-2 py-1 rounded">Absent</span>
+                            ) : (
+                              <span className="badge-gray text-xs px-2 py-1 rounded">Not yet</span>
+                            )
+                          })()
                         )}
                       </td>
                       <td className="py-2.5">
@@ -248,20 +327,24 @@ export default function AttendancePage() {
                       {log.employee?.first_name} {log.employee?.last_name}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">
-                      {getScheduleForEmployee(log.employee_id) ? getScheduleForEmployee(log.employee_id).template?.name : '—'}
+                      {log.template_name || '—'}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_in_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_out_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
                       {log.status === 'completed' ? (
-                        <span className="badge-green text-xs px-2 py-1 rounded">Completed</span>
+                        <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
+                      ) : log.status === 'working' ? (
+                        <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
+                      ) : log.status === 'on_leave' ? (
+                        <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
                       ) : log.status === 'late' ? (
-                        <span className="badge-yellow text-xs px-2 py-1 rounded">Late</span>
+                        <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
                       ) : log.status === 'incomplete' ? (
-                        <span className="badge-yellow text-xs px-2 py-1 rounded">Incomplete</span>
+                        <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Incomplete</span>
                       ) : (
-                        <span className="badge-gray text-xs px-2 py-1 rounded">Absent</span>
+                        <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
                       )}
                     </td>
                   </tr>
