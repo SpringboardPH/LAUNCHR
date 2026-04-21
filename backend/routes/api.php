@@ -8,6 +8,10 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\AdminSettingsController;
+use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\ScheduleTemplateController;
+use App\Http\Controllers\Api\EmployeeScheduleController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -52,4 +56,34 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+    
+    // Admin Routes (Admin Only)
+    Route::middleware('role:admin')->group(function () {
+        // Settings
+        Route::prefix('admin/settings')->group(function () {
+            Route::get('/', [AdminSettingsController::class, 'index']);
+            Route::get('/defaults', [AdminSettingsController::class, 'getDefaults']);
+            Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
+            Route::get('/{key}', [AdminSettingsController::class, 'show']);
+            Route::put('/{key}', [AdminSettingsController::class, 'update']);
+        });
+        
+        // Departments
+        Route::apiResource('admin/departments', DepartmentController::class);
+        Route::patch('/admin/departments/{id}/restore', [DepartmentController::class, 'restore']);
+        Route::delete('/admin/departments/{id}/hard-delete', [DepartmentController::class, 'hardDelete']);
+        
+        // Schedule Templates (Admin)
+        Route::apiResource('admin/schedule-templates', ScheduleTemplateController::class);
+        
+        // Employee Management (Admin)
+        Route::delete('/admin/employees/{id}/hard-delete', [EmployeeController::class, 'hardDelete']);
+        Route::patch('/admin/employees/{id}/restore', [EmployeeController::class, 'restore']);
+    });
+    
+    // Employee Schedules (Admin + HR)
+    Route::middleware('role:admin,hr')->group(function () {
+        Route::apiResource('admin/employee-schedules', EmployeeScheduleController::class);
+        Route::get('/admin/employee-schedules/employee/{employeeId}/current', [EmployeeScheduleController::class, 'getCurrentForEmployee']);
+    });
 });

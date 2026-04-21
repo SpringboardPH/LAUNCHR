@@ -2,17 +2,24 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
-  Banknote, LogOut, Menu, X,
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange,
 } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
-const NAV = [
+const COMMON_NAV = [
   { to: '/admin',         icon: LayoutDashboard, label: 'Dashboard',  end: true },
   { to: '/admin/employees', icon: Users,           label: 'Employees' },
   { to: '/admin/attendance',icon: Clock,           label: 'Attendance' },
+  { to: '/admin/employee-schedules', icon: CalendarRange, label: 'Schedules' },
   { to: '/admin/leaves',    icon: CalendarOff,     label: 'Leaves' },
   { to: '/admin/payroll',   icon: Banknote,        label: 'Payroll' },
+]
+
+const ADMIN_ONLY_NAV = [
+  { to: '/admin/settings',   icon: Settings,      label: 'System Settings' },
+  { to: '/admin/departments', icon: Building2,     label: 'Departments' },
+  { to: '/admin/schedule-templates', icon: CalendarRange, label: 'Schedule Templates' },
 ]
 
 export default function AppLayout() {
@@ -50,7 +57,7 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label, end }) => (
+          {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
             <NavLink
               key={to} to={to} end={end}
               onClick={() => setOpen(false)}
@@ -65,6 +72,31 @@ export default function AppLayout() {
               {label}
             </NavLink>
           ))}
+
+          {/* Admin-only section */}
+          {user?.role === 'admin' && (
+            <>
+              <div className="pt-2 mt-2 border-t border-gray-200">
+                <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin</p>
+              </div>
+              {ADMIN_ONLY_NAV.map(({ to, icon: Icon, label, end }) => (
+                <NavLink
+                  key={to} to={to} end={end}
+                  onClick={() => setOpen(false)}
+                  className={({ isActive }) => clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )}
+                >
+                  <Icon size={16} />
+                  {label}
+                </NavLink>
+              ))}
+            </>
+          )}
+
         </nav>
 
         {/* User + logout */}

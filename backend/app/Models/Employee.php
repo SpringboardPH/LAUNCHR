@@ -49,4 +49,9 @@ class Employee extends Model
     {
         return $this->hasMany(LeaveRequest::class);
     }
+
+    public function schedules()
+    {
+        return $this->hasMany(EmployeeSchedule::class);
+    }
 }

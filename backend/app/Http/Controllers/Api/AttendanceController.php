@@ -5,52 +5,60 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
     // Work hours configuration
-    private const WORK_START_TIME = '09:00:00';  // 9 AM
-    private const WORK_END_TIME = '18:00:00';    // 6 PM
-    private const EARLY_CLOCK_IN = '08:45:00';   // Can clock in 15 min before
-    private const LATE_CLOCK_OUT = '18:15:00';   // Can clock out 15 min after
-    private const REQUIRED_HOURS = 9;            // 9 hours per day
+    private const WORK_START_TIME = '09:00:00';
+    private const WORK_END_TIME = '18:00:00';
+    private const EARLY_CLOCK_IN = '08:45:00';
+    private const LATE_CLOCK_OUT = '18:15:00';
+    private const REQUIRED_HOURS = 9;
+
+    private function getScheduleForDate($employeeId, Carbon $date)
+    {
+        return EmployeeSchedule::getForEmployeeOnDate($employeeId, $date);
+    }
+
+    private function parseTimeToMinutes($time)
+    {
+        [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
+
+        return $hour * 60 + $minute;
+    }
+
+    private function minutesToTime($minutes)
+    {
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+
+        return sprintf('%02d:%02d:00', $hours, $remainingMinutes);
+    }
 
     /**
      * Calculate work status based on clock times
      */
-    private function calculateStatus($clockInTime, $clockOutTime)
+    private function calculateStatus($clockInTime, $clockOutTime, $expectedHours = null, $workStartTime = null)
     {
         if (!$clockInTime) {
             return 'absent';
         }
 
-        // Parse times
-        [$inH, $inM, $inS] = sscanf($clockInTime, '%d:%d:%d');
-        [$outH, $outM, $outS] = sscanf($clockOutTime, '%d:%d:%d');
-        
-        $inMinutes = $inH * 60 + $inM;
-        $outMinutes = $outH * 60 + $outM;
-        
-        // Work start time is 9 AM (540 minutes)
-        $workStartMinutes = 9 * 60;
-        
-        // Check if late (after 9:00 AM)
-        $isLate = $inMinutes > $workStartMinutes;
-        
-        // Calculate hours worked
-        $diffMinutes = $outMinutes - $inMinutes;
-        $hoursWorked = $diffMinutes / 60;
-        
-        // Determine status
+        $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
+        $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
+        $workStartMinutes = $this->parseTimeToMinutes($workStartTime ?? self::WORK_START_TIME);
+        $requiredHours = $expectedHours ?? self::REQUIRED_HOURS;
+        $isLate = $clockInMinutes > $workStartMinutes;
+        $hoursWorked = max(0, ($clockOutMinutes - $clockInMinutes) / 60);
+
         if ($isLate) {
             return 'late';
-        } elseif ($hoursWorked >= self::REQUIRED_HOURS) {
-            return 'completed';
-        } else {
-            return 'incomplete';
         }
+
+        return $hoursWorked >= $requiredHours ? 'completed' : 'incomplete';
     }
 
     /**
@@ -63,7 +71,7 @@ class AttendanceController extends Controller
             'employee_id' => 'nullable|exists:employees,id',
         ]);
 
-        $user = auth()->user();
+        $user = $request->user();
         $employeeId = $request->input('employee_id');
         
         // If employee_id provided, user must be HR/Admin
@@ -87,14 +95,25 @@ class AttendanceController extends Controller
         }
 
         $today = Carbon::today();
-        
-        // Check if today is a weekday (Monday = 1, Friday = 5)
-        $dayOfWeek = $today->dayOfWeek;
-        if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Cannot clock in on weekends',
-            ], 400);
+        $schedule = $this->getScheduleForDate($employee->id, $today);
+
+        if ($schedule && $schedule->template) {
+            $workDays = $schedule->template->work_days ?? [];
+            if (!in_array($today->dayOfWeek, $workDays, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee is not scheduled to work today',
+                ], 400);
+            }
+        } else {
+            // Check if today is a weekday (Monday = 1, Friday = 5)
+            $dayOfWeek = $today->dayOfWeek;
+            if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot clock in on weekends',
+                ], 400);
+            }
         }
 
         // Check if already clocked in today
@@ -110,24 +129,27 @@ class AttendanceController extends Controller
         }
 
         $clockInTime = now()->toTimeString();
-        
-        // Validate clock in time (8:45 AM to 6:15 PM)
-        [$hour, $minute, $second] = sscanf($clockInTime, '%d:%d:%d');
-        $clockInMinutes = $hour * 60 + $minute;
-        $earlyAllowedMinutes = 8 * 60 + 45;  // 8:45 AM
-        $lateAllowedMinutes = 18 * 60 + 15;   // 6:15 PM
+        $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
+        $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
+        $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
+
+        if ($schedule && $schedule->template) {
+            $template = $schedule->template;
+            $earlyAllowedMinutes = $this->parseTimeToMinutes($template->clock_in_start ?? $template->work_start_time ?? self::EARLY_CLOCK_IN);
+            $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_in_end ?? $template->clock_out_end ?? self::LATE_CLOCK_OUT);
+        }
         
         if ($clockInMinutes < $earlyAllowedMinutes) {
             return response()->json([
                 'success' => false,
-                'message' => 'Clock in is only allowed from 8:45 AM',
+                'message' => 'Clock in is earlier than the allowed schedule window',
             ], 400);
         }
         
         if ($clockInMinutes > $lateAllowedMinutes) {
             return response()->json([
                 'success' => false,
-                'message' => 'Clock in only allowed until 6:15 PM',
+                'message' => 'Clock in is later than the allowed schedule window',
             ], 400);
         }
 
@@ -154,7 +176,7 @@ class AttendanceController extends Controller
             'employee_id' => 'nullable|exists:employees,id',
         ]);
 
-        $user = auth()->user();
+        $user = $request->user();
         $employeeId = $request->input('employee_id');
         
         // If employee_id provided, user must be HR/Admin
@@ -179,6 +201,7 @@ class AttendanceController extends Controller
 
         // Get today's attendance log
         $today = Carbon::today();
+        $schedule = $this->getScheduleForDate($employee->id, $today);
         $log = AttendanceLog::where('employee_id', $employee->id)
             ->where('date', $today)
             ->first();
@@ -198,17 +221,21 @@ class AttendanceController extends Controller
         }
 
         $clockOutTime = now()->toTimeString();
-        
-        // Validate clock out time (must be after 6 PM, but allowed until 6:15 PM)
-        [$hour, $minute, $second] = sscanf($clockOutTime, '%d:%d:%d');
-        $clockOutMinutes = $hour * 60 + $minute;
-        $workEndMinutes = 18 * 60;             // 6:00 PM
-        $lateAllowedMinutes = 18 * 60 + 15;   // 6:15 PM
+        $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
+        $workEndTime = self::WORK_END_TIME;
+        $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
+
+        if ($schedule && $schedule->template) {
+            $template = $schedule->template;
+            $workEndTime = $template->work_end_time ?? $template->end_time ?? self::WORK_END_TIME;
+            $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
+        }
+        $workEndMinutes = $this->parseTimeToMinutes($workEndTime);
         
         if ($clockOutMinutes < $workEndMinutes) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot clock out before 6:00 PM',
+                'message' => 'Cannot clock out before the scheduled end time',
             ], 400);
         }
         
@@ -221,7 +248,12 @@ class AttendanceController extends Controller
 
         // Update with clock out time and calculate status
         $log->clock_out_time = $clockOutTime;
-        $log->status = $this->calculateStatus($log->clock_in_time, $clockOutTime);
+        $log->status = $this->calculateStatus(
+            $log->clock_in_time,
+            $clockOutTime,
+            $schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null,
+            $schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null
+        );
         $log->save();
 
         return response()->json([
@@ -236,7 +268,7 @@ class AttendanceController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
         $query = AttendanceLog::with('employee');
 
         // Employees only see their own records
@@ -271,9 +303,9 @@ class AttendanceController extends Controller
     /**
      * Get single attendance record
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $employee = auth()->user()->employee;
+        $employee = $request->user()->employee;
         $record = AttendanceLog::where('employee_id', $employee->id)
             ->findOrFail($id);
 
@@ -287,24 +319,46 @@ class AttendanceController extends Controller
     /**
      * Get today's clock status - for employee or all employees for HR/Admin
      */
-    public function today()
+    public function today(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
         $today = Carbon::today();
 
         if ($user->role === 'employee') {
             // Employees get their own today's record
+            $schedule = $this->getScheduleForDate($user->employee->id, $today);
             $record = AttendanceLog::where('employee_id', $user->employee->id)
                 ->where('date', $today)
                 ->first();
 
             return response()->json([
                 'success' => true,
-                'data' => $record ?? [
-                    'clocked_in' => false,
-                    'clocked_out' => false,
-                    'clock_in_time' => null,
-                    'clock_out_time' => null,
+                'data' => [
+                    'attendance' => $record,
+                    'schedule' => $schedule ? [
+                        'id' => $schedule->id,
+                        'employee_id' => $schedule->employee_id,
+                        'schedule_template_id' => $schedule->schedule_template_id,
+                        'start_date' => $schedule->start_date?->format('Y-m-d'),
+                        'end_date' => $schedule->end_date?->format('Y-m-d'),
+                        'status' => $schedule->status,
+                        'template' => $schedule->template,
+                        'compliance' => $schedule->template ? [
+                            'clock_in_start' => $schedule->template->clock_in_start ?? self::EARLY_CLOCK_IN,
+                            'clock_in_end' => $schedule->template->clock_in_end ?? self::LATE_CLOCK_OUT,
+                            'clock_out_start' => $schedule->template->clock_out_start ?? self::WORK_END_TIME,
+                            'clock_out_end' => $schedule->template->clock_out_end ?? self::LATE_CLOCK_OUT,
+                            'work_start_time' => $schedule->template->work_start_time ?? self::WORK_START_TIME,
+                            'work_end_time' => $schedule->template->work_end_time ?? self::WORK_END_TIME,
+                            'late_threshold_minutes' => $schedule->template->late_threshold_minutes ?? 0,
+                            'required_hours_per_day' => $schedule->template->required_hours_per_day ?? self::REQUIRED_HOURS,
+                            'overtime_threshold_hours' => $schedule->template->overtime_threshold_hours ?? self::REQUIRED_HOURS,
+                        ] : null,
+                    ] : null,
+                    'clocked_in' => $record ? (bool) $record->clock_in_time : false,
+                    'clocked_out' => $record ? (bool) $record->clock_out_time : false,
+                    'clock_in_time' => $record?->clock_in_time,
+                    'clock_out_time' => $record?->clock_out_time,
                 ],
                 'message' => 'Today\'s attendance retrieved',
             ]);

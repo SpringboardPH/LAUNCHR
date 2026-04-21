@@ -35,6 +35,7 @@ class DatabaseSeeder extends Seeder
         // Seed employees
         $this->call([
             EmployeeSeeder::class,
+            ScheduleTemplateSeeder::class,
         ]);
 
         // Create employee users linked to first 2 employees

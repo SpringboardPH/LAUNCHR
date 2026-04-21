@@ -4,6 +4,10 @@ import AppLayout from './components/layout/AppLayout'
 import EmployeeLayout from './components/layout/EmployeeLayout'
 import LoginPage from './pages/auth/LoginPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
+import AdminSettingsPage from './pages/admin/AdminSettingsPage'
+import AdminDepartmentsPage from './pages/admin/AdminDepartmentsPage'
+import AdminScheduleTemplatesPage from './pages/admin/AdminScheduleTemplatesPage'
+import EmployeeScheduleAssignmentPage from './pages/admin/EmployeeScheduleAssignmentPage'
 import EmployeeListPage from './pages/employees/EmployeeListPage'
 import EmployeeFormPage from './pages/employees/EmployeeFormPage'
 import EmployeeDetailPage from './pages/employees/EmployeeDetailPage'
@@ -79,6 +83,10 @@ export default function App() {
             <Route path="leaves" element={<LeavePage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
+            <Route path="departments" element={<AdminDepartmentsPage />} />
+            <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
+            <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><EmployeeLayout /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />

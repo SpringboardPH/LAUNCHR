@@ -1,8 +1,8 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getEmployee, getLeaveBalance, employeeKeys, leaveKeys } from '../../api/queries'
+import { getEmployee, getLeaveBalance, employeeKeys, leaveKeys, employeeScheduleKeys, getCurrentScheduleForEmployee } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { ArrowLeft, Pencil, Mail, Phone, Calendar, Briefcase } from 'lucide-react'
+import { ArrowLeft, Pencil, Mail, Phone, Calendar, Briefcase, Clock3, CalendarDays, ClipboardList } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function EmployeeDetailPage() {
@@ -20,6 +20,12 @@ export default function EmployeeDetailPage() {
     enabled: Boolean(id),
   })
 
+  const { data: schedule } = useQuery({
+    queryKey: employeeScheduleKeys.currentForEmployee(id),
+    queryFn: () => getCurrentScheduleForEmployee(id),
+    enabled: Boolean(id),
+  })
+
   if (isLoading) return <PageSpinner />
   if (!emp) return <p className="text-sm text-gray-500">Employee not found.</p>
 
@@ -30,6 +36,9 @@ export default function EmployeeDetailPage() {
         description={`${emp.position} · ${emp.department}`}
         action={
           <div className="flex gap-2">
+            <Link to={`/admin/employee-schedules?employee_id=${id}`} className="btn-secondary">
+              <CalendarDays size={14} /> Assign Schedule
+            </Link>
             <button onClick={() => navigate('/admin/employees')} className="btn-secondary">
               <ArrowLeft size={14} /> Back
             </button>
@@ -97,6 +106,64 @@ export default function EmployeeDetailPage() {
                   <p className="text-xs text-gray-400 mt-1">{data.remaining} days remaining</p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Weekly schedule */}
+        {schedule && schedule.template && (
+          <div className="card p-5 lg:col-span-3">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">Assigned Weekly Schedule</h2>
+              <StatusBadge status={schedule.status} />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4 text-sm">
+              <div className="flex items-start gap-2">
+                <CalendarDays size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400">Template</p>
+                  <p className="font-medium text-gray-800">{schedule.template.name}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <Calendar size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400">Week range</p>
+                  <p className="font-medium text-gray-800">
+                    {format(new Date(schedule.start_date), 'MMM dd, yyyy')} - {format(new Date(schedule.end_date), 'MMM dd, yyyy')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <Clock3 size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400">Work window</p>
+                  <p className="font-medium text-gray-800">
+                    {schedule.template.work_start_time?.substring(0, 5)} - {schedule.template.work_end_time?.substring(0, 5)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <ClipboardList size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400">Rules</p>
+                  <p className="font-medium text-gray-800">
+                    {schedule.template.required_hours_per_day}h/day, late after {schedule.template.late_threshold_minutes}m
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <p className="text-xs text-gray-400 mb-2">Work days</p>
+              <div className="flex flex-wrap gap-2">
+                {(schedule.template.work_days || []).map(day => (
+                  <span key={day} className="px-2 py-1 rounded-full bg-brand-50 text-brand-700 text-xs font-medium">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         )}

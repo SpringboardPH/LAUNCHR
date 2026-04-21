@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getEmployee, createEmployee, updateEmployee, employeeKeys } from '../../api/queries'
+import { getEmployee, createEmployee, updateEmployee, employeeKeys, getAdminDepartments, adminDepartmentKeys } from '../../api/queries'
 import { PageHeader, FormField, PageSpinner, Spinner } from '../../components/ui/index.jsx'
 import { ArrowLeft } from 'lucide-react'
 
@@ -16,10 +16,8 @@ const schema = z.object({
   position:     z.string().min(1, 'Required'),
   department:   z.string().min(1, 'Required'),
   hire_date:    z.string().min(1, 'Required'),
-  basic_salary: z.coerce.number().min(0, 'Must be ≥ 0'),
+  salary:       z.coerce.number().min(0, 'Must be ≥ 0'),
 })
-
-const DEPARTMENTS = ['Finance', 'Sales', 'IT', 'Operations', 'HR', 'Marketing', 'Admin', 'Other']
 
 export default function EmployeeFormPage() {
   const { id } = useParams()
@@ -33,9 +31,17 @@ export default function EmployeeFormPage() {
     enabled: isEdit,
   })
 
+  const { data: departments = [] } = useQuery({
+    queryKey: adminDepartmentKeys.all,
+    queryFn: getAdminDepartments,
+  })
+
+  // Filter only active departments
+  const activeDepts = departments.filter(d => !d.deleted_at)
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { basic_salary: 0 },
+    defaultValues: { salary: 0 },
   })
 
   useEffect(() => {
@@ -92,7 +98,7 @@ export default function EmployeeFormPage() {
           <FormField label="Department" error={errors.department?.message} required>
             <select {...register('department')} className={`input ${errors.department ? 'input-error' : ''}`}>
               <option value="">Select…</option>
-              {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+              {activeDepts.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
             </select>
           </FormField>
         </div>
@@ -101,8 +107,8 @@ export default function EmployeeFormPage() {
           <FormField label="Hire date" error={errors.hire_date?.message} required>
             <input type="date" {...register('hire_date')} className={`input ${errors.hire_date ? 'input-error' : ''}`} />
           </FormField>
-          <FormField label="Basic salary (₱/month)" error={errors.basic_salary?.message} required>
-            <input type="number" step="0.01" {...register('basic_salary')} className={`input ${errors.basic_salary ? 'input-error' : ''}`} />
+          <FormField label="Salary (₱/month)" error={errors.salary?.message} required>
+            <input type="number" step="0.01" {...register('salary')} className={`input ${errors.salary ? 'input-error' : ''}`} />
           </FormField>
         </div>
 
@@ -113,7 +119,7 @@ export default function EmployeeFormPage() {
         )}
 
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate('/employees')} className="btn-secondary">
+          <button type="button" onClick={() => navigate('/admin/employees')} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={mutation.isPending} className="btn-primary">

@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import {
   getAttendanceToday, getAttendance, clockIn, clockOut,
   getEmployees, attendanceKeys, employeeKeys,
+  getEmployeeSchedules, employeeScheduleKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut } from 'lucide-react'
+import { Clock, LogIn, LogOut, CalendarDays } from 'lucide-react'
 
 // Calculate hours worked between two time strings (HH:MM:SS format)
 const calculateHours = (clockInTime, clockOutTime) => {
@@ -49,6 +50,11 @@ export default function AttendancePage() {
     queryFn: () => getEmployees({ status: 'active' }),
   })
 
+  const { data: scheduleResponse } = useQuery({
+    queryKey: employeeScheduleKeys.list({ status: 'active' }),
+    queryFn: () => getEmployeeSchedules({ status: 'active' }),
+  })
+
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
     queryKey: attendanceKeys.list({ month }),
     queryFn: () => getAttendance({ month }),
@@ -73,13 +79,63 @@ export default function AttendancePage() {
   })
 
   const activeEmployees = employees?.data ?? []
+  const activeSchedules = scheduleResponse?.data ?? []
   const logs = monthlyData?.data ?? []
   const todayLogsArray = Array.isArray(todayLogs) ? todayLogs : []
 
+  const currentDate = new Date()
+  const currentSchedules = activeSchedules.filter(schedule => {
+    const start = parseISO(schedule.start_date)
+    const end = parseISO(schedule.end_date)
+    return currentDate >= start && currentDate <= end
+  })
+
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
+  const getScheduleForEmployee = (empId) => currentSchedules.find(s => s.employee_id === empId)
 
   return (
     <div>
+
+      {/* Weekly schedule summary */}
+      <div className="card p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <CalendarDays size={14} className="text-brand-600" /> Current Weekly Schedules
+        </h2>
+        {currentSchedules.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-100">
+                <tr>
+                  {['Employee', 'Template', 'Week', 'Work Hours', 'Clock Window'].map(h => (
+                    <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {currentSchedules.map(schedule => (
+                  <tr key={schedule.id} className="hover:bg-gray-50">
+                    <td className="py-2.5 pr-4 font-medium text-gray-900">
+                      {schedule.employee?.first_name} {schedule.employee?.last_name}
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600">{schedule.template?.name}</td>
+                    <td className="py-2.5 pr-4 text-gray-600">
+                      {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd, yyyy')}
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600">
+                      {schedule.template?.work_start_time?.substring(0, 5)} - {schedule.template?.work_end_time?.substring(0, 5)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600">
+                      {schedule.template?.clock_in_start?.substring(0, 5)} - {schedule.template?.clock_in_end?.substring(0, 5)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">No active weekly schedules for this week</p>
+        )}
+      </div>
       <PageHeader title="Attendance" description={`Today: ${format(new Date(), 'EEEE, MMMM d, yyyy')}`} />
 
       {/* Today's quick clock-in panel */}
@@ -92,7 +148,7 @@ export default function AttendancePage() {
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
-                  {['Employee', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Action'].map(h => (
+                  {['Employee', 'Schedule', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Action'].map(h => (
                     <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
                   ))}
                 </tr>
@@ -100,10 +156,23 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-gray-50">
                 {activeEmployees.map(emp => {
                   const log = getClockedIn(emp.id)
+                  const schedule = getScheduleForEmployee(emp.id)
                   return (
                     <tr key={emp.id} className="hover:bg-gray-50">
                       <td className="py-2.5 pr-4 font-medium text-gray-900">
                         {emp.first_name} {emp.last_name}
+                      </td>
+                      <td className="py-2.5 pr-4 text-gray-600">
+                        {schedule ? (
+                          <div className="space-y-0.5">
+                            <div className="font-medium text-gray-800">{schedule.template?.name}</div>
+                            <div className="text-xs text-gray-400">
+                              {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd')}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">No schedule</span>
+                        )}
                       </td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
@@ -144,7 +213,7 @@ export default function AttendancePage() {
                   )
                 })}
                 {activeEmployees.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-sm">No active employees</td></tr>
+                  <tr><td colSpan={7} className="py-6 text-center text-gray-400 text-sm">No active employees</td></tr>
                 )}
               </tbody>
             </table>
@@ -166,7 +235,7 @@ export default function AttendancePage() {
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
-                  {['Date', 'Employee', 'Clock In', 'Clock Out', 'Hours', 'Status'].map(h => (
+                  {['Date', 'Employee', 'Schedule', 'Clock In', 'Clock Out', 'Hours', 'Status'].map(h => (
                     <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
                   ))}
                 </tr>
@@ -177,6 +246,9 @@ export default function AttendancePage() {
                     <td className="py-2.5 pr-4 text-gray-600">{format(new Date(log.date), 'MMM dd, yyyy')}</td>
                     <td className="py-2.5 pr-4 font-medium text-gray-900">
                       {log.employee?.first_name} {log.employee?.last_name}
+                    </td>
+                    <td className="py-2.5 pr-4 text-gray-600">
+                      {getScheduleForEmployee(log.employee_id) ? getScheduleForEmployee(log.employee_id).template?.name : '—'}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600">{log.clock_in_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
@@ -195,7 +267,7 @@ export default function AttendancePage() {
                   </tr>
                 ))}
                 {logs.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-sm">No records for this month</td></tr>
+                  <tr><td colSpan={7} className="py-6 text-center text-gray-400 text-sm">No records for this month</td></tr>
                 )}
               </tbody>
             </table>

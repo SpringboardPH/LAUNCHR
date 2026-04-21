@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/*',
             'sanctum/*',
         ]);
+        
+        $middleware->alias([
+            'role' => \App\Http\Middleware\CheckRole::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

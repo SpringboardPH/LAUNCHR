@@ -1,0 +1,304 @@
+import { useEffect, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
+import { format, startOfWeek, endOfWeek } from 'date-fns'
+import {
+  employeeKeys,
+  getEmployees,
+  employeeScheduleKeys,
+  getEmployeeSchedules,
+  scheduleTemplateKeys,
+  getScheduleTemplates,
+  createEmployeeSchedule,
+  updateEmployeeSchedule,
+  deleteEmployeeSchedule,
+} from '../../api/queries'
+import { PageHeader } from '../../components/ui/index.jsx'
+import { CalendarDays, Plus } from 'lucide-react'
+
+const EmployeeScheduleAssignmentPage = () => {
+  const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const [editingId, setEditingId] = useState(null)
+  const [formData, setFormData] = useState({
+    employee_id: '',
+    schedule_template_id: '',
+    start_date: '',
+    end_date: '',
+  })
+
+  const { data: employeeResponse } = useQuery({
+    queryKey: employeeKeys.all,
+    queryFn: () => getEmployees({}),
+  })
+
+  const { data: templates = [] } = useQuery({
+    queryKey: scheduleTemplateKeys.all,
+    queryFn: getScheduleTemplates,
+  })
+
+  const { data: schedulesResponse } = useQuery({
+    queryKey: employeeScheduleKeys.all,
+    queryFn: () => getEmployeeSchedules({}),
+  })
+
+  useEffect(() => {
+    const employeeId = searchParams.get('employee_id')
+    if (employeeId) {
+      setFormData(prev => ({ ...prev, employee_id: employeeId }))
+    }
+  }, [searchParams])
+
+  const createMutation = useMutation({
+    mutationFn: createEmployeeSchedule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
+      resetForm()
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => updateEmployeeSchedule(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
+      resetForm()
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteEmployeeSchedule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
+    },
+  })
+
+  const resetForm = () => {
+    setFormData({
+      employee_id: '',
+      schedule_template_id: '',
+      start_date: '',
+      end_date: '',
+    })
+    setEditingId(null)
+  }
+
+  const setThisWeek = () => {
+    const today = new Date()
+    const start = startOfWeek(today, { weekStartsOn: 1 }) // Monday
+    const end = endOfWeek(today, { weekStartsOn: 1 }) // Sunday
+    setFormData(prev => ({
+      ...prev,
+      start_date: format(start, 'yyyy-MM-dd'),
+      end_date: format(end, 'yyyy-MM-dd'),
+    }))
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!formData.employee_id || !formData.schedule_template_id || !formData.start_date || !formData.end_date) {
+      alert('All fields are required')
+      return
+    }
+
+    if (editingId) {
+      updateMutation.mutate({
+        id: editingId,
+        data: {
+          schedule_template_id: parseInt(formData.schedule_template_id),
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          status: 'active',
+        },
+      })
+    } else {
+      createMutation.mutate({
+        employee_id: parseInt(formData.employee_id),
+        schedule_template_id: parseInt(formData.schedule_template_id),
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+      })
+    }
+  }
+
+  const handleEdit = (schedule) => {
+    setEditingId(schedule.id)
+    setFormData({
+      employee_id: schedule.employee_id,
+      schedule_template_id: schedule.schedule_template_id,
+      start_date: schedule.start_date,
+      end_date: schedule.end_date,
+    })
+  }
+
+  const handleDelete = (id) => {
+    if (confirm('Remove this schedule assignment?')) {
+      deleteMutation.mutate(id)
+    }
+  }
+
+  const getTemplateName = (templateId) => {
+    return templates.find(t => t.id === Number(templateId))?.name || 'Unknown'
+  }
+
+  const getEmployeeName = (employeeId) => {
+    const emp = employeeList.find(e => e.id === Number(employeeId))
+    return emp ? `${emp.first_name} ${emp.last_name}` : 'Unknown'
+  }
+
+  const employeeList = employeeResponse?.data ?? []
+  const activeSchedules = schedulesResponse?.data?.filter(s => s.status === 'active') ?? []
+
+  return (
+    <div>
+      <PageHeader
+        title="Weekly Employee Schedules"
+        description="Assign a pre-defined schedule to an employee for a specific week"
+      />
+
+      {/* Form */}
+      <div className="card p-5 mb-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <Plus size={14} className="text-brand-600" />
+          {editingId ? 'Edit Schedule Assignment' : 'Assign Schedule to Employee'}
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+              <select
+                value={formData.employee_id}
+                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+                disabled={editingId}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              >
+                <option value="">Select an employee</option>
+                {employeeList.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.first_name} {emp.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Schedule Template</label>
+              <select
+                value={formData.schedule_template_id}
+                onChange={(e) => setFormData({ ...formData, schedule_template_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a template</option>
+                {templates.map(template => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date (Monday)</label>
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date (Sunday)</label>
+              <input
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <button
+              type="submit"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {editingId ? 'Update Assignment' : 'Assign Schedule'}
+            </button>
+            <button
+              type="button"
+              onClick={setThisWeek}
+              className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+            >
+              This Week
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Active Schedules Table */}
+      <div className="card p-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <CalendarDays size={14} className="text-brand-600" /> Active Schedules
+        </h2>
+        {activeSchedules.length === 0 ? (
+          <p className="py-6 text-center text-gray-400 text-sm">No active schedules assigned</p>
+        ) : (
+          <table className="w-full">
+            <thead className="border-b border-gray-100">
+              <tr>
+                <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Employee</th>
+                <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Template</th>
+                <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Week</th>
+                <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {activeSchedules.map((schedule) => (
+                <tr key={schedule.id} className="hover:bg-gray-50">
+                  <td className="py-2.5 pr-4 font-medium text-gray-900">
+                    {getEmployeeName(schedule.employee_id)}
+                  </td>
+                  <td className="py-2.5 pr-4 text-gray-600">
+                    {getTemplateName(schedule.schedule_template_id)}
+                  </td>
+                  <td className="py-2.5 pr-4 text-gray-600">
+                    {format(new Date(schedule.start_date), 'MMM dd')} - {format(new Date(schedule.end_date), 'MMM dd, yyyy')}
+                  </td>
+                  <td className="py-2.5 pr-4 flex gap-2">
+                    <button
+                      onClick={() => handleEdit(schedule)}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(schedule.id)}
+                      disabled={deleteMutation.isPending}
+                      className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default EmployeeScheduleAssignmentPage

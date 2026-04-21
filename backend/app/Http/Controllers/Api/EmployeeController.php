@@ -136,5 +136,28 @@ class EmployeeController extends Controller
             'message' => 'Employee deactivated successfully',
         ]);
     }
+
+    public function hardDelete($id)
+    {
+        $employee = Employee::withTrashed()->findOrFail($id);
+        $employee->forceDelete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Employee permanently deleted',
+        ]);
+    }
+
+    public function restore($id)
+    {
+        $employee = Employee::withTrashed()->findOrFail($id);
+        $employee->restore();
+
+        return response()->json([
+            'success' => true,
+            'data' => new EmployeeResource($employee),
+            'message' => 'Employee restored successfully',
+        ]);
+    }
 }
 

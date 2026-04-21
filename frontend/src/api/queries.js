@@ -116,3 +116,110 @@ export const dashboardKeys = { all: ['dashboard'] }
 
 export const getDashboard = () =>
   api.get('/dashboard/summary').then(r => r.data.data)
+
+// ─── Admin Settings ──────────────────────────────────────────────
+export const adminSettingsKeys = {
+  all: ['admin', 'settings'],
+  detail: (key) => ['admin', 'settings', key],
+  defaults: ['admin', 'settings', 'defaults'],
+}
+
+export const getAdminSettings = () =>
+  api.get('/admin/settings').then(r => r.data.data)
+
+export const getAdminSetting = (key) =>
+  api.get(`/admin/settings/${key}`).then(r => r.data.data)
+
+export const updateAdminSetting = (key, value, description, type = 'string') =>
+  api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)
+
+export const initializeAdminSettings = () =>
+  api.post('/admin/settings/initialize').then(r => r.data)
+
+export const getSettingDefaults = () =>
+  api.get('/admin/settings/defaults').then(r => r.data.data)
+
+// ─── Admin Departments ──────────────────────────────────────────────
+export const adminDepartmentKeys = {
+  all: ['admin', 'departments'],
+  detail: (id) => ['admin', 'departments', id],
+}
+
+export const getAdminDepartments = () =>
+  api.get('/admin/departments').then(r => r.data.data)
+
+export const getAdminDepartment = (id) =>
+  api.get(`/admin/departments/${id}`).then(r => r.data.data)
+
+export const createAdminDepartment = (data) =>
+  api.post('/admin/departments', data).then(r => r.data)
+
+export const updateAdminDepartment = (id, data) =>
+  api.put(`/admin/departments/${id}`, data).then(r => r.data)
+
+export const deleteAdminDepartment = (id) =>
+  api.delete(`/admin/departments/${id}`).then(r => r.data)
+
+export const hardDeleteAdminDepartment = (id) =>
+  api.delete(`/admin/departments/${id}/hard-delete`).then(r => r.data)
+
+export const restoreAdminDepartment = (id) =>
+  api.patch(`/admin/departments/${id}/restore`).then(r => r.data)
+
+// ─── Admin Employee Management ──────────────────────────────────────────────
+export const hardDeleteEmployee = (id) =>
+  api.delete(`/admin/employees/${id}/hard-delete`).then(r => r.data)
+
+export const restoreEmployee = (id) =>
+  api.patch(`/admin/employees/${id}/restore`).then(r => r.data)
+
+// ─── Schedule Templates (Admin) ──────────────────────────────────────────────
+export const scheduleTemplateKeys = {
+  all: ['admin', 'schedule-templates'],
+  detail: (id) => ['admin', 'schedule-templates', id],
+}
+
+export const getScheduleTemplates = () =>
+  api.get('/admin/schedule-templates').then(r => r.data.data)
+
+export const getScheduleTemplate = (id) =>
+  api.get(`/admin/schedule-templates/${id}`).then(r => r.data.data)
+
+export const createScheduleTemplate = (data) =>
+  api.post('/admin/schedule-templates', data).then(r => r.data)
+
+export const updateScheduleTemplate = (id, data) =>
+  api.put(`/admin/schedule-templates/${id}`, data).then(r => r.data)
+
+export const deleteScheduleTemplate = (id) =>
+  api.delete(`/admin/schedule-templates/${id}`).then(r => r.data)
+
+// ─── Employee Schedules (HR) ────────────────────────────────────────────────
+export const employeeScheduleKeys = {
+  all: ['schedules'],
+  list: (params) => ['schedules', 'list', params],
+  detail: (id) => ['schedules', id],
+  currentForEmployee: (employeeId) => ['schedules', 'current', employeeId],
+}
+
+export const getEmployeeSchedules = (params) =>
+  api.get('/schedules', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination?.total,
+  }))
+
+export const getEmployeeSchedule = (id) =>
+  api.get(`/schedules/${id}`).then(r => r.data.data)
+
+export const getCurrentScheduleForEmployee = (employeeId) =>
+  api.get(`/schedules/employee/${employeeId}/current`).then(r => r.data.data)
+
+export const createEmployeeSchedule = (data) =>
+  api.post('/schedules', data).then(r => r.data)
+
+export const updateEmployeeSchedule = (id, data) =>
+  api.put(`/schedules/${id}`, data).then(r => r.data)
+
+export const deleteEmployeeSchedule = (id) =>
+  api.delete(`/schedules/${id}`).then(r => r.data)
