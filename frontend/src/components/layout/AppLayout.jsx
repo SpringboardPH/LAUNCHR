@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange,
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog
 } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
@@ -18,6 +18,7 @@ const COMMON_NAV = [
 
 const ADMIN_ONLY_NAV = [
   { to: '/admin/settings',   icon: Settings,      label: 'System Settings' },
+  { to: '/admin/users',      icon: UserCog,       label: 'User Management' },
   { to: '/admin/departments', icon: Building2,     label: 'Departments' },
   { to: '/admin/schedule-templates', icon: CalendarRange, label: 'Schedule Templates' },
 ]

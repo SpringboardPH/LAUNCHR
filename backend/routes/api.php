@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\AdminSettingsController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\ScheduleTemplateController;
 use App\Http\Controllers\Api\EmployeeScheduleController;
+use App\Http\Controllers\Api\UserController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -79,6 +80,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // Employee Management (Admin)
         Route::delete('/admin/employees/{id}/hard-delete', [EmployeeController::class, 'hardDelete']);
         Route::patch('/admin/employees/{id}/restore', [EmployeeController::class, 'restore']);
+        
+        // User Management (Admin)
+        Route::apiResource('admin/users', UserController::class);
     });
     
     // Employee Schedules (Admin + HR)

@@ -43,17 +43,17 @@ export default function EmployeeDashboardPage() {
         />
         <StatCard
           label="Vacation Days Left"
-          value={leaveBalance?.vacation?.remaining ?? 0}
+          value={leaveBalance?.balances?.vacation?.remaining ?? 0}
           icon={CalendarOff}
           color="yellow"
-          sub={`Out of ${leaveBalance?.vacation?.total ?? 15} days`}
+          sub={`Out of ${leaveBalance?.balances?.vacation?.total ?? 15} days`}
         />
         <StatCard
           label="Sick Days Left"
-          value={leaveBalance?.sick?.remaining ?? 0}
+          value={leaveBalance?.balances?.sick?.remaining ?? 0}
           icon={TrendingUp}
           color="brand"
-          sub={`Out of ${leaveBalance?.sick?.total ?? 10} days`}
+          sub={`Out of ${leaveBalance?.balances?.sick?.total ?? 10} days`}
         />
       </div>
 
@@ -96,10 +96,17 @@ export default function EmployeeDashboardPage() {
 
         {/* Leave Balance Card */}
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Leave Balance</h2>
-          {leaveBalance ? (
+          <div className="flex flex-col mb-4">
+            <h2 className="text-sm font-semibold text-gray-700">Leave Balance</h2>
+            {leaveBalance?.cycle && (
+              <p className="text-xs text-gray-500 mt-1">
+                Anniversary Cycle: {format(new Date(leaveBalance.cycle.start), 'MMM d, yyyy')} – {format(new Date(leaveBalance.cycle.end), 'MMM d, yyyy')}
+              </p>
+            )}
+          </div>
+          {leaveBalance?.balances ? (
             <div className="space-y-4">
-              {Object.entries(leaveBalance).map(([type, balance]) => (
+              {Object.entries(leaveBalance.balances).map(([type, balance]) => (
                 <div key={type}>
                   <div className="flex justify-between text-xs text-gray-600 mb-1">
                     <span className="capitalize font-medium">{type.replace(/_/g, ' ')}</span>

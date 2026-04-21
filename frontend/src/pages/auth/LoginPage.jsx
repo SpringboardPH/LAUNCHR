@@ -14,9 +14,8 @@ export default function LoginPage() {
   // Redirect if already logged in (only after loading completes)
   useEffect(() => {
     if (!loading && user) {
-      // Redirect based on role
-      const redirectPath = user.role === 'employee' ? '/employee' : '/admin'
-      navigate(redirectPath, { replace: true })
+      // Navigate to root to let App.jsx handle the specific role-based routing
+      navigate('/', { replace: true })
     }
   }, [user, loading, navigate])
 
@@ -25,10 +24,9 @@ export default function LoginPage() {
     setError('')
     setSubmitting(true)
     try {
-      const newUser = await login(email, password)
-      // Redirect based on role (navigate will trigger useEffect and redirect)
-      const redirectPath = newUser.role === 'employee' ? '/employee' : '/admin'
-      navigate(redirectPath)
+      await login(email, password)
+      // Navigate to root to let App.jsx handle the specific role-based routing
+      navigate('/')
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.')
       setSubmitting(false)

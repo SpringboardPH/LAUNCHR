@@ -52,7 +52,7 @@ class LeaveController extends Controller
         $query = LeaveRequest::query();
 
         // Employee can only see their own leaves
-        if (auth()->user()->role === 'employee') {
+        if (!auth()->user()->isAdminOrHr()) {
             $employee = auth()->user()->employee;
             $query->where('employee_id', $employee->id);
         }
@@ -93,7 +93,7 @@ class LeaveController extends Controller
         $leave = LeaveRequest::findOrFail($id);
 
         // Employee can only view their own
-        if (auth()->user()->role === 'employee') {
+        if (!auth()->user()->isAdminOrHr()) {
             $employee = auth()->user()->employee;
             if ($leave->employee_id !== $employee->id) {
                 return response()->json([
@@ -167,13 +167,30 @@ class LeaveController extends Controller
         ]);
     }
 
-    /**
-     * Get leave balance for employee
-     */
-    public function balance()
+    public function balance(Request $request)
     {
         $employee = auth()->user()->employee;
+
+        if (auth()->user()->isAdminOrHr() && $request->has('employee_id')) {
+            $employee = \App\Models\Employee::findOrFail($request->employee_id);
+        }
+
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee record not found.',
+            ], 404);
+        }
+
+        $hireDate = \Carbon\Carbon::parse($employee->hire_date ?? now());
         $currentYear = now()->year;
+
+        // Calculate the current anniversary cycle start date
+        $cycleStart = $hireDate->copy()->year($currentYear);
+        if ($cycleStart->isFuture()) {
+            $cycleStart->subYear();
+        }
+        $cycleEnd = $cycleStart->copy()->addYear()->subDay();
 
         // Define leave allocations (can be made configurable later)
         $allocations = [
@@ -183,18 +200,18 @@ class LeaveController extends Controller
             'maternity' => 60,
         ];
 
-        $balance = [];
+        $balances = [];
         foreach ($allocations as $type => $total) {
             $used = LeaveRequest::where('employee_id', $employee->id)
                 ->where('leave_type', $type)
-                ->whereYear('start_date', $currentYear)
+                ->whereBetween('start_date', [$cycleStart->format('Y-m-d'), $cycleEnd->format('Y-m-d')])
                 ->whereIn('status', ['approved', 'pending'])
                 ->get()
                 ->sum(function ($leave) {
                     return $leave->start_date->diffInDays($leave->end_date) + 1;
                 });
 
-            $balance[$type] = [
+            $balances[$type] = [
                 'total' => $total,
                 'used' => $used,
                 'remaining' => max(0, $total - $used),
@@ -203,7 +220,13 @@ class LeaveController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $balance,
+            'data' => [
+                'balances' => $balances,
+                'cycle' => [
+                    'start' => $cycleStart->format('Y-m-d'),
+                    'end' => $cycleEnd->format('Y-m-d'),
+                ]
+            ],
             'message' => 'Leave balance retrieved',
         ]);
     }

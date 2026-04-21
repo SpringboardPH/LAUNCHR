@@ -18,6 +18,21 @@ import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import LeaveRequestFormPage from './pages/employee/LeaveRequestFormPage'
+import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
+
+import UserListPage from './pages/admin/UserListPage'
+import UserFormPage from './pages/admin/UserFormPage'
+
+const isEmployee = (user) => {
+  if (!user) return true;
+  // If role is explicitly admin or hr
+  if (['admin', 'hr', 'HR', 'Human Resources'].includes(user.role)) return false;
+  // If employee department is HR
+  const dept = user.employee?.department?.toLowerCase();
+  if (dept === 'hr' || dept === 'human resources') return false;
+  
+  return true; // Default to employee dashboard
+};
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -34,7 +49,7 @@ function PublicRoute({ children }) {
   if (loading) return null
   if (user) {
     // Redirect employees to employee dashboard, others to admin dashboard
-    return <Navigate to={user.role === 'employee' ? '/employee' : '/'} replace />
+    return <Navigate to={isEmployee(user) ? '/employee' : '/'} replace />
   }
   return children
 }
@@ -48,7 +63,7 @@ function RootRoute() {
   )
   // If logged in, redirect to appropriate dashboard
   if (user) {
-    return user.role === 'employee' ? <Navigate to="/employee" replace /> : <Navigate to="/admin" replace />
+    return isEmployee(user) ? <Navigate to="/employee" replace /> : <Navigate to="/admin" replace />
   }
   // If not logged in, redirect to login
   return <Navigate to="/login" replace />
@@ -62,7 +77,7 @@ function AdminRoute({ children }) {
     </div>
   )
   if (!user) return <Navigate to="/login" replace />
-  if (user.role === 'employee') return <Navigate to="/employee" replace />
+  if (isEmployee(user)) return <Navigate to="/employee" replace />
   return children
 }
 
@@ -87,11 +102,15 @@ export default function App() {
             <Route path="departments" element={<AdminDepartmentsPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
+            <Route path="users" element={<UserListPage />} />
+            <Route path="users/new" element={<UserFormPage />} />
+            <Route path="users/:id/edit" element={<UserFormPage />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><EmployeeLayout /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />
             <Route path="attendance" element={<AttendanceClockPage />} />
             <Route path="leaves/new" element={<LeaveRequestFormPage />} />
+            <Route path="profile" element={<EmployeeProfilePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

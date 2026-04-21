@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff } from 'lucide-react'
+import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff, User } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/employee/attendance', icon: Clock, label: 'Attendance' },
   { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
+  { to: '/employee/profile', icon: User, label: 'My Profile' },
 ]
 
 export default function EmployeeLayout() {

@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { createLeave, leaveKeys } from '../../api/queries'
-import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
-import { CalendarOff, AlertCircle } from 'lucide-react'
+import { createLeave, leaveKeys, getLeaves } from '../../api/queries'
+import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
+import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 
 const leaveSchema = z.object({
@@ -26,6 +26,13 @@ export default function LeaveRequestFormPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
 
+  const { data: leavesData, isLoading: isLoadingLeaves } = useQuery({
+    queryKey: leaveKeys.list({}),
+    queryFn: () => getLeaves({}),
+  })
+  
+  const myLeaves = leavesData?.data ?? []
+
   const { register, handleSubmit, formState: { errors }, reset } = useForm({
     resolver: zodResolver(leaveSchema),
     defaultValues: {
@@ -40,7 +47,9 @@ export default function LeaveRequestFormPage() {
       setSubmitted(true)
       qc.invalidateQueries({ queryKey: leaveKeys.all })
       reset()
-      setTimeout(() => navigate('/employee'), 2000)
+      setTimeout(() => {
+        setSubmitted(false)
+      }, 3000)
     },
   })
 
@@ -48,26 +57,11 @@ export default function LeaveRequestFormPage() {
     mutation.mutate(data)
   }
 
-  if (submitted) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="card p-8 text-center max-w-sm">
-          <div className="inline-block bg-green-100 p-4 rounded-full mb-4">
-            <span className="text-green-600 text-2xl">✓</span>
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Request Submitted!</h2>
-          <p className="text-sm text-gray-600 mb-4">Your leave request has been submitted for approval.</p>
-          <p className="text-xs text-gray-400">Redirecting to dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div>
       <PageHeader
-        title="Request Leave"
-        description="Submit a new leave request"
+        title="Leave Management"
+        description="Request and track your leaves"
         action={
           <button onClick={() => navigate('/employee')} className="btn-secondary">
             ← Back
@@ -75,92 +69,139 @@ export default function LeaveRequestFormPage() {
         }
       />
 
-      <div className="max-w-xl mx-auto">
-        <div className="card p-6">
-          {mutation.error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2">
-              <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-900">
-                  {mutation.error.response?.data?.message || 'Failed to submit request'}
-                </p>
+      <div className="grid lg:grid-cols-3 gap-6 items-start">
+        {/* Left Column: Form */}
+        <div className="lg:col-span-1">
+          {submitted ? (
+            <div className="card p-8 text-center h-full flex flex-col items-center justify-center">
+              <div className="inline-block bg-green-100 p-4 rounded-full mb-4">
+                <span className="text-green-600 text-2xl">✓</span>
               </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Request Submitted!</h2>
+              <p className="text-sm text-gray-600">Your leave request has been submitted for approval.</p>
+            </div>
+          ) : (
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Plus size={18} className="text-brand-600" /> New Request
+              </h2>
+              {mutation.error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex gap-2">
+                  <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-red-900">
+                      {mutation.error.response?.data?.message || 'Failed to submit request'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Leave Type
+                  </label>
+                  <select {...register('leave_type')} className="input">
+                    <option value="vacation">Vacation Leave</option>
+                    <option value="sick">Sick Leave</option>
+                    <option value="unpaid">Unpaid Leave</option>
+                    <option value="maternity">Maternity Leave</option>
+                  </select>
+                  {errors.leave_type && (
+                    <p className="text-xs text-red-500 mt-1">{errors.leave_type.message}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Start Date
+                    </label>
+                    <input type="date" {...register('start_date')} className="input px-2" />
+                    {errors.start_date && (
+                      <p className="text-xs text-red-500 mt-1">{errors.start_date.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      End Date
+                    </label>
+                    <input type="date" {...register('end_date')} className="input px-2" />
+                    {errors.end_date && (
+                      <p className="text-xs text-red-500 mt-1">{errors.end_date.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reason (Optional)
+                  </label>
+                  <textarea
+                    {...register('reason')}
+                    rows="3"
+                    className="input resize-none"
+                    placeholder="Provide any additional details..."
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={mutation.isPending}
+                  className="btn btn-primary w-full"
+                >
+                  <CalendarOff size={16} />
+                  {mutation.isPending ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </form>
             </div>
           )}
+        </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {/* Leave Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Leave Type
-              </label>
-              <select
-                {...register('leave_type')}
-                className="input"
-              >
-                <option value="vacation">Vacation Leave</option>
-                <option value="sick">Sick Leave</option>
-                <option value="unpaid">Unpaid Leave</option>
-                <option value="maternity">Maternity Leave</option>
-              </select>
-              {errors.leave_type && (
-                <p className="text-xs text-red-500 mt-1">{errors.leave_type.message}</p>
-              )}
+        {/* Right Column: List */}
+        <div className="lg:col-span-2">
+          <div className="card overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">My Leaves</h2>
             </div>
-
-            {/* Start Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date
-              </label>
-              <input
-                type="date"
-                {...register('start_date')}
-                className="input"
-              />
-              {errors.start_date && (
-                <p className="text-xs text-red-500 mt-1">{errors.start_date.message}</p>
-              )}
-            </div>
-
-            {/* End Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Date
-              </label>
-              <input
-                type="date"
-                {...register('end_date')}
-                className="input"
-              />
-              {errors.end_date && (
-                <p className="text-xs text-red-500 mt-1">{errors.end_date.message}</p>
-              )}
-            </div>
-
-            {/* Reason */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Reason (Optional)
-              </label>
-              <textarea
-                {...register('reason')}
-                rows="4"
-                className="input resize-none"
-                placeholder="Provide any additional details..."
-              />
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={mutation.isPending}
-              className="btn btn-primary w-full"
-            >
-              <CalendarOff size={16} />
-              {mutation.isPending ? 'Submitting...' : 'Submit Request'}
-            </button>
-          </form>
+            {isLoadingLeaves ? (
+              <PageSpinner />
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Dates</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Days</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {myLeaves.map(leave => (
+                    <tr key={leave.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-900 font-medium capitalize">{leave.leave_type?.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">
+                        {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{leave.days_requested}d</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={leave.status} />
+                      </td>
+                    </tr>
+                  ))}
+                  {myLeaves.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-12 text-center">
+                        <CalendarOff size={32} className="text-gray-200 mx-auto mb-2" />
+                        <p className="text-sm text-gray-400">You have no leave requests</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
     </div>

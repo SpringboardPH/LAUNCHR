@@ -203,23 +203,49 @@ export const employeeScheduleKeys = {
 }
 
 export const getEmployeeSchedules = (params) =>
-  api.get('/schedules', { params }).then(r => ({
+  api.get('/admin/employee-schedules', { params }).then(r => ({
     data: r.data.data,
     pagination: r.data.pagination,
     total: r.data.pagination?.total,
   }))
 
 export const getEmployeeSchedule = (id) =>
-  api.get(`/schedules/${id}`).then(r => r.data.data)
+  api.get(`/admin/employee-schedules/${id}`).then(r => r.data.data)
 
 export const getCurrentScheduleForEmployee = (employeeId) =>
-  api.get(`/schedules/employee/${employeeId}/current`).then(r => r.data.data)
+  api.get(`/admin/employee-schedules/employee/${employeeId}/current`).then(r => r.data.data)
 
 export const createEmployeeSchedule = (data) =>
-  api.post('/schedules', data).then(r => r.data)
+  api.post('/admin/employee-schedules', data).then(r => r.data)
 
 export const updateEmployeeSchedule = (id, data) =>
-  api.put(`/schedules/${id}`, data).then(r => r.data)
+  api.put(`/admin/employee-schedules/${id}`, data).then(r => r.data)
 
 export const deleteEmployeeSchedule = (id) =>
-  api.delete(`/schedules/${id}`).then(r => r.data)
+  api.delete(`/admin/employee-schedules/${id}`).then(r => r.data)
+
+// ─── Users (Admin) ────────────────────────────────────────────────
+export const userKeys = {
+  all: ['admin', 'users'],
+  list: (params) => ['admin', 'users', 'list', params],
+  detail: (id) => ['admin', 'users', id],
+}
+
+export const getUsers = (params) =>
+  api.get('/admin/users', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination?.total,
+  }))
+
+export const getUser = (id) =>
+  api.get(`/admin/users/${id}`).then(r => r.data.data)
+
+export const createUser = (data) =>
+  api.post('/admin/users', data).then(r => r.data)
+
+export const updateUser = (id, data) =>
+  api.put(`/admin/users/${id}`, data).then(r => r.data)
+
+export const deleteUser = (id) =>
+  api.delete(`/admin/users/${id}`).then(r => r.data)

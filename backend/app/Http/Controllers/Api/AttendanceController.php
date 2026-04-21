@@ -75,7 +75,7 @@ class AttendanceController extends Controller
         $employeeId = $request->input('employee_id');
         
         // If employee_id provided, user must be HR/Admin
-        if ($employeeId && !in_array($user->role, ['admin', 'hr'])) {
+        if ($employeeId && !$user->isAdminOrHr()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only HR/Admin can clock in other employees',
@@ -180,7 +180,7 @@ class AttendanceController extends Controller
         $employeeId = $request->input('employee_id');
         
         // If employee_id provided, user must be HR/Admin
-        if ($employeeId && !in_array($user->role, ['admin', 'hr'])) {
+        if ($employeeId && !$user->isAdminOrHr()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only HR/Admin can clock out other employees',
@@ -272,7 +272,7 @@ class AttendanceController extends Controller
         $query = AttendanceLog::with('employee');
 
         // Employees only see their own records
-        if ($user->role === 'employee') {
+        if (!$user->isAdminOrHr()) {
             $query->where('employee_id', $user->employee->id);
         }
         // HR/Admin can see all records
@@ -324,7 +324,7 @@ class AttendanceController extends Controller
         $user = $request->user();
         $today = Carbon::today();
 
-        if ($user->role === 'employee') {
+        if (!$user->isAdminOrHr()) {
             // Employees get their own today's record
             $schedule = $this->getScheduleForDate($user->employee->id, $today);
             $record = AttendanceLog::where('employee_id', $user->employee->id)

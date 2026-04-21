@@ -83,14 +83,20 @@ export default function EmployeeDetailPage() {
           </div>
         </div>
 
-        {/* Leave balance */}
-        {balance && (
+        {balance?.balances && (
           <div className="card p-5 lg:col-span-3">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Leave Balance ({new Date().getFullYear()})</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">Leave Balance</h2>
+              {balance.cycle && (
+                <span className="text-xs text-gray-500">
+                  Cycle: {format(new Date(balance.cycle.start), 'MMM d, yyyy')} - {format(new Date(balance.cycle.end), 'MMM d, yyyy')}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Vacation leave', data: balance.vacation, color: 'bg-blue-500' },
-                { label: 'Sick leave',     data: balance.sick,     color: 'bg-yellow-500' },
+                { label: 'Vacation leave', data: balance.balances.vacation, color: 'bg-blue-500' },
+                { label: 'Sick leave',     data: balance.balances.sick,     color: 'bg-yellow-500' },
               ].map(({ label, data, color }) => (
                 <div key={label}>
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
