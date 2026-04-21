@@ -8,7 +8,7 @@ import {
   restoreAdminDepartment,
   adminDepartmentKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { useState } from 'react'
 import { Plus, Trash2, RotateCcw, Edit2 } from 'lucide-react'
 
@@ -17,6 +17,7 @@ export default function AdminDepartmentsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({ name: '', description: '' })
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
   const { data: departments, isLoading } = useQuery({
     queryKey: adminDepartmentKeys.all,
@@ -107,6 +108,15 @@ export default function AdminDepartmentsPage() {
             </button>
           )
         }
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       {showForm && (
@@ -208,7 +218,15 @@ export default function AdminDepartmentsPage() {
                         <Edit2 size={14} />
                       </button>
                       <button
-                        onClick={() => deleteMutation.mutate(dept.id)}
+                        onClick={() => {
+                          setConfirmConfig({
+                            open: true,
+                            title: 'Delete Department',
+                            message: `Are you sure you want to move ${dept.name} to trash?`,
+                            onConfirm: () => deleteMutation.mutate(dept.id),
+                            type: 'danger'
+                          })
+                        }}
                         disabled={deleteMutation.isPending}
                         className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                         title="Soft Delete"
@@ -264,7 +282,15 @@ export default function AdminDepartmentsPage() {
                       <td className="py-2.5 pr-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => restoreMutation.mutate(dept.id)}
+                            onClick={() => {
+                              setConfirmConfig({
+                                open: true,
+                                title: 'Restore Department',
+                                message: `Restore ${dept.name} department?`,
+                                onConfirm: () => restoreMutation.mutate(dept.id),
+                                type: 'info'
+                              })
+                            }}
                             disabled={restoreMutation.isPending}
                             className="btn-ghost p-1.5 text-green-600 hover:bg-green-50 disabled:opacity-50"
                             title="Restore"
@@ -272,9 +298,15 @@ export default function AdminDepartmentsPage() {
                             <RotateCcw size={14} />
                           </button>
                           <button
-                            onClick={() =>
-                              hardDeleteMutation.mutate(dept.id)
-                            }
+                            onClick={() => {
+                              setConfirmConfig({
+                                open: true,
+                                title: 'Permanent Delete',
+                                message: `Permanently delete ${dept.name}? This cannot be undone and may affect linked employees.`,
+                                onConfirm: () => hardDeleteMutation.mutate(dept.id),
+                                type: 'danger'
+                              })
+                            }}
                             disabled={hardDeleteMutation.isPending}
                             className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                             title="Permanent Delete"

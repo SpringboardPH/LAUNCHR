@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getEmployee, createEmployee, updateEmployee, employeeKeys, getAdminDepartments, adminDepartmentKeys, userKeys } from '../../api/queries'
-import { PageHeader, FormField, PageSpinner, Spinner } from '../../components/ui/index.jsx'
+import { PageHeader, FormField, PageSpinner, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { useAuth } from '../../store/AuthContext'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 
@@ -34,6 +34,7 @@ export default function EmployeeFormPage() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
 
   const { data: emp, isLoading } = useQuery({
     queryKey: employeeKeys.detail(id),
@@ -85,7 +86,29 @@ export default function EmployeeFormPage() {
         }
       />
 
-      <form onSubmit={handleSubmit(data => mutation.mutate(data))} className="card p-6 space-y-5">
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+      />
+
+      <form 
+        onSubmit={handleSubmit(data => {
+          setConfirmConfig({
+            open: true,
+            title: isEdit ? 'Save Changes' : 'Add Employee',
+            message: isEdit 
+              ? `Save changes for ${data.first_name} ${data.last_name}?` 
+              : `Add ${data.first_name} ${data.last_name} to the system?`,
+            onConfirm: () => mutation.mutate(data),
+            type: 'info'
+          })
+        })} 
+        className="card p-6 space-y-5"
+      >
         <div className="grid grid-cols-2 gap-4">
           <FormField label="First name" error={errors.first_name?.message} required>
             <input {...register('first_name')} className={`input ${errors.first_name ? 'input-error' : ''}`} />

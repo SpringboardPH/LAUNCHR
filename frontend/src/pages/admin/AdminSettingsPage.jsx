@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PageHeader, Spinner, Modal, FormField, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, Spinner, Modal, FormField, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import {
   adminSettingsKeys,
   employeeKeys,
@@ -35,6 +35,8 @@ export default function AdminSettingsPage() {
   const [typeForm, setTypeForm] = useState(EMPTY_TYPE_FORM)
   const [typeError, setTypeError] = useState('')
   const [balanceModalOpen, setBalanceModalOpen] = useState(false)
+  const [balanceError, setBalanceError] = useState('')
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
   const [balanceForm, setBalanceForm] = useState({
     leaveTypeId: '',
     leaveTypeName: '',
@@ -42,7 +44,6 @@ export default function AdminSettingsPage() {
     notes: '',
     is_active: true,
   })
-  const [balanceError, setBalanceError] = useState('')
 
   const { data: settings = [], isLoading: settingsLoading } = useQuery({
     queryKey: adminSettingsKeys.all,
@@ -178,14 +179,6 @@ export default function AdminSettingsPage() {
     setTypeModalOpen(true)
   }
 
-  const handleDeleteType = (leaveType) => {
-    const confirmed = window.confirm(`Delete leave type "${leaveType.name}"? This cannot be undone.`)
-    if (!confirmed) return
-
-    setTypeError('')
-    deleteTypeMutation.mutate(leaveType.id)
-  }
-
   const openBalanceModal = (balanceRow) => {
     setBalanceForm({
       leaveTypeId: balanceRow.leave_type.id,
@@ -226,6 +219,26 @@ export default function AdminSettingsPage() {
     })
   }
 
+  const handleDeleteType = (leaveType) => {
+    setConfirmConfig({
+      open: true,
+      title: 'Delete Leave Type',
+      message: `Are you sure you want to delete the leave type "${leaveType.name}"? This will affect all associated employee balances.`,
+      onConfirm: () => deleteTypeMutation.mutate(leaveType.id),
+      type: 'danger'
+    })
+  }
+
+  const handleCancelBalance = (leaveTypeId, leaveTypeName) => {
+    setConfirmConfig({
+      open: true,
+      title: 'Cancel Balance Override',
+      message: `Reset leave balance for "${leaveTypeName}" to its default value?`,
+      onConfirm: () => cancelBalanceMutation.mutate({ leaveTypeId }),
+      type: 'warning'
+    })
+  }
+
   const activeTypes = leaveTypes.filter((type) => type.is_active)
 
   return (
@@ -233,6 +246,15 @@ export default function AdminSettingsPage() {
       <PageHeader
         title="Configure Leave"
         description="Control leave policy, leave types, and employee-specific balances"
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       <div className="space-y-5">
@@ -436,9 +458,9 @@ export default function AdminSettingsPage() {
                               {balanceRow.override?.is_active && (
                                 <button
                                   type="button"
-                                  onClick={() => cancelBalanceMutation.mutate({ leaveTypeId: balanceRow.leave_type.id })}
+                                  onClick={() => handleCancelBalance(balanceRow.leave_type.id, balanceRow.leave_type.name)}
                                   disabled={cancelBalanceMutation.isPending}
-                                  className="btn-ghost px-3 py-1.5 text-xs"
+                                  className="btn-ghost px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-50"
                                 >
                                   Cancel
                                 </button>

@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { getEmployees, deactivateEmployee, employeeKeys } from '../../api/queries'
-import { PageHeader, PageSpinner, EmptyState, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Search, UserX, Pencil, Eye, Users } from 'lucide-react'
 
 export default function EmployeeListPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -33,6 +34,15 @@ export default function EmployeeListPage() {
             <Plus size={16} /> Add Employee
           </Link>
         }
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       {/* Filters */}
@@ -99,7 +109,15 @@ export default function EmployeeListPage() {
                         </button>
                         {emp.status === 'active' && (
                           <button
-                            onClick={() => { if (confirm(`Deactivate ${emp.first_name}?`)) deactivate.mutate(emp.id) }}
+                            onClick={() => {
+                              setConfirmConfig({
+                                open: true,
+                                title: 'Deactivate Employee',
+                                message: `Are you sure you want to deactivate ${emp.first_name} ${emp.last_name}?`,
+                                onConfirm: () => deactivate.mutate(emp.id),
+                                type: 'danger'
+                              })
+                            }}
                             className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Deactivate"
                           >
                             <UserX size={14} />

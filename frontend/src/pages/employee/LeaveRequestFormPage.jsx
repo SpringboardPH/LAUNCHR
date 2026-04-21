@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { createLeave, leaveKeys, getLeaves, getLeaveBalance } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '../../store/AuthContext'
@@ -25,6 +25,7 @@ const leaveSchema = z.object({
 export default function LeaveRequestFormPage() {
   const [submitted, setSubmitted] = useState(false)
   const [localError, setLocalError] = useState('')
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user } = useAuth()
@@ -117,7 +118,14 @@ export default function LeaveRequestFormPage() {
     }
 
     setLocalError('')
-    mutation.mutate(data)
+    
+    setConfirmConfig({
+      open: true,
+      title: 'Submit Leave Request',
+      message: `Submit ${days} day(s) leave request for ${data.start_date} to ${data.end_date}?`,
+      onConfirm: () => mutation.mutate(data),
+      type: 'info'
+    })
   }
 
   return (
@@ -130,6 +138,15 @@ export default function LeaveRequestFormPage() {
             ← Back
           </button>
         }
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">

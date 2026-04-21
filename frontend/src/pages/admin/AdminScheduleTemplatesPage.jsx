@@ -7,7 +7,7 @@ import {
   updateScheduleTemplate,
   deleteScheduleTemplate,
 } from '../../api/queries'
-import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarRange, Plus, Edit2, Trash2 } from 'lucide-react'
 
 const WEEK_DAYS = [
@@ -121,6 +121,7 @@ const AdminScheduleTemplatesPage = () => {
     description: '',
     day_rules: createDefaultDayRules(),
   })
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: scheduleTemplateKeys.all,
@@ -239,10 +240,14 @@ const AdminScheduleTemplatesPage = () => {
     })
   }
 
-  const handleDelete = (id) => {
-    if (confirm('Delete this schedule template?')) {
-      deleteMutation.mutate(id)
-    }
+  const handleDelete = (template) => {
+    setConfirmConfig({
+      open: true,
+      title: 'Delete Template',
+      message: `Are you sure you want to delete the schedule template "${template.name}"?`,
+      onConfirm: () => deleteMutation.mutate(template.id),
+      type: 'danger'
+    })
   }
 
   if (isLoading) {
@@ -262,6 +267,15 @@ const AdminScheduleTemplatesPage = () => {
       <PageHeader
         title="Schedule Templates"
         description="Create and manage reusable work schedule templates for employees"
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       {/* Form */}
@@ -466,7 +480,7 @@ const AdminScheduleTemplatesPage = () => {
                         <Edit2 size={14} />
                       </button>
                       <button
-                        onClick={() => handleDelete(template.id)}
+                        onClick={() => handleDelete(template)}
                         disabled={deleteMutation.isPending}
                         className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                         title="Delete"

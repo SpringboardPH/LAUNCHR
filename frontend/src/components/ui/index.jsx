@@ -121,6 +121,45 @@ export function StatusBadge({ status }) {
   const label = status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
 }
+
+// ─── ConfirmModal ─────────────────────────────────────────────
+export function ConfirmModal({
+  open,
+  onClose,
+  onConfirm,
+  title = 'Are you sure?',
+  message,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  type = 'info'
+}) {
+  const confirmClasses = clsx(
+    'btn font-medium',
+    type === 'danger' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-brand-600 text-white hover:bg-brand-700'
+  )
+
+  return (
+    <Modal open={open} onClose={onClose} title={title} size="sm">
+      <div className="space-y-4">
+        {message && <p className="text-sm text-gray-600 leading-relaxed">{message}</p>}
+        <div className="flex justify-end gap-3 pt-2">
+          <button onClick={onClose} className="btn-secondary">
+            {cancelLabel}
+          </button>
+          <button
+            onClick={() => {
+              onConfirm()
+              onClose()
+            }}
+            className={confirmClasses}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 import { getClockWindow } from '../../utils/attendance'
 
 // ─── ScheduleDisplay ──────────────────────────────────────────

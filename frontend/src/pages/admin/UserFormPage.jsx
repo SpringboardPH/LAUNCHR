@@ -1,11 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { getUser, createUser, updateUser, userKeys } from '../../api/queries'
-import { PageHeader, PageSpinner, FormField } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, FormField, ConfirmModal } from '../../components/ui/index.jsx'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 
 // Form validation schema
@@ -23,6 +23,8 @@ export default function UserFormPage() {
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [pendingData, setPendingData] = useState(null)
 
   const { data: user, isLoading } = useQuery({
     queryKey: userKeys.detail(id),
@@ -69,7 +71,17 @@ export default function UserFormPage() {
     if (isEdit && !data.password) {
       delete data.password
     }
-    mutation.mutate(data)
+
+    setPendingData(data)
+    setConfirmConfig({
+      open: true,
+      title: isEdit ? 'Save Changes' : 'Create User',
+      message: isEdit 
+        ? `Are you sure you want to save changes for ${user?.name}?` 
+        : `Are you sure you want to create a new user account for ${data.name}?`,
+      onConfirm: () => mutation.mutate(data),
+      type: 'info'
+    })
   }
 
   if (isEdit && isLoading) return <PageSpinner />
@@ -84,6 +96,15 @@ export default function UserFormPage() {
             <ArrowLeft size={16} /> Back to Users
           </Link>
         }
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       <div className="card p-6">

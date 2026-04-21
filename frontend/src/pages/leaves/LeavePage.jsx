@@ -6,7 +6,7 @@ import {
   getLeaves, createLeave, approveLeave, rejectLeave,
   getEmployees, getLeaveTypes, leaveKeys, employeeKeys, leaveTypeKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Check, X, CalendarOff } from 'lucide-react'
 
 export default function LeavePage() {
@@ -14,6 +14,7 @@ export default function LeavePage() {
   const [showModal, setShowModal] = useState(false)
   const [rejectModal, setRejectModal] = useState(null) // leaveId
   const [rejectReason, setRejectReason] = useState('')
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -66,6 +67,16 @@ export default function LeavePage() {
     }
   }, [activeLeaveTypes, selectedLeaveType, setValue])
 
+  const handleApproveClick = (leave) => {
+    setConfirmConfig({
+      open: true,
+      title: 'Approve Leave Request',
+      message: `Are you sure you want to approve the leave request for ${leave.employee?.first_name} ${leave.employee?.last_name}?`,
+      onConfirm: () => approveMutation.mutate(leave.id),
+      type: 'info'
+    })
+  }
+
   return (
     <div>
       <PageHeader
@@ -76,6 +87,15 @@ export default function LeavePage() {
             <Plus size={14} /> New Request
           </button>
         }
+      />
+
+      <ConfirmModal 
+        open={confirmConfig.open} 
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       {/* Filter tabs */}
@@ -121,7 +141,7 @@ export default function LeavePage() {
                   <td className="px-4 py-3">
                     {leave.status === 'pending' && (
                       <div className="flex gap-1">
-                        <button onClick={() => approveMutation.mutate(leave.id)}
+                        <button onClick={() => handleApproveClick(leave)}
                           disabled={approveMutation.isPending}
                           className="btn-ghost p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50" title="Approve">
                           <Check size={14} />

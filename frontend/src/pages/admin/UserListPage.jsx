@@ -3,13 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getUsers, deleteUser, userKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader, PageSpinner, EmptyState, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Search, Pencil, Trash2, Users } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function UserListPage() {
   const { user: currentUser } = useAuth()
   const [search, setSearch] = useState('')
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -41,6 +42,15 @@ export default function UserListPage() {
             <Plus size={16} /> Add User
           </Link>
         }
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
@@ -110,9 +120,13 @@ export default function UserListPage() {
                         )}
                         <button
                           onClick={() => {
-                            if (confirm(`Are you sure you want to delete ${u.name}?`)) {
-                              deleteMutation.mutate(u.id)
-                            }
+                            setConfirmConfig({
+                              open: true,
+                              title: 'Delete User',
+                              message: `Are you sure you want to delete ${u.name}?`,
+                              onConfirm: () => deleteMutation.mutate(u.id),
+                              type: 'danger'
+                            })
                           }}
                           disabled={currentUser?.id === u.id || deleteMutation.isLoading}
                           className={`btn-ghost p-1.5 ${currentUser?.id === u.id ? 'text-gray-300' : 'text-red-400 hover:text-red-600 hover:bg-red-50'}`}

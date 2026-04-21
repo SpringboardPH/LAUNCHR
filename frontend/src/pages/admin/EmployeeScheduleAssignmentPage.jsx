@@ -13,7 +13,7 @@ import {
   updateEmployeeSchedule,
   deleteEmployeeSchedule,
 } from '../../api/queries'
-import { PageHeader } from '../../components/ui/index.jsx'
+import { PageHeader, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarDays, Plus, Edit2, Trash2 } from 'lucide-react'
 
 const getWeekRange = (weekOffset = 0) => {
@@ -44,6 +44,7 @@ const EmployeeScheduleAssignmentPage = () => {
     schedule_template_id: '',
     ...getWeekRange(0),
   })
+  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
 
   const { data: employeeResponse } = useQuery({
     queryKey: employeeKeys.all,
@@ -152,10 +153,16 @@ const EmployeeScheduleAssignmentPage = () => {
     })
   }
 
-  const handleDelete = (id) => {
-    if (confirm('Remove this schedule assignment?')) {
-      deleteMutation.mutate(id)
-    }
+  const handleDelete = (schedule) => {
+    const employeeName = getEmployeeName(schedule.employee_id)
+    const templateName = getTemplateName(schedule.schedule_template_id)
+    setConfirmConfig({
+      open: true,
+      title: 'Remove Schedule',
+      message: `Remove schedule assignment (${templateName}) for ${employeeName}?`,
+      onConfirm: () => deleteMutation.mutate(schedule.id),
+      type: 'danger'
+    })
   }
 
   const getTemplateName = (templateId) => {
@@ -175,6 +182,15 @@ const EmployeeScheduleAssignmentPage = () => {
       <PageHeader
         title="Weekly Employee Schedules"
         description="Assign a pre-defined schedule to an employee for a specific week"
+      />
+
+      <ConfirmModal
+        open={confirmConfig.open}
+        onClose={() => setConfirmConfig({ ...confirmConfig, open: false })}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
       />
 
       {/* Form */}
@@ -317,7 +333,7 @@ const EmployeeScheduleAssignmentPage = () => {
                         <Edit2 size={14} />
                     </button>
                     <button
-                      onClick={() => handleDelete(schedule.id)}
+                      onClick={() => handleDelete(schedule)}
                       disabled={deleteMutation.isPending}
                         className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                     >
