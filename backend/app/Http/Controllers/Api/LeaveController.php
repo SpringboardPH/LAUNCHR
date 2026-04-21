@@ -3,29 +3,152 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
+use App\Models\EmployeeLeaveBalance;
 use App\Models\LeaveRequest;
+use App\Models\LeaveType;
+use App\Models\SystemSettings;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 
 class LeaveController extends Controller
 {
+    private function calculateCycle(Employee $employee): array
+    {
+        $hireDate = Carbon::parse($employee->hire_date ?? now());
+        $currentYear = now()->year;
+
+        $cycleStart = $hireDate->copy()->year($currentYear);
+        if ($cycleStart->isFuture()) {
+            $cycleStart->subYear();
+        }
+
+        return [
+            'start' => $cycleStart->copy()->startOfDay(),
+            'end' => $cycleStart->copy()->addYear()->subDay()->endOfDay(),
+        ];
+    }
+
+    private function calculateRequestedDays(string $startDate, string $endDate): int
+    {
+        $leave = new LeaveRequest();
+        $leave->start_date = $startDate;
+        $leave->end_date = $endDate;
+
+        return $leave->calculateDaysRequested();
+    }
+
+    private function calculateBalanceSummary(Employee $employee): array
+    {
+        $cycle = $this->calculateCycle($employee);
+        $leaveTypes = LeaveType::where('is_active', true)->orderBy('name')->get();
+        $overrides = EmployeeLeaveBalance::where('employee_id', $employee->id)
+            ->get()
+            ->keyBy('leave_type_id');
+
+        // Filter out leave types that have an explicitly inactive override for this employee
+        $leaveTypes = $leaveTypes->filter(function ($type) use ($overrides) {
+            $override = $overrides->get($type->id);
+            return !$override || $override->is_active;
+        });
+
+        $balances = [];
+
+        foreach ($leaveTypes as $leaveType) {
+            $override = $overrides->get($leaveType->id);
+            $total = $override ? (int) $override->allocated_days : (int) $leaveType->default_days;
+
+            $used = LeaveRequest::where('employee_id', $employee->id)
+                ->where('leave_type', $leaveType->code)
+                ->whereBetween('start_date', [$cycle['start']->toDateString(), $cycle['end']->toDateString()])
+                ->whereIn('status', ['approved', 'pending'])
+                ->get()
+                ->sum(fn (LeaveRequest $leave) => $leave->calculateDaysRequested());
+
+            $balances[$leaveType->code] = [
+                'id' => $leaveType->id,
+                'code' => $leaveType->code,
+                'name' => $leaveType->name,
+                'description' => $leaveType->description,
+                'default_days' => (int) $leaveType->default_days,
+                'requires_balance' => (bool) $leaveType->requires_balance,
+                'total' => $total,
+                'used' => $used,
+                'remaining' => max(0, $total - $used),
+                'override' => $override ? [
+                    'id' => $override->id,
+                    'allocated_days' => (int) $override->allocated_days,
+                    'is_active' => (bool) $override->is_active,
+                ] : null,
+            ];
+        }
+
+        return [
+            'balances' => $balances,
+            'cycle' => [
+                'start' => $cycle['start']->format('Y-m-d'),
+                'end' => $cycle['end']->format('Y-m-d'),
+            ],
+            'policy' => [
+                'include_weekends' => SystemSettings::get('leave_include_weekends', false),
+            ],
+            'leave_types' => $leaveTypes,
+        ];
+    }
+
     /**
      * Create leave request (employee)
      */
     public function store(Request $request)
     {
         $request->validate([
-            'leave_type' => 'required|in:vacation,sick,unpaid,maternity',
+            'leave_type' => [
+                'required',
+                Rule::exists('leave_types', 'code')->where(fn ($query) => $query->where('is_active', true)),
+            ],
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after_or_equal:start_date',
             'reason' => 'nullable|string|max:1000',
         ]);
 
-        $employee = auth()->user()->employee;
+        $user = $request->user();
+        $employee = $user?->employee;
 
-        // Calculate days requested (inclusive)
-        $startDate = \Carbon\Carbon::parse($request->start_date);
-        $endDate = \Carbon\Carbon::parse($request->end_date);
-        $daysRequested = $endDate->diffInDays($startDate) + 1;
+        if (!$employee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee record not found.',
+            ], 404);
+        }
+
+        $daysRequested = $this->calculateRequestedDays($request->start_date, $request->end_date);
+
+        if ($daysRequested < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Selected leave range does not include any countable work days.',
+            ], 422);
+        }
+
+        $balanceSummary = $this->calculateBalanceSummary($employee);
+        $balances = $balanceSummary['balances'];
+        $leaveType = $request->leave_type;
+        $selectedType = $balances[$leaveType] ?? null;
+        $availableBalance = $selectedType['remaining'] ?? null;
+
+        if ($selectedType && $selectedType['requires_balance'] && $availableBalance !== null && $daysRequested > $availableBalance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Leave request exceeds your available balance.',
+                'errors' => [
+                    'days_requested' => [
+                        "Requested {$daysRequested} day(s), but only {$availableBalance} day(s) are available.",
+                    ],
+                ],
+            ], 422);
+        }
 
         $leave = LeaveRequest::create([
             'employee_id' => $employee->id,
@@ -52,8 +175,8 @@ class LeaveController extends Controller
         $query = LeaveRequest::query();
 
         // Employee can only see their own leaves
-        if (!auth()->user()->isAdminOrHr()) {
-            $employee = auth()->user()->employee;
+        if (!$request->user()->isAdminOrHr()) {
+            $employee = $request->user()->employee;
             $query->where('employee_id', $employee->id);
         }
 
@@ -67,7 +190,7 @@ class LeaveController extends Controller
             $query->where('status', $status);
         }
 
-        $leaves = $query->with('employee')
+        $leaves = $query->with('employee', 'leaveType')
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
@@ -93,8 +216,8 @@ class LeaveController extends Controller
         $leave = LeaveRequest::findOrFail($id);
 
         // Employee can only view their own
-        if (!auth()->user()->isAdminOrHr()) {
-            $employee = auth()->user()->employee;
+        if (!request()->user()->isAdminOrHr()) {
+            $employee = request()->user()->employee;
             if ($leave->employee_id !== $employee->id) {
                 return response()->json([
                     'success' => false,
@@ -126,7 +249,7 @@ class LeaveController extends Controller
 
         $leave->update([
             'status' => 'approved',
-            'approver_id' => auth()->id(),
+            'approver_id' => $request->user()->id,
         ]);
 
         return response()->json([
@@ -156,7 +279,7 @@ class LeaveController extends Controller
 
         $leave->update([
             'status' => 'rejected',
-            'approver_id' => auth()->id(),
+            'approver_id' => $request->user()->id,
             'rejection_reason' => $request->rejection_reason,
         ]);
 
@@ -169,9 +292,10 @@ class LeaveController extends Controller
 
     public function balance(Request $request)
     {
-        $employee = auth()->user()->employee;
+        $user = $request->user();
+        $employee = $user?->employee;
 
-        if (auth()->user()->isAdminOrHr() && $request->has('employee_id')) {
+        if ($user->isAdminOrHr() && $request->has('employee_id')) {
             $employee = \App\Models\Employee::findOrFail($request->employee_id);
         }
 
@@ -182,50 +306,15 @@ class LeaveController extends Controller
             ], 404);
         }
 
-        $hireDate = \Carbon\Carbon::parse($employee->hire_date ?? now());
-        $currentYear = now()->year;
-
-        // Calculate the current anniversary cycle start date
-        $cycleStart = $hireDate->copy()->year($currentYear);
-        if ($cycleStart->isFuture()) {
-            $cycleStart->subYear();
-        }
-        $cycleEnd = $cycleStart->copy()->addYear()->subDay();
-
-        // Define leave allocations (can be made configurable later)
-        $allocations = [
-            'vacation' => 15,
-            'sick' => 10,
-            'unpaid' => 0, // Unlimited
-            'maternity' => 60,
-        ];
-
-        $balances = [];
-        foreach ($allocations as $type => $total) {
-            $used = LeaveRequest::where('employee_id', $employee->id)
-                ->where('leave_type', $type)
-                ->whereBetween('start_date', [$cycleStart->format('Y-m-d'), $cycleEnd->format('Y-m-d')])
-                ->whereIn('status', ['approved', 'pending'])
-                ->get()
-                ->sum(function ($leave) {
-                    return $leave->start_date->diffInDays($leave->end_date) + 1;
-                });
-
-            $balances[$type] = [
-                'total' => $total,
-                'used' => $used,
-                'remaining' => max(0, $total - $used),
-            ];
-        }
+        $balanceData = $this->calculateBalanceSummary($employee);
 
         return response()->json([
             'success' => true,
             'data' => [
-                'balances' => $balances,
-                'cycle' => [
-                    'start' => $cycleStart->format('Y-m-d'),
-                    'end' => $cycleEnd->format('Y-m-d'),
-                ]
+                'balances' => $balanceData['balances'],
+                'cycle' => $balanceData['cycle'],
+                'policy' => $balanceData['policy'],
+                'leave_types' => $balanceData['leave_types'],
             ],
             'message' => 'Leave balance retrieved',
         ]);

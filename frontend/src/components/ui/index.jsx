@@ -4,10 +4,10 @@ import clsx from 'clsx'
 // ─── PageHeader ───────────────────────────────────────────────
 export function PageHeader({ title, description, action }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
-        {description && <p className="text-sm text-gray-500 mt-0.5">{description}</p>}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-5">
+      <div className="min-w-0">
+        <h1 className="text-lg font-semibold text-gray-900 leading-tight">{title}</h1>
+        {description && <p className="text-sm text-gray-500 mt-1 max-w-2xl">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
@@ -24,14 +24,14 @@ export function StatCard({ label, value, icon: Icon, color = 'brand', sub }) {
     gray:   'bg-gray-100 text-gray-600',
   }
   return (
-    <div className="card p-5 flex items-start gap-4">
+    <div className="card p-4 flex items-start gap-4">
       <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center shrink-0', colors[color])}>
         <Icon size={18} />
       </div>
       <div>
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-2xl font-semibold text-gray-900 mt-0.5">{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="text-xl font-semibold text-gray-900 mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
       </div>
     </div>
   )
@@ -56,8 +56,8 @@ export function PageSpinner() {
 // ─── EmptyState ───────────────────────────────────────────────
 export function EmptyState({ icon: Icon, title, description, action }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      {Icon && <Icon size={40} className="text-gray-300 mb-4" />}
+    <div className="flex flex-col items-center justify-center py-14 text-center">
+      {Icon && <Icon size={36} className="text-gray-300 mb-4" />}
       <p className="text-sm font-medium text-gray-600">{title}</p>
       {description && <p className="text-xs text-gray-400 mt-1">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -74,7 +74,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className={clsx('relative bg-white rounded-xl shadow-xl w-full', sizes[size])}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <X size={16} />
           </button>
@@ -89,7 +89,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
 export function FormField({ label, error, children, required }) {
   return (
     <div>
-      <label className="label">
+      <label className="label text-xs font-medium text-gray-600 mb-1">
         {label} {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}

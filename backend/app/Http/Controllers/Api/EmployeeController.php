@@ -7,7 +7,10 @@ use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
 use App\Models\Employee;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class EmployeeController extends Controller
 {
@@ -73,12 +76,32 @@ class EmployeeController extends Controller
             unset($data['basic_salary']);
         }
 
-        $employee = Employee::create($data);
+        $employee = DB::transaction(function () use ($data, $request) {
+            $currentUser = $request->user();
+            $isAdmin = $currentUser && $currentUser->role === 'admin';
+
+            // 1. Create the system user first
+            $user = User::create([
+                'name' => $data['first_name'] . ' ' . $data['last_name'],
+                'email' => $data['email'],
+                'password' => Hash::make($isAdmin && !empty($data['password']) ? $data['password'] : 'password123'),
+                'role' => ($isAdmin && !empty($data['role'])) ? $data['role'] : 'employee',
+            ]);
+
+            // 2. Link the user to the employee data
+            $data['user_id'] = $user->id;
+            return Employee::create($data);
+        });
+
+        $message = 'Employee and user account created successfully.';
+        if (!($request->user() && $request->user()->role === 'admin' && !empty($data['password']))) {
+            $message .= ' Temporary password: password123';
+        }
 
         return response()->json([
             'success' => true,
             'data' => new EmployeeResource($employee),
-            'message' => 'Employee created successfully',
+            'message' => $message,
         ], 201);
     }
 
@@ -105,6 +128,29 @@ class EmployeeController extends Controller
         }
 
         $employee->update($data);
+
+        // Update linked user if exists
+        if ($employee->user) {
+            $currentUser = $request->user();
+            $isAdmin = $currentUser && $currentUser->role === 'admin';
+
+            $userUpdateData = [
+                'name' => $employee->first_name . ' ' . $employee->last_name,
+                'email' => $employee->email,
+            ];
+
+            // Only admin can change role or password
+            if ($isAdmin) {
+                if (!empty($data['role'])) {
+                    $userUpdateData['role'] = $data['role'];
+                }
+                if (!empty($data['password'])) {
+                    $userUpdateData['password'] = Hash::make($data['password']);
+                }
+            }
+
+            $employee->user->update($userUpdateData);
+        }
 
         return response()->json([
             'success' => true,

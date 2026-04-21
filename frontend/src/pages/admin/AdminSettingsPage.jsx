@@ -1,33 +1,583 @@
-import { NavLink } from 'react-router-dom'
-import { PageHeader } from '../../components/ui/index.jsx'
+import { useEffect, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { PageHeader, Spinner, Modal, FormField, StatusBadge } from '../../components/ui/index.jsx'
+import {
+  adminSettingsKeys,
+  employeeKeys,
+  employeeLeaveBalanceKeys,
+  leaveKeys,
+  leaveTypeKeys,
+  getAdminSettings,
+  updateAdminSetting,
+  getAdminLeaveTypes,
+  createLeaveType,
+  updateLeaveType,
+  deleteLeaveType,
+  getEmployees,
+  getEmployeeLeaveBalances,
+  upsertEmployeeLeaveBalance,
+  cancelEmployeeLeaveBalance,
+} from '../../api/queries'
+
+const EMPTY_TYPE_FORM = {
+  name: '',
+  description: '',
+  default_days: 0,
+  requires_balance: true,
+  is_active: true,
+}
 
 export default function AdminSettingsPage() {
+  const qc = useQueryClient()
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
+  const [typeModalOpen, setTypeModalOpen] = useState(false)
+  const [editingType, setEditingType] = useState(null)
+  const [typeForm, setTypeForm] = useState(EMPTY_TYPE_FORM)
+  const [typeError, setTypeError] = useState('')
+  const [balanceModalOpen, setBalanceModalOpen] = useState(false)
+  const [balanceForm, setBalanceForm] = useState({
+    leaveTypeId: '',
+    leaveTypeName: '',
+    allocated_days: 0,
+    notes: '',
+    is_active: true,
+  })
+  const [balanceError, setBalanceError] = useState('')
+
+  const { data: settings = [], isLoading: settingsLoading } = useQuery({
+    queryKey: adminSettingsKeys.all,
+    queryFn: getAdminSettings,
+  })
+
+  const { data: leaveTypes = [], isLoading: typesLoading } = useQuery({
+    queryKey: leaveTypeKeys.list({ include_inactive: 1 }),
+    queryFn: () => getAdminLeaveTypes({ include_inactive: 1 }),
+  })
+
+  const { data: employeesData, isLoading: employeesLoading } = useQuery({
+    queryKey: employeeKeys.list({ status: 'active' }),
+    queryFn: () => getEmployees({ status: 'active' }),
+  })
+
+  const { data: employeeBalanceData, isLoading: employeeBalanceLoading } = useQuery({
+    queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId),
+    queryFn: () => getEmployeeLeaveBalances(selectedEmployeeId),
+    enabled: Boolean(selectedEmployeeId),
+  })
+
+  const leaveIncludeWeekends = settings.find((setting) => setting.key === 'leave_include_weekends')
+  const employees = employeesData?.data ?? []
+
+  useEffect(() => {
+    if (!selectedEmployeeId && employees.length > 0) {
+      setSelectedEmployeeId(String(employees[0].id))
+    }
+  }, [employees, selectedEmployeeId])
+
+  const selectedEmployee = employees.find((employee) => String(employee.id) === String(selectedEmployeeId))
+
+  const refreshLeaveData = () => {
+    qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
+    qc.invalidateQueries({ queryKey: leaveTypeKeys.all })
+    qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.all })
+    qc.invalidateQueries({ queryKey: leaveKeys.all })
+  }
+
+  const updateMutation = useMutation({
+    mutationFn: ({ value }) => updateAdminSetting(
+      'leave_include_weekends',
+      value,
+      'Whether leave date ranges count Saturdays and Sundays',
+      'boolean'
+    ),
+    onSuccess: refreshLeaveData,
+    onSettled: () => qc.invalidateQueries({ queryKey: ['leaves', 'balance'] }),
+  })
+
+  const saveTypeMutation = useMutation({
+    mutationFn: (payload) => (
+      editingType ? updateLeaveType(editingType.id, payload) : createLeaveType(payload)
+    ),
+    onSuccess: () => {
+      setTypeModalOpen(false)
+      setEditingType(null)
+      setTypeForm(EMPTY_TYPE_FORM)
+      setTypeError('')
+      refreshLeaveData()
+    },
+    onError: (error) => {
+      setTypeError(error?.response?.data?.message || 'Unable to save leave type')
+    },
+  })
+
+  const toggleTypeMutation = useMutation({
+    mutationFn: (leaveType) => updateLeaveType(leaveType.id, {
+      name: leaveType.name,
+      description: leaveType.description,
+      default_days: leaveType.default_days,
+      requires_balance: leaveType.requires_balance,
+      is_active: !leaveType.is_active,
+    }),
+    onSuccess: refreshLeaveData,
+  })
+
+  const deleteTypeMutation = useMutation({
+    mutationFn: (leaveTypeId) => deleteLeaveType(leaveTypeId),
+    onSuccess: refreshLeaveData,
+    onError: (error) => {
+      setTypeError(error?.response?.data?.message || 'Unable to delete leave type')
+    },
+  })
+
+  const saveBalanceMutation = useMutation({
+    mutationFn: (payload) => upsertEmployeeLeaveBalance(selectedEmployeeId, payload.leaveTypeId, payload),
+    onSuccess: () => {
+      setBalanceModalOpen(false)
+      setBalanceForm({
+        leaveTypeId: '',
+        leaveTypeName: '',
+        allocated_days: 0,
+        notes: '',
+        is_active: true,
+      })
+      setBalanceError('')
+      qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance() })
+    },
+    onError: (error) => {
+      setBalanceError(error?.response?.data?.message || 'Unable to save employee balance')
+    },
+  })
+
+  const cancelBalanceMutation = useMutation({
+    mutationFn: ({ leaveTypeId }) => cancelEmployeeLeaveBalance(selectedEmployeeId, leaveTypeId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance() })
+    },
+  })
+
+  const openTypeModal = (leaveType = null) => {
+    if (leaveType) {
+      setEditingType(leaveType)
+      setTypeForm({
+        name: leaveType.name,
+        description: leaveType.description || '',
+        default_days: leaveType.default_days,
+        requires_balance: Boolean(leaveType.requires_balance),
+        is_active: Boolean(leaveType.is_active),
+      })
+    } else {
+      setEditingType(null)
+      setTypeForm(EMPTY_TYPE_FORM)
+    }
+
+    setTypeError('')
+    setTypeModalOpen(true)
+  }
+
+  const handleDeleteType = (leaveType) => {
+    const confirmed = window.confirm(`Delete leave type "${leaveType.name}"? This cannot be undone.`)
+    if (!confirmed) return
+
+    setTypeError('')
+    deleteTypeMutation.mutate(leaveType.id)
+  }
+
+  const openBalanceModal = (balanceRow) => {
+    setBalanceForm({
+      leaveTypeId: balanceRow.leave_type.id,
+      leaveTypeName: balanceRow.leave_type.name,
+      allocated_days: balanceRow.override?.allocated_days ?? balanceRow.leave_type.default_days,
+      notes: balanceRow.override?.notes ?? '',
+      is_active: balanceRow.override ? Boolean(balanceRow.override.is_active) : true,
+    })
+    setBalanceError('')
+    setBalanceModalOpen(true)
+  }
+
+  const handleTypeSubmit = (event) => {
+    event.preventDefault()
+
+    saveTypeMutation.mutate({
+      name: typeForm.name,
+      description: typeForm.description,
+      default_days: Number(typeForm.default_days),
+      requires_balance: Boolean(typeForm.requires_balance),
+      is_active: Boolean(typeForm.is_active),
+    })
+  }
+
+  const handleBalanceSubmit = (event) => {
+    event.preventDefault()
+
+    if (!selectedEmployeeId) {
+      setBalanceError('Select an employee first.')
+      return
+    }
+
+    saveBalanceMutation.mutate({
+      leaveTypeId: balanceForm.leaveTypeId,
+      allocated_days: Number(balanceForm.allocated_days),
+      notes: balanceForm.notes,
+      is_active: balanceForm.is_active,
+    })
+  }
+
+  const activeTypes = leaveTypes.filter((type) => type.is_active)
+
   return (
     <div>
       <PageHeader
         title="System Settings"
-        description="Work schedule settings now live inside schedule templates so HR and admin stay aligned"
+        description="Control leave policy, leave types, and employee-specific balances"
       />
 
-      <div className="card p-5">
-        <p className="text-gray-600">
-          The work schedule settings have moved to schedule templates so each employee can inherit
-          the rules defined by HR.
-        </p>
-
-        <div className="mt-6 rounded-lg bg-amber-50 border border-amber-200 p-4">
-          <p className="text-sm text-amber-900">
-            To change clock-in windows, work hours, late thresholds, and overtime rules,
-            open Schedule Templates and edit the template assigned to the employee.
+      <div className="space-y-5">
+        <div className="card p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-2">Leave Counting Policy</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Control whether Saturdays and Sundays count as leave days when employees file requests.
           </p>
-          <NavLink
-            to="/admin/schedule-templates"
-            className="inline-flex mt-4 px-4 py-2 rounded-md bg-brand-600 text-white hover:bg-brand-700"
-          >
-            Manage Schedule Templates
-          </NavLink>
+
+          {settingsLoading ? (
+            <div className="py-4 flex items-center gap-2 text-sm text-gray-500">
+              <Spinner size="sm" /> Loading settings...
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Count weekends in leave requests</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Current value: {leaveIncludeWeekends?.value === 'true' || leaveIncludeWeekends?.value === '1' ? 'Enabled' : 'Disabled'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => updateMutation.mutate({ value: !(leaveIncludeWeekends?.value === 'true' || leaveIncludeWeekends?.value === '1') })}
+                disabled={updateMutation.isPending}
+                className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
+                  leaveIncludeWeekends?.value === 'true' || leaveIncludeWeekends?.value === '1'
+                    ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                } disabled:opacity-50`}
+              >
+                {updateMutation.isPending ? 'Saving...' : (leaveIncludeWeekends?.value === 'true' || leaveIncludeWeekends?.value === '1' ? 'On' : 'Off')}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Leave Types</h2>
+              <p className="text-sm text-gray-500">Add, edit, activate, or deactivate leave types.</p>
+            </div>
+            <button type="button" onClick={() => openTypeModal()} className="btn-primary">
+              Add Leave Type
+            </button>
+          </div>
+
+          {typesLoading ? (
+            <div className="py-8 flex items-center justify-center text-sm text-gray-500 gap-2">
+              <Spinner size="sm" /> Loading leave types...
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-gray-200">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {['Name', 'Code', 'Default Days', 'Balance Rule', 'Status', 'Actions'].map((heading) => (
+                      <th key={heading} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {leaveTypes.map((leaveType) => (
+                    <tr key={leaveType.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900">{leaveType.name}</div>
+                        {leaveType.description && <p className="text-xs text-gray-500 mt-0.5">{leaveType.description}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs font-mono">{leaveType.code}</td>
+                      <td className="px-4 py-3 text-gray-700">{leaveType.default_days}</td>
+                      <td className="px-4 py-3 text-gray-700">{leaveType.requires_balance ? 'Counts against balance' : 'Does not require balance'}</td>
+                      <td className="px-4 py-3"><StatusBadge status={leaveType.is_active ? 'active' : 'inactive'} /></td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={() => openTypeModal(leaveType)} className="btn-secondary px-3 py-1.5 text-xs">
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleTypeMutation.mutate(leaveType)}
+                            disabled={toggleTypeMutation.isPending}
+                            className="btn-ghost px-3 py-1.5 text-xs"
+                          >
+                            {leaveType.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteType(leaveType)}
+                            disabled={deleteTypeMutation.isPending}
+                            className="btn-ghost px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {leaveTypes.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-10 text-center text-sm text-gray-400">
+                        No leave types configured yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {typeError && <p className="text-xs text-red-500 mt-3">{typeError}</p>}
+        </div>
+
+        <div className="card p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Employee Leave Balances</h2>
+              <p className="text-sm text-gray-500">Set or cancel leave day allocations for a specific employee.</p>
+            </div>
+            <div className="w-full sm:w-72">
+              <select
+                value={selectedEmployeeId}
+                onChange={(event) => setSelectedEmployeeId(event.target.value)}
+                className="input"
+              >
+                <option value="">Select employee...</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.first_name} {employee.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {employeesLoading || (selectedEmployeeId && employeeBalanceLoading) ? (
+            <div className="py-8 flex items-center justify-center text-sm text-gray-500 gap-2">
+              <Spinner size="sm" /> Loading employee balances...
+            </div>
+          ) : !selectedEmployeeId ? (
+            <div className="rounded-lg border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+              Choose an employee to manage their leave allocations.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {selectedEmployee?.first_name} {selectedEmployee?.last_name}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Employee ID: {selectedEmployee?.employee_id}
+                    {employeeBalanceData?.cycle && (
+                      <span className="ml-2">
+                        Cycle: {employeeBalanceData.cycle.start} to {employeeBalanceData.cycle.end}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500">
+                  {activeTypes.length} active leave type{activeTypes.length === 1 ? '' : 's'}
+                </p>
+              </div>
+
+              {employeeBalanceData?.balances?.length ? (
+                <div className="overflow-hidden rounded-xl border border-gray-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        {['Type', 'Default', 'Override', 'Used', 'Remaining', 'Status', 'Actions'].map((heading) => (
+                          <th key={heading} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {employeeBalanceData.balances.map((balanceRow) => (
+                        <tr key={balanceRow.leave_type.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900">{balanceRow.leave_type.name}</div>
+                            <p className="text-xs text-gray-500 mt-0.5">{balanceRow.leave_type.code}</p>
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{balanceRow.leave_type.default_days}</td>
+                          <td className="px-4 py-3 text-gray-700">
+                            {balanceRow.override?.is_active ? balanceRow.override.allocated_days : 'Uses default'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700">{balanceRow.used}</td>
+                          <td className="px-4 py-3 text-gray-700">{balanceRow.remaining}</td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={(balanceRow.override && !balanceRow.override.is_active) ? 'inactive' : 'active'} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" onClick={() => openBalanceModal(balanceRow)} className="btn-secondary px-3 py-1.5 text-xs">
+                                {balanceRow.override?.is_active ? 'Adjust' : 'Set'}
+                              </button>
+                              {balanceRow.override?.is_active && (
+                                <button
+                                  type="button"
+                                  onClick={() => cancelBalanceMutation.mutate({ leaveTypeId: balanceRow.leave_type.id })}
+                                  disabled={cancelBalanceMutation.isPending}
+                                  className="btn-ghost px-3 py-1.5 text-xs"
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+                  No active leave types are available to assign.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      <Modal
+        open={typeModalOpen}
+        onClose={() => setTypeModalOpen(false)}
+        title={editingType ? 'Edit Leave Type' : 'Add Leave Type'}
+      >
+        <form onSubmit={handleTypeSubmit} className="space-y-4">
+          <FormField label="Leave type name" required>
+            <input
+              value={typeForm.name}
+              onChange={(event) => setTypeForm((current) => ({ ...current, name: event.target.value }))}
+              className="input"
+              placeholder="Vacation Leave"
+            />
+          </FormField>
+
+          <FormField label="Description">
+            <textarea
+              value={typeForm.description}
+              onChange={(event) => setTypeForm((current) => ({ ...current, description: event.target.value }))}
+              className="input h-20 resize-none"
+              placeholder="Short description for admin reference"
+            />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Default days" required>
+              <input
+                type="number"
+                min="0"
+                value={typeForm.default_days}
+                onChange={(event) => setTypeForm((current) => ({ ...current, default_days: event.target.value }))}
+                className="input"
+              />
+            </FormField>
+            <div className="space-y-3 rounded-lg border border-gray-200 p-4">
+              <label className="flex items-center justify-between gap-3 text-sm text-gray-700">
+                <span>Requires balance</span>
+                <input
+                  type="checkbox"
+                  checked={typeForm.requires_balance}
+                  onChange={(event) => setTypeForm((current) => ({ ...current, requires_balance: event.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3 text-sm text-gray-700">
+                <span>Active</span>
+                <input
+                  type="checkbox"
+                  checked={typeForm.is_active}
+                  onChange={(event) => setTypeForm((current) => ({ ...current, is_active: event.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+              </label>
+            </div>
+          </div>
+
+          {typeError && <p className="text-xs text-red-500">{typeError}</p>}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={() => setTypeModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saveTypeMutation.isPending} className="btn-primary">
+              {saveTypeMutation.isPending ? 'Saving...' : 'Save leave type'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={balanceModalOpen}
+        onClose={() => setBalanceModalOpen(false)}
+        title={`Set ${balanceForm.leaveTypeName || 'Leave Type'} Balance`}
+        size="sm"
+      >
+        <form onSubmit={handleBalanceSubmit} className="space-y-4">
+          <FormField label="Allocated days" required>
+            <input
+              type="number"
+              min="0"
+              value={balanceForm.allocated_days}
+              onChange={(event) => setBalanceForm((current) => ({ ...current, allocated_days: event.target.value }))}
+              className="input"
+            />
+          </FormField>
+
+          <FormField label="Notes">
+            <textarea
+              value={balanceForm.notes}
+              onChange={(event) => setBalanceForm((current) => ({ ...current, notes: event.target.value }))}
+              className="input h-20 resize-none"
+              placeholder="Optional admin note"
+            />
+          </FormField>
+
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-700">
+            <div>
+              <span className="font-medium">Active override</span>
+              <p className="text-xs text-gray-500 mt-1">
+                On: use this employee-specific allocated days. Off: use the leave type default days.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={balanceForm.is_active}
+              onChange={(event) => setBalanceForm((current) => ({ ...current, is_active: event.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+            />
+          </label>
+
+          {balanceError && <p className="text-xs text-red-500">{balanceError}</p>}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={() => setBalanceModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saveBalanceMutation.isPending} className="btn-primary">
+              {saveBalanceMutation.isPending ? 'Saving...' : 'Save balance'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

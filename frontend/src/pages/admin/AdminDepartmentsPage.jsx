@@ -103,7 +103,7 @@ export default function AdminDepartmentsPage() {
               onClick={() => setShowForm(true)}
               className="btn-primary"
             >
-              <Plus size={16} /> New Department
+              <Plus size={14} /> New Department
             </button>
           )
         }
@@ -116,7 +116,7 @@ export default function AdminDepartmentsPage() {
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 Department Name *
               </label>
               <input
@@ -125,13 +125,13 @@ export default function AdminDepartmentsPage() {
                 onChange={e =>
                   setFormData(prev => ({ ...prev, name: e.target.value }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="input"
                 placeholder="e.g., Engineering, Sales, HR"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
                 Description
               </label>
               <textarea
@@ -142,7 +142,7 @@ export default function AdminDepartmentsPage() {
                     description: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+                className="input min-h-24 resize-none"
                 placeholder="Optional department description"
                 rows="3"
               />
@@ -175,7 +175,7 @@ export default function AdminDepartmentsPage() {
       <div className="card p-5 mb-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Active Departments</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead className="border-b border-gray-100">
               <tr>
                 <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">
@@ -192,7 +192,7 @@ export default function AdminDepartmentsPage() {
             <tbody className="divide-y divide-gray-50">
               {activeDepartments.map(dept => (
                 <tr key={dept.id} className="hover:bg-gray-50">
-                  <td className="py-2.5 pr-4 font-medium text-gray-900">
+                  <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                     {dept.name}
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
@@ -202,18 +202,18 @@ export default function AdminDepartmentsPage() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleEdit(dept)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded transition"
+                        className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
                         title="Edit"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={14} />
                       </button>
                       <button
                         onClick={() => deleteMutation.mutate(dept.id)}
                         disabled={deleteMutation.isPending}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                        className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                         title="Soft Delete"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </td>
@@ -236,7 +236,7 @@ export default function AdminDepartmentsPage() {
             Deleted Departments ({trashedDepartments})
           </h3>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">
@@ -255,7 +255,7 @@ export default function AdminDepartmentsPage() {
                   ?.filter(d => d.deleted_at)
                   .map(dept => (
                     <tr key={dept.id} className="opacity-75 hover:bg-gray-50">
-                      <td className="py-2.5 pr-4 font-medium text-gray-900">
+                      <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                         {dept.name}
                       </td>
                       <td className="py-2.5 pr-4 text-gray-600 text-sm">
@@ -266,20 +266,20 @@ export default function AdminDepartmentsPage() {
                           <button
                             onClick={() => restoreMutation.mutate(dept.id)}
                             disabled={restoreMutation.isPending}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded transition disabled:opacity-50"
+                            className="btn-ghost p-1.5 text-green-600 hover:bg-green-50 disabled:opacity-50"
                             title="Restore"
                           >
-                            <RotateCcw size={18} />
+                            <RotateCcw size={14} />
                           </button>
                           <button
                             onClick={() =>
                               hardDeleteMutation.mutate(dept.id)
                             }
                             disabled={hardDeleteMutation.isPending}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded transition disabled:opacity-50"
+                            className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
                             title="Permanent Delete"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>

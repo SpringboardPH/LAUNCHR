@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\ScheduleTemplateController;
 use App\Http\Controllers\Api\EmployeeScheduleController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\LeaveTypeController;
+use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -33,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
         Route::get('/today', [AttendanceController::class, 'today']);
+        Route::get('/{employeeId}/monthly', [AttendanceController::class, 'monthly']);
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
     });
@@ -46,6 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{id}/approve', [LeaveController::class, 'approve']);
         Route::patch('/{id}/reject', [LeaveController::class, 'reject']);
     });
+
+    Route::get('/leave-types', [LeaveTypeController::class, 'index']);
     
     // Payroll
     Route::prefix('payroll')->group(function () {
@@ -67,6 +72,20 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
             Route::get('/{key}', [AdminSettingsController::class, 'show']);
             Route::put('/{key}', [AdminSettingsController::class, 'update']);
+        });
+
+        Route::prefix('admin/leave-types')->group(function () {
+            Route::get('/', [LeaveTypeController::class, 'index']);
+            Route::post('/', [LeaveTypeController::class, 'store']);
+            Route::get('/{leaveType}', [LeaveTypeController::class, 'show']);
+            Route::put('/{leaveType}', [LeaveTypeController::class, 'update']);
+            Route::delete('/{leaveType}', [LeaveTypeController::class, 'destroy']);
+        });
+
+        Route::prefix('admin/employee-leave-balances')->group(function () {
+            Route::get('/{employee}', [EmployeeLeaveBalanceController::class, 'show']);
+            Route::put('/{employee}/{leaveType}', [EmployeeLeaveBalanceController::class, 'upsert']);
+            Route::delete('/{employee}/{leaveType}', [EmployeeLeaveBalanceController::class, 'destroy']);
         });
         
         // Departments

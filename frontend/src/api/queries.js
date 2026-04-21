@@ -39,7 +39,7 @@ export const attendanceKeys = {
 }
 
 export const getAttendanceToday = () =>
-  api.get('/attendance/today').then(r => r.data.data)
+  api.get('/attendance/today', { params: { personal: true } }).then(r => r.data.data)
 
 export const getAttendance = (params) =>
   api.get('/attendance', { params }).then(r => ({
@@ -72,8 +72,8 @@ export const getLeaves = (params) =>
     total: r.data.pagination.total,
   }))
 
-export const getLeaveBalance = () =>
-  api.get('/leaves/balance').then(r => r.data.data)
+export const getLeaveBalance = (employeeId = null) =>
+  api.get('/leaves/balance', { params: employeeId ? { employee_id: employeeId } : {} }).then(r => r.data.data)
 
 export const createLeave = (data) =>
   api.post('/leaves', data).then(r => r.data)
@@ -83,6 +83,41 @@ export const approveLeave = (id) =>
 
 export const rejectLeave = (id, reason) =>
   api.patch(`/leaves/${id}/reject`, { reason }).then(r => r.data)
+
+export const leaveTypeKeys = {
+  all: ['leave-types'],
+  list: (params) => ['leave-types', 'list', params],
+  detail: (id) => ['leave-types', id],
+}
+
+export const getLeaveTypes = (params = {}) =>
+  api.get('/leave-types', { params }).then(r => r.data.data)
+
+export const getAdminLeaveTypes = (params = {}) =>
+  api.get('/admin/leave-types', { params }).then(r => r.data.data)
+
+export const createLeaveType = (data) =>
+  api.post('/admin/leave-types', data).then(r => r.data)
+
+export const updateLeaveType = (id, data) =>
+  api.put(`/admin/leave-types/${id}`, data).then(r => r.data)
+
+export const deleteLeaveType = (id) =>
+  api.delete(`/admin/leave-types/${id}`).then(r => r.data)
+
+export const employeeLeaveBalanceKeys = {
+  all: ['admin', 'employee-leave-balances'],
+  detail: (employeeId) => ['admin', 'employee-leave-balances', employeeId],
+}
+
+export const getEmployeeLeaveBalances = (employeeId) =>
+  api.get(`/admin/employee-leave-balances/${employeeId}`).then(r => r.data.data)
+
+export const upsertEmployeeLeaveBalance = (employeeId, leaveTypeId, data) =>
+  api.put(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`, data).then(r => r.data)
+
+export const cancelEmployeeLeaveBalance = (employeeId, leaveTypeId) =>
+  api.delete(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`).then(r => r.data)
 
 // ─── Payroll ─────────────────────────────────────────────────
 export const payrollKeys = {

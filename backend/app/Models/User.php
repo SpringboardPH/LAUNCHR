@@ -38,15 +38,6 @@ class User extends Authenticatable
 
     public function isAdminOrHr()
     {
-        if (in_array($this->role, ['admin', 'hr'])) {
-            return true;
-        }
-        
-        $dept = strtolower($this->employee->department ?? '');
-        if ($dept === 'hr' || $dept === 'human resources') {
-            return true;
-        }
-
-        return false;
+        return in_array($this->role, ['admin', 'hr'], true);
     }
 }

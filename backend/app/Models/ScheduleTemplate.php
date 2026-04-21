@@ -10,6 +10,7 @@ class ScheduleTemplate extends Model
         'name',
         'description',
         'work_days',
+        'day_rules',
         'clock_in_start',
         'clock_in_end',
         'clock_out_start',
@@ -26,6 +27,7 @@ class ScheduleTemplate extends Model
 
     protected $casts = [
         'work_days' => 'array',
+        'day_rules' => 'array',
         'late_threshold_minutes' => 'integer',
         'required_hours_per_day' => 'integer',
         'overtime_threshold_hours' => 'integer',

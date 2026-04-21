@@ -18,6 +18,9 @@ export default function EmployeeDetailPage() {
     queryKey: leaveKeys.balance(id),
     queryFn: () => getLeaveBalance(id),
     enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 
   const { data: schedule } = useQuery({
@@ -93,23 +96,22 @@ export default function EmployeeDetailPage() {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Vacation leave', data: balance.balances.vacation, color: 'bg-blue-500' },
-                { label: 'Sick leave',     data: balance.balances.sick,     color: 'bg-yellow-500' },
-              ].map(({ label, data, color }) => (
-                <div key={label}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.values(balance.balances).map((leaveBalance, index) => (
+                <div key={leaveBalance.code}>
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>{label}</span>
-                    <span>{data.used} / {data.total} used</span>
+                    <span>{leaveBalance.name}</span>
+                    <span>{leaveBalance.requires_balance ? `${leaveBalance.used} / ${leaveBalance.total} used` : 'No balance required'}</span>
                   </div>
                   <div className="bg-gray-100 rounded-full h-2">
                     <div
-                      className={`${color} h-2 rounded-full`}
-                      style={{ width: `${(data.used / data.total) * 100}%` }}
+                      className={`${index % 2 === 0 ? 'bg-blue-500' : 'bg-yellow-500'} h-2 rounded-full`}
+                      style={{ width: leaveBalance.total > 0 ? `${Math.min(100, (leaveBalance.used / leaveBalance.total) * 100)}%` : '0%' }}
                     />
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">{data.remaining} days remaining</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {leaveBalance.requires_balance ? `${leaveBalance.remaining} days remaining` : 'This leave type is not deducted from a balance.'}
+                  </p>
                 </div>
               ))}
             </div>

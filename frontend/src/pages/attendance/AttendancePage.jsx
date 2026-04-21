@@ -94,10 +94,11 @@ export default function AttendancePage() {
   const getScheduleForEmployee = (empId) => currentSchedules.find(s => s.employee_id === empId)
 
   return (
-    <div>
+    <div className="space-y-5">
+      <PageHeader title="Attendance" description={`Today: ${format(new Date(), 'EEEE, MMMM d, yyyy')}`} />
 
       {/* Weekly schedule summary */}
-      <div className="card p-5 mb-6">
+      <div className="card p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
           <CalendarDays size={14} className="text-brand-600" /> Current Weekly Schedules
         </h2>
@@ -136,7 +137,6 @@ export default function AttendancePage() {
           <p className="text-sm text-gray-400">No active weekly schedules for this week</p>
         )}
       </div>
-      <PageHeader title="Attendance" description={`Today: ${format(new Date(), 'EEEE, MMMM d, yyyy')}`} />
 
       {/* Today's quick clock-in panel */}
       <div className="card p-5 mb-6">
@@ -159,13 +159,13 @@ export default function AttendancePage() {
                   const schedule = getScheduleForEmployee(emp.id)
                   return (
                     <tr key={emp.id} className="hover:bg-gray-50">
-                      <td className="py-2.5 pr-4 font-medium text-gray-900">
+                      <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                         {emp.first_name} {emp.last_name}
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">
+                      <td className="py-2.5 pr-4 text-gray-600 text-sm">
                         {schedule ? (
                           <div className="space-y-0.5">
-                            <div className="font-medium text-gray-800">{schedule.template?.name}</div>
+                            <div className="font-medium text-gray-800 text-sm">{schedule.template?.name}</div>
                             <div className="text-xs text-gray-400">
                               {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd')}
                             </div>
@@ -176,7 +176,7 @@ export default function AttendancePage() {
                       </td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
-                      <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log?.clock_in_time, log?.clock_out_time)}</td>
+                      <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log?.clock_in_time, log?.clock_out_time)}</td>
                       <td className="py-2.5 pr-4">
                         {log ? (
                           log.clock_out_time ? (
@@ -193,7 +193,7 @@ export default function AttendancePage() {
                           <button
                             onClick={() => clockInMutation.mutate(emp.id)}
                             disabled={clockInMutation.isPending}
-                            className="btn-primary text-xs py-1 px-3"
+                            className="btn-primary text-xs py-1.5 px-3"
                           >
                             <LogIn size={12} /> Clock In
                           </button>
@@ -201,7 +201,7 @@ export default function AttendancePage() {
                           <button
                             onClick={() => clockOutMutation.mutate(emp.id)}
                             disabled={clockOutMutation.isPending}
-                            className="btn-secondary text-xs py-1 px-3"
+                            className="btn-secondary text-xs py-1.5 px-3"
                           >
                             <LogOut size={12} /> Clock Out
                           </button>
@@ -243,16 +243,16 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-gray-50">
                 {logs.map(log => (
                   <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="py-2.5 pr-4 text-gray-600">{format(new Date(log.date), 'MMM dd, yyyy')}</td>
-                    <td className="py-2.5 pr-4 font-medium text-gray-900">
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{format(new Date(log.date), 'MMM dd, yyyy')}</td>
+                    <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                       {log.employee?.first_name} {log.employee?.last_name}
                     </td>
-                    <td className="py-2.5 pr-4 text-gray-600">
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">
                       {getScheduleForEmployee(log.employee_id) ? getScheduleForEmployee(log.employee_id).template?.name : '—'}
                     </td>
-                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_in_time ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_in_time ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_out_time ?? '—'}</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
                       {log.status === 'completed' ? (
                         <span className="badge-green text-xs px-2 py-1 rounded">Completed</span>

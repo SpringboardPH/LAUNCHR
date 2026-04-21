@@ -16,14 +16,17 @@ export default function EmployeeDashboardPage() {
   const { data: leaveBalance, isLoading: loadingBalance } = useQuery({
     queryKey: leaveKeys.balance(),
     queryFn: getLeaveBalance,
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: true,
-    refetchOnMount: 'stale',
   })
 
   if (loadingAttendance || loadingBalance) return <PageSpinner />
 
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
+  const leaveBalances = Object.values(leaveBalance?.balances ?? {})
+  const leaveCardColors = ['yellow', 'brand', 'blue', 'gray']
 
   return (
     <div>
@@ -33,7 +36,7 @@ export default function EmployeeDashboardPage() {
       />
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <StatCard
           label="Status Today"
           value={isClockedOut ? 'Off Duty' : isClockedIn ? 'Working' : 'Not Started'}
@@ -41,20 +44,16 @@ export default function EmployeeDashboardPage() {
           color={isClockedOut ? 'gray' : isClockedIn ? 'green' : 'yellow'}
           sub={isClockedIn ? `Clocked in at ${todayAttendance.clock_in_time}` : 'Clock in to start'}
         />
-        <StatCard
-          label="Vacation Days Left"
-          value={leaveBalance?.balances?.vacation?.remaining ?? 0}
-          icon={CalendarOff}
-          color="yellow"
-          sub={`Out of ${leaveBalance?.balances?.vacation?.total ?? 15} days`}
-        />
-        <StatCard
-          label="Sick Days Left"
-          value={leaveBalance?.balances?.sick?.remaining ?? 0}
-          icon={TrendingUp}
-          color="brand"
-          sub={`Out of ${leaveBalance?.balances?.sick?.total ?? 10} days`}
-        />
+        {leaveBalances.map((balance, index) => (
+          <StatCard
+            key={balance.id ?? balance.code}
+            label={balance.name}
+            value={balance.requires_balance ? balance.remaining : '∞'}
+            icon={index % 2 === 0 ? CalendarOff : TrendingUp}
+            color={leaveCardColors[index % leaveCardColors.length]}
+            sub={balance.requires_balance ? `Out of ${balance.total} days` : 'No balance required'}
+          />
+        ))}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -109,16 +108,20 @@ export default function EmployeeDashboardPage() {
               {Object.entries(leaveBalance.balances).map(([type, balance]) => (
                 <div key={type}>
                   <div className="flex justify-between text-xs text-gray-600 mb-1">
-                    <span className="capitalize font-medium">{type.replace(/_/g, ' ')}</span>
-                    <span>{balance.used} / {balance.total} used</span>
+                    <span className="font-medium">{balance.name}</span>
+                    <span>
+                      {balance.requires_balance ? `${balance.used} / ${balance.total} used` : 'No balance required'}
+                    </span>
                   </div>
                   <div className="bg-gray-100 rounded-full h-2">
                     <div
                       className="bg-brand-500 h-2 rounded-full transition-all"
-                      style={{ width: balance.total > 0 ? `${(balance.used / balance.total) * 100}%` : '0%' }}
+                      style={{ width: balance.total > 0 ? `${Math.min(100, (balance.used / balance.total) * 100)}%` : '0%' }}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{balance.remaining} days remaining</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {balance.requires_balance ? `${balance.remaining} days remaining` : 'This leave type is not deducted from a balance.'}
+                  </p>
                 </div>
               ))}
             </div>

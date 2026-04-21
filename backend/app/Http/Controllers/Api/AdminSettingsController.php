@@ -74,6 +74,7 @@ class AdminSettingsController extends Controller
                 'required_hours_per_day' => 9,
                 'work_days' => json_encode([1, 2, 3, 4, 5]), // Monday to Friday
                 'overtime_threshold_hours' => 9,
+                'leave_include_weekends' => false,
             ],
             'message' => 'Default work hour settings',
         ]);
@@ -141,6 +142,12 @@ class AdminSettingsController extends Controller
                 'value' => '9',
                 'description' => 'Hours worked that counts as overtime',
                 'type' => 'integer',
+            ],
+            [
+                'key' => 'leave_include_weekends',
+                'value' => 'false',
+                'description' => 'Whether leave date ranges count Saturdays and Sundays',
+                'type' => 'boolean',
             ],
         ];
 

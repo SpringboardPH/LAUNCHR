@@ -35,6 +35,7 @@ class DatabaseSeeder extends Seeder
         // Seed employees
         $this->call([
             EmployeeSeeder::class,
+            LeaveTypeSeeder::class,
             ScheduleTemplateSeeder::class,
         ]);
 

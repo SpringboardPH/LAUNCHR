@@ -1,16 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { createLeave, leaveKeys, getLeaves } from '../../api/queries'
+import { createLeave, leaveKeys, getLeaves, getLeaveBalance } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 
 const leaveSchema = z.object({
-  leave_type: z.enum(['vacation', 'sick', 'unpaid', 'maternity'], { message: 'Invalid leave type' }),
+  leave_type: z.string().min(1, { message: 'Invalid leave type' }),
   start_date: z.string().refine(d => new Date(d) >= new Date(new Date().setHours(0, 0, 0, 0)), {
     message: 'Start date must be today or in the future',
   }),
@@ -23,6 +23,7 @@ const leaveSchema = z.object({
 
 export default function LeaveRequestFormPage() {
   const [submitted, setSubmitted] = useState(false)
+  const [localError, setLocalError] = useState('')
   const navigate = useNavigate()
   const qc = useQueryClient()
 
@@ -30,21 +31,68 @@ export default function LeaveRequestFormPage() {
     queryKey: leaveKeys.list({}),
     queryFn: () => getLeaves({}),
   })
+
+  const { data: balanceData } = useQuery({
+    queryKey: leaveKeys.balance(),
+    queryFn: getLeaveBalance,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  })
   
   const myLeaves = leavesData?.data ?? []
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm({
+  const { register, handleSubmit, watch, setValue, formState: { errors }, reset } = useForm({
     resolver: zodResolver(leaveSchema),
     defaultValues: {
-      leave_type: 'vacation',
+      leave_type: '',
       reason: '',
     },
   })
+
+  const startDate = watch('start_date')
+  const endDate = watch('end_date')
+  const leaveType = watch('leave_type')
+
+  const includeWeekends = Boolean(balanceData?.policy?.include_weekends)
+  const leaveTypes = balanceData?.leave_types ?? []
+
+  useEffect(() => {
+    if (!leaveTypes.length) return
+
+    if (!leaveTypes.some((type) => type.code === leaveType)) {
+      setValue('leave_type', leaveTypes[0].code, { shouldValidate: true })
+    }
+  }, [leaveType, leaveTypes, setValue])
+
+  const calculateRequestedDays = (start, end) => {
+    if (!start || !end) return 0
+
+    const current = new Date(`${start}T00:00:00`)
+    const final = new Date(`${end}T00:00:00`)
+    if (Number.isNaN(current.getTime()) || Number.isNaN(final.getTime()) || final < current) return 0
+
+    let count = 0
+    while (current <= final) {
+      const day = current.getDay()
+      if (includeWeekends || (day !== 0 && day !== 6)) {
+        count += 1
+      }
+      current.setDate(current.getDate() + 1)
+    }
+
+    return count
+  }
+
+  const requestedDays = calculateRequestedDays(startDate, endDate)
+  const selectedBalance = balanceData?.balances?.[leaveType]
+  const remainingBalance = selectedBalance?.remaining ?? null
 
   const mutation = useMutation({
     mutationFn: createLeave,
     onSuccess: () => {
       setSubmitted(true)
+      setLocalError('')
       qc.invalidateQueries({ queryKey: leaveKeys.all })
       reset()
       setTimeout(() => {
@@ -54,6 +102,19 @@ export default function LeaveRequestFormPage() {
   })
 
   const onSubmit = (data) => {
+    const days = calculateRequestedDays(data.start_date, data.end_date)
+
+    if (days < 1) {
+      setLocalError('Selected leave range does not include any countable work days.')
+      return
+    }
+
+    if (selectedBalance?.requires_balance && remainingBalance !== null && days > remainingBalance) {
+      setLocalError(`You only have ${remainingBalance} day(s) remaining for this leave type.`)
+      return
+    }
+
+    setLocalError('')
     mutation.mutate(data)
   }
 
@@ -95,6 +156,12 @@ export default function LeaveRequestFormPage() {
                   </div>
                 </div>
               )}
+              {localError && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2">
+                  <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium text-amber-900">{localError}</p>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div>
@@ -102,10 +169,15 @@ export default function LeaveRequestFormPage() {
                     Leave Type
                   </label>
                   <select {...register('leave_type')} className="input">
-                    <option value="vacation">Vacation Leave</option>
-                    <option value="sick">Sick Leave</option>
-                    <option value="unpaid">Unpaid Leave</option>
-                    <option value="maternity">Maternity Leave</option>
+                    {leaveTypes.length ? (
+                      leaveTypes.map((type) => (
+                        <option key={type.id} value={type.code}>
+                          {type.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">No leave types available</option>
+                    )}
                   </select>
                   {errors.leave_type && (
                     <p className="text-xs text-red-500 mt-1">{errors.leave_type.message}</p>
@@ -132,6 +204,21 @@ export default function LeaveRequestFormPage() {
                       <p className="text-xs text-red-500 mt-1">{errors.end_date.message}</p>
                     )}
                   </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600">
+                  <p>Requested days: <span className="font-medium text-gray-900">{requestedDays}</span></p>
+                  <p>Weekend policy: <span className="font-medium text-gray-900">{includeWeekends ? 'Weekends count' : 'Weekends do not count'}</span></p>
+                  {selectedBalance?.requires_balance && remainingBalance !== null && (
+                    <p>
+                      Remaining balance: <span className="font-medium text-gray-900">{remainingBalance}</span>
+                    </p>
+                  )}
+                  {selectedBalance && !selectedBalance.requires_balance && (
+                    <p>
+                      This leave type: <span className="font-medium text-gray-900">No balance required</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -180,7 +267,11 @@ export default function LeaveRequestFormPage() {
                 <tbody className="divide-y divide-gray-100">
                   {myLeaves.map(leave => (
                     <tr key={leave.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-900 font-medium capitalize">{leave.leave_type?.replace(/_/g, ' ')}</td>
+                                          <td className="px-4 py-3 text-gray-900 font-medium capitalize">
+                        {typeof leave.leave_type === 'string' 
+                          ? leave.leave_type.replace(/_/g, ' ') 
+                          : (leave.leave_type?.name || leave.leave_type?.code || 'Unknown')}
+                      </td>
                       <td className="px-4 py-3 text-gray-600 text-xs">
                         {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
                       </td>

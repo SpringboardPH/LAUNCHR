@@ -1,12 +1,13 @@
-import { useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getEmployee, createEmployee, updateEmployee, employeeKeys, getAdminDepartments, adminDepartmentKeys } from '../../api/queries'
+import { getEmployee, createEmployee, updateEmployee, employeeKeys, getAdminDepartments, adminDepartmentKeys, userKeys } from '../../api/queries'
 import { PageHeader, FormField, PageSpinner, Spinner } from '../../components/ui/index.jsx'
-import { ArrowLeft } from 'lucide-react'
+import { useAuth } from '../../store/AuthContext'
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
 
 const schema = z.object({
   first_name:   z.string().min(1, 'Required'),
@@ -17,9 +18,18 @@ const schema = z.object({
   department:   z.string().min(1, 'Required'),
   hire_date:    z.string().min(1, 'Required'),
   salary:       z.coerce.number().min(0, 'Must be ≥ 0'),
+  role:         z.enum(['employee', 'hr', 'admin']).optional(),
+  password:     z.string().min(8, 'Must be at least 8 characters').optional().or(z.literal('')),
 })
 
 export default function EmployeeFormPage() {
+  const { user: currentUser } = useAuth()
+  const [searchParams] = useSearchParams()
+  const manageAccount = searchParams.get('manage_account') === 'true'
+  const isAdmin = currentUser?.role === 'admin'
+  const canManageAccount = isAdmin && manageAccount
+
+  const [showPassword, setShowPassword] = useState(false)
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
@@ -41,13 +51,14 @@ export default function EmployeeFormPage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { salary: 0 },
+    defaultValues: { salary: 0, role: 'employee', password: '' },
   })
 
   useEffect(() => {
     if (emp) reset({
       ...emp,
       hire_date: emp.hire_date?.split('T')[0] ?? emp.hire_date,
+      role: emp.user?.role ?? 'employee',
     })
   }, [emp, reset])
 
@@ -55,7 +66,8 @@ export default function EmployeeFormPage() {
     mutationFn: (data) => isEdit ? updateEmployee(id, data) : createEmployee(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: employeeKeys.all })
-      navigate('/admin/employees')
+      qc.invalidateQueries({ queryKey: userKeys.all })
+      navigate(manageAccount ? '/admin/users' : '/admin/employees')
     },
   })
 
@@ -64,10 +76,10 @@ export default function EmployeeFormPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader
-        title={isEdit ? 'Edit Employee' : 'Add Employee'}
-        description={isEdit ? `Editing ${emp?.first_name} ${emp?.last_name}` : 'Fill in the details below'}
+        title={manageAccount ? (isEdit ? 'Manage User Account' : 'Add User Account') : (isEdit ? 'Edit Employee' : 'Add Employee')}
+        description={manageAccount ? 'Manage login credentials and system permissions' : (isEdit ? `Editing ${emp?.first_name} ${emp?.last_name}` : 'Fill in the details below')}
         action={
-          <button onClick={() => navigate('/admin/employees')} className="btn-secondary">
+          <button onClick={() => navigate(manageAccount ? '/admin/users' : '/admin/employees')} className="btn-secondary">
             <ArrowLeft size={14} /> Back
           </button>
         }
@@ -112,6 +124,40 @@ export default function EmployeeFormPage() {
           </FormField>
         </div>
 
+        {canManageAccount && (
+          <div className="space-y-5 border-t border-gray-100 pt-5">
+            <h3 className="text-sm font-semibold text-gray-900">System Access</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="System Role" error={errors.role?.message} required>
+                <select {...register('role')} className={`input ${errors.role ? 'input-error' : ''}`}>
+                  <option value="employee">Standard Employee</option>
+                  <option value="hr">Human Resources (HR)</option>
+                  <option value="admin">System Administrator</option>
+                </select>
+              </FormField>
+
+              <FormField label={isEdit ? "Change Password" : "Account Password"} error={errors.password?.message}>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    {...register('password')} 
+                    className={`input pr-10 ${errors.password ? 'input-error' : ''}`}
+                    placeholder={isEdit ? "Leave blank to keep current" : "Default: password123"} 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </FormField>
+            </div>
+          </div>
+        )}
+
         {mutation.isError && (
           <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             {mutation.error?.response?.data?.message ?? 'Something went wrong.'}
@@ -119,11 +165,11 @@ export default function EmployeeFormPage() {
         )}
 
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate('/admin/employees')} className="btn-secondary">
+          <button type="button" onClick={() => navigate(manageAccount ? '/admin/users' : '/admin/employees')} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={mutation.isPending} className="btn-primary">
-            {mutation.isPending ? <Spinner size="sm" /> : isEdit ? 'Save changes' : 'Add employee'}
+            {mutation.isPending ? <Spinner size="sm" /> : isEdit ? 'Save changes' : 'Add account'}
           </button>
         </div>
       </form>

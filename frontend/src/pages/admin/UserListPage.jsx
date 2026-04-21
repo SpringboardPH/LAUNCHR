@@ -37,7 +37,7 @@ export default function UserListPage() {
         title="User Management"
         description="Manage system access and roles"
         action={
-          <Link to="/admin/users/new" className="btn-primary">
+          <Link to="/admin/employees/new?manage_account=true" className="btn-primary">
             <Plus size={16} /> Add User
           </Link>
         }
@@ -56,7 +56,7 @@ export default function UserListPage() {
       {isLoading ? <PageSpinner /> : users.length === 0 ? (
         <EmptyState icon={Users} title="No users found"
           description={search ? "No users match your search criteria" : "No users exist in the system yet"}
-          action={<Link to="/admin/users/new" className="btn-primary"><Plus size={14} /> Add User</Link>}
+          action={<Link to="/admin/employees/new?manage_account=true" className="btn-primary"><Plus size={14} /> Add User</Link>}
         />
       ) : (
         <div className="card overflow-hidden">
@@ -103,9 +103,11 @@ export default function UserListPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <Link to={`/admin/users/${u.id}/edit`} className="btn-ghost p-1.5" title="Edit">
-                          <Pencil size={14} />
-                        </Link>
+                        {u.employee && (
+                          <Link to={`/admin/employees/${u.employee.id}/edit?manage_account=true`} className="btn-ghost p-1.5" title="Edit Account">
+                            <Pencil size={14} />
+                          </Link>
+                        )}
                         <button
                           onClick={() => {
                             if (confirm(`Are you sure you want to delete ${u.name}?`)) {

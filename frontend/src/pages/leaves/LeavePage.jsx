@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { format } from 'date-fns'
 import {
   getLeaves, createLeave, approveLeave, rejectLeave,
-  getEmployees, leaveKeys, employeeKeys,
+  getEmployees, getLeaveTypes, leaveKeys, employeeKeys, leaveTypeKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner } from '../../components/ui/index.jsx'
 import { Plus, Check, X, CalendarOff } from 'lucide-react'
@@ -26,7 +26,18 @@ export default function LeavePage() {
     queryFn: () => getEmployees({ status: 'active' }),
   })
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm()
+  const { data: leaveTypes } = useQuery({
+    queryKey: leaveTypeKeys.all,
+    queryFn: () => getLeaveTypes(),
+  })
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
+    defaultValues: {
+      leave_type: '',
+    },
+  })
+
+  const selectedLeaveType = watch('leave_type')
 
   const createMutation = useMutation({
     mutationFn: createLeave,
@@ -45,6 +56,15 @@ export default function LeavePage() {
 
   const leaves = data?.data ?? []
   const activeEmps = employees?.data ?? []
+  const activeLeaveTypes = leaveTypes ?? []
+
+  useEffect(() => {
+    if (!activeLeaveTypes.length) return
+
+    if (!activeLeaveTypes.some((type) => type.code === selectedLeaveType)) {
+      setValue('leave_type', activeLeaveTypes[0].code, { shouldValidate: true })
+    }
+  }, [activeLeaveTypes, selectedLeaveType, setValue])
 
   return (
     <div>
@@ -87,7 +107,11 @@ export default function LeavePage() {
                   <td className="px-4 py-3 font-medium text-gray-900">
                     {leave.employee?.first_name} {leave.employee?.last_name}
                   </td>
-                  <td className="px-4 py-3 text-gray-600 capitalize">{leave.leave_type?.replace(/_/g, ' ')}</td>
+                  <td className="px-4 py-3 text-gray-600 capitalize">
+                    {typeof leave.leave_type === 'string' 
+                      ? leave.leave_type.replace(/_/g, ' ') 
+                      : (leave.leave_type?.name || leave.leave_type?.code || 'Unknown')}
+                  </td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
                     {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
                   </td>
@@ -137,8 +161,10 @@ export default function LeavePage() {
           </FormField>
           <FormField label="Leave type" error={errors.leave_type?.message} required>
             <select {...register('leave_type', { required: 'Required' })} className="input">
-              {['vacation', 'sick', 'emergency', 'maternity', 'paternity', 'unpaid'].map(t => (
-                <option key={t} value={t} className="capitalize">{t}</option>
+              {activeLeaveTypes.map(type => (
+                <option key={type.id} value={type.code}>
+                  {type.name}
+                </option>
               ))}
             </select>
           </FormField>

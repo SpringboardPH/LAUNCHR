@@ -32,10 +32,57 @@ class AttendanceController extends Controller
 
     private function minutesToTime($minutes)
     {
-        $hours = intdiv($minutes, 60);
-        $remainingMinutes = $minutes % 60;
+        $normalized = ($minutes % 1440 + 1440) % 1440;
+        $hours = intdiv($normalized, 60);
+        $remainingMinutes = $normalized % 60;
 
         return sprintf('%02d:%02d:00', $hours, $remainingMinutes);
+    }
+
+    private function getDayRuleForDate($schedule, Carbon $date)
+    {
+        if (!$schedule || !$schedule->template || !is_array($schedule->template->day_rules)) {
+            return null;
+        }
+
+        foreach ($schedule->template->day_rules as $rule) {
+            if ((int) ($rule['day'] ?? -1) === $date->dayOfWeek) {
+                return $rule;
+            }
+        }
+
+        return null;
+    }
+
+    private function applyGraceWindow($targetTime, $graceType, $graceMinutes = 15)
+    {
+        $targetMinutes = $this->parseTimeToMinutes($targetTime);
+        $startMinutes = $targetMinutes;
+        $endMinutes = $targetMinutes;
+
+        if ($graceType === '-' || $graceType === '-/+') {
+            $startMinutes -= (int) $graceMinutes;
+        }
+
+        if ($graceType === '+' || $graceType === '-/+') {
+            $endMinutes += (int) $graceMinutes;
+        }
+
+        return [
+            'start' => $this->minutesToTime($startMinutes),
+            'end' => $this->minutesToTime($endMinutes),
+        ];
+    }
+
+    private function calculateExpectedHoursFromRule($clockIn, $clockOut)
+    {
+        $inMinutes = $this->parseTimeToMinutes($clockIn);
+        $outMinutes = $this->parseTimeToMinutes($clockOut);
+        if ($outMinutes < $inMinutes) {
+            $outMinutes += 1440;
+        }
+
+        return max(1, round(($outMinutes - $inMinutes) / 60));
     }
 
     /**
@@ -96,8 +143,16 @@ class AttendanceController extends Controller
 
         $today = Carbon::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
+        $dayRule = $this->getDayRuleForDate($schedule, $today);
 
-        if ($schedule && $schedule->template) {
+        if ($dayRule !== null) {
+            if (empty($dayRule['enabled'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee is not scheduled to work today',
+                ], 400);
+            }
+        } elseif ($schedule && $schedule->template) {
             $workDays = $schedule->template->work_days ?? [];
             if (!in_array($today->dayOfWeek, $workDays, true)) {
                 return response()->json([
@@ -118,7 +173,7 @@ class AttendanceController extends Controller
 
         // Check if already clocked in today
         $existingLog = AttendanceLog::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->whereDate('date', $today->toDateString())
             ->first();
 
         if ($existingLog && $existingLog->clock_in_time) {
@@ -133,7 +188,22 @@ class AttendanceController extends Controller
         $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
-        if ($schedule && $schedule->template) {
+        if ($dayRule && !empty($dayRule['clock_in'])) {
+            $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+            if ($graceEnabled) {
+                $window = $this->applyGraceWindow(
+                    $dayRule['clock_in'],
+                    $dayRule['grace_type'] ?? '-/+',
+                    $dayRule['grace_minutes'] ?? 15
+                );
+                $earlyAllowedMinutes = $this->parseTimeToMinutes($window['start']);
+                $lateAllowedMinutes = $this->parseTimeToMinutes($window['end']);
+            } else {
+                $exactTime = $this->parseTimeToMinutes($dayRule['clock_in']);
+                $earlyAllowedMinutes = $exactTime;
+                $lateAllowedMinutes = $exactTime;
+            }
+        } elseif ($schedule && $schedule->template) {
             $template = $schedule->template;
             $earlyAllowedMinutes = $this->parseTimeToMinutes($template->clock_in_start ?? $template->work_start_time ?? self::EARLY_CLOCK_IN);
             $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_in_end ?? $template->clock_out_end ?? self::LATE_CLOCK_OUT);
@@ -155,7 +225,7 @@ class AttendanceController extends Controller
 
         // Create or update attendance log
         $log = AttendanceLog::updateOrCreate(
-            ['employee_id' => $employee->id, 'date' => $today],
+            ['employee_id' => $employee->id, 'date' => $today->toDateString()],
             ['clock_in_time' => $clockInTime, 'notes' => $request->notes]
         );
 
@@ -202,8 +272,9 @@ class AttendanceController extends Controller
         // Get today's attendance log
         $today = Carbon::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
+        $dayRule = $this->getDayRuleForDate($schedule, $today);
         $log = AttendanceLog::where('employee_id', $employee->id)
-            ->where('date', $today)
+            ->whereDate('date', $today->toDateString())
             ->first();
 
         if (!$log) {
@@ -225,7 +296,21 @@ class AttendanceController extends Controller
         $workEndTime = self::WORK_END_TIME;
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
-        if ($schedule && $schedule->template) {
+        if ($dayRule && !empty($dayRule['clock_out'])) {
+            $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+            if ($graceEnabled) {
+                $window = $this->applyGraceWindow(
+                    $dayRule['clock_out'],
+                    $dayRule['grace_type'] ?? '-/+',
+                    $dayRule['grace_minutes'] ?? 15
+                );
+                $workEndTime = $window['start'];
+                $lateAllowedMinutes = $this->parseTimeToMinutes($window['end']);
+            } else {
+                $workEndTime = $dayRule['clock_out'];
+                $lateAllowedMinutes = $this->parseTimeToMinutes($dayRule['clock_out']);
+            }
+        } elseif ($schedule && $schedule->template) {
             $template = $schedule->template;
             $workEndTime = $template->work_end_time ?? $template->end_time ?? self::WORK_END_TIME;
             $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
@@ -251,8 +336,12 @@ class AttendanceController extends Controller
         $log->status = $this->calculateStatus(
             $log->clock_in_time,
             $clockOutTime,
-            $schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null,
-            $schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null
+            $dayRule && !empty($dayRule['clock_in']) && !empty($dayRule['clock_out'])
+                ? $this->calculateExpectedHoursFromRule($dayRule['clock_in'], $dayRule['clock_out'])
+                : ($schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null),
+            $dayRule && !empty($dayRule['clock_in'])
+                ? $dayRule['clock_in']
+                : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null)
         );
         $log->save();
 
@@ -270,12 +359,13 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         $query = AttendanceLog::with('employee');
+        $isPersonal = $request->query('personal') === 'true';
 
-        // Employees only see their own records
-        if (!$user->isAdminOrHr()) {
+        // Employees only see their own records, or if 'personal' flag is set
+        if (!$user->isAdminOrHr() || $isPersonal) {
             $query->where('employee_id', $user->employee->id);
         }
-        // HR/Admin can see all records
+        // HR/Admin can see all records if not requested as personal
 
         // Filter by month if provided (expects format: YYYY-MM)
         if ($month = $request->query('month')) {
@@ -323,12 +413,29 @@ class AttendanceController extends Controller
     {
         $user = $request->user();
         $today = Carbon::today();
+        $isPersonal = $request->query('personal') === 'true';
 
-        if (!$user->isAdminOrHr()) {
+        if (!$user->isAdminOrHr() || $isPersonal) {
+            $employee = $user->employee;
+            if (!$employee) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'attendance' => null,
+                        'schedule' => null,
+                        'clocked_in' => false,
+                        'clocked_out' => false,
+                        'clock_in_time' => null,
+                        'clock_out_time' => null,
+                    ],
+                    'message' => 'No employee record found for user',
+                ]);
+            }
+
             // Employees get their own today's record
-            $schedule = $this->getScheduleForDate($user->employee->id, $today);
-            $record = AttendanceLog::where('employee_id', $user->employee->id)
-                ->where('date', $today)
+            $schedule = $this->getScheduleForDate($employee->id, $today);
+            $record = AttendanceLog::where('employee_id', $employee->id)
+                ->whereDate('date', $today->toDateString())
                 ->first();
 
             return response()->json([
@@ -375,6 +482,38 @@ class AttendanceController extends Controller
                 'message' => 'Today\'s attendance for all employees retrieved',
             ]);
         }
+    }
+    /**
+     * Get monthly attendance records for an employee
+     */
+    public function monthly(Request $request, $employeeId)
+    {
+        $user = $request->user();
+        
+        // Security check: only own records unless Admin/HR
+        if (!$user->isAdminOrHr() && $user->employee->id != $employeeId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized access to attendance records',
+            ], 403);
+        }
+
+        $month = $request->query('month', now()->format('Y-m'));
+        [$year, $monthNum] = explode('-', $month);
+
+        $logs = AttendanceLog::where('employee_id', $employeeId)
+            ->whereYear('date', (int)$year)
+            ->whereMonth('date', (int)$monthNum)
+            ->orderBy('date', 'asc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'data' => $logs
+            ],
+            'message' => 'Monthly attendance records retrieved',
+        ]);
     }
 }
 

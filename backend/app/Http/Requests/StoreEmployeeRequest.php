@@ -34,6 +34,8 @@ class StoreEmployeeRequest extends FormRequest
             'basic_salary' => 'required_without:salary|numeric|min:0',
             'status' => 'nullable|in:active,inactive,on_leave',
             'notes' => 'nullable|string|max:1000',
+            'role' => 'nullable|in:employee,hr,admin',
+            'password' => 'nullable|string|min:8',
         ];
     }
 

@@ -25,13 +25,7 @@ import UserFormPage from './pages/admin/UserFormPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
-  // If role is explicitly admin or hr
-  if (['admin', 'hr', 'HR', 'Human Resources'].includes(user.role)) return false;
-  // If employee department is HR
-  const dept = user.employee?.department?.toLowerCase();
-  if (dept === 'hr' || dept === 'human resources') return false;
-  
-  return true; // Default to employee dashboard
+  return !['admin', 'hr'].includes(user.role);
 };
 
 function ProtectedRoute({ children }) {
@@ -81,6 +75,14 @@ function AdminRoute({ children }) {
   return children
 }
 
+function LayoutSelector() {
+  const { user } = useAuth()
+  // Admin is not allowed to access standard employee pages
+  if (user?.role === 'admin') return <Navigate to="/admin" replace />
+  // HR uses the rich AppLayout to keep management links visible, standard employees use simple EmployeeLayout
+  return user?.role === 'hr' ? <AppLayout /> : <EmployeeLayout />
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -106,7 +108,7 @@ export default function App() {
             <Route path="users/new" element={<UserFormPage />} />
             <Route path="users/:id/edit" element={<UserFormPage />} />
           </Route>
-          <Route path="/employee" element={<ProtectedRoute><EmployeeLayout /></ProtectedRoute>}>
+          <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />
             <Route path="attendance" element={<AttendanceClockPage />} />
             <Route path="leaves/new" element={<LeaveRequestFormPage />} />
