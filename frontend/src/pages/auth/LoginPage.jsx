@@ -51,7 +51,7 @@ export default function LoginPage() {
             <span className="text-white font-bold text-lg">HR</span>
           </div>
           <h1 className="text-xl font-semibold text-gray-900">HR System</h1>
-          <p className="text-sm text-gray-500 mt-1">Springboard Internship Program</p>
+          <p className="text-sm text-gray-500 mt-1">Springboard Philippines</p>
         </div>
 
         <div className="card p-6">
@@ -83,10 +83,6 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
-
-        <p className="text-center text-xs text-gray-400 mt-4">
-          Default: admin@hr.com / password
-        </p>
       </div>
     </div>
   )

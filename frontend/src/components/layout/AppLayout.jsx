@@ -8,18 +8,18 @@ import { useState } from 'react'
 import clsx from 'clsx'
 
 const COMMON_NAV = [
-  { to: '/admin',         icon: LayoutDashboard, label: 'Dashboard',  end: true },
-  { to: '/admin/employees', icon: Users,           label: 'Employees' },
-  { to: '/admin/attendance',icon: Clock,           label: 'Attendance' },
+  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/admin/employees', icon: Users, label: 'Employees' },
+  { to: '/admin/attendance', icon: Clock, label: 'Attendance' },
   { to: '/admin/employee-schedules', icon: CalendarRange, label: 'Schedules' },
-  { to: '/admin/leaves',    icon: CalendarOff,     label: 'Leaves' },
-  { to: '/admin/payroll',   icon: Banknote,        label: 'Payroll' },
+  { to: '/admin/leaves', icon: CalendarOff, label: 'Leaves' },
+  { to: '/admin/payroll', icon: Banknote, label: 'Payroll' },
 ]
 
 const ADMIN_ONLY_NAV = [
-  { to: '/admin/settings',   icon: Settings,      label: 'System Settings' },
-  { to: '/admin/users',      icon: UserCog,       label: 'User Management' },
-  { to: '/admin/departments', icon: Building2,     label: 'Departments' },
+  { to: '/admin/settings', icon: Settings, label: 'System Settings' },
+  { to: '/admin/users', icon: UserCog, label: 'User Management' },
+  { to: '/admin/departments', icon: Building2, label: 'Departments' },
   { to: '/admin/schedule-templates', icon: CalendarRange, label: 'Schedule Templates' },
 ]
 
@@ -57,7 +57,7 @@ export default function AppLayout() {
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
             <span className="text-white text-xs font-bold">HR</span>
           </div>
-          <span className="font-semibold text-gray-900 text-sm">HR System</span>
+          <span className="font-semibold text-gray-900 text-sm">Springboard Philippines</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
           </button>
@@ -160,7 +160,7 @@ export default function AppLayout() {
           <button onClick={() => setOpen(true)}>
             <Menu size={20} className="text-gray-600" />
           </button>
-          <span className="font-semibold text-sm text-gray-900">HR System</span>
+          <span className="font-semibold text-sm text-gray-900">Springboard Philippines</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">
