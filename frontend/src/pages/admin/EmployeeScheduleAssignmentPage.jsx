@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { format, startOfWeek, endOfWeek } from 'date-fns'
+import { format, startOfWeek, endOfWeek, parseISO, isBefore, startOfDay, isAfter } from 'date-fns'
 import {
   employeeKeys,
   getEmployees,
@@ -12,12 +12,14 @@ import {
   createEmployeeSchedule,
   updateEmployeeSchedule,
   deleteEmployeeSchedule,
+  getSystemClock,
+  systemClockKeys,
 } from '../../api/queries'
 import { PageHeader, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarDays, Plus, Edit2, Trash2 } from 'lucide-react'
 
-const getWeekRange = (weekOffset = 0) => {
-  const today = new Date()
+const getWeekRange = (baseDate, weekOffset = 0) => {
+  const today = baseDate ?? new Date()
   const weekStart = startOfWeek(today, { weekStartsOn: 1 })
   const weekEnd = endOfWeek(today, { weekStartsOn: 1 })
 
@@ -38,11 +40,17 @@ const getWeekRange = (weekOffset = 0) => {
 const EmployeeScheduleAssignmentPage = () => {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState('current')
+  const { data: sysClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+  })
+  const baseDate = sysClock?.date ? parseISO(sysClock.date) : new Date()
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     employee_id: '',
     schedule_template_id: '',
-    ...getWeekRange(0),
+    ...getWeekRange(baseDate, 0),
   })
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
 
@@ -67,6 +75,14 @@ const EmployeeScheduleAssignmentPage = () => {
       setFormData(prev => ({ ...prev, employee_id: employeeId }))
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (editingId) return
+    setFormData(prev => ({
+      ...prev,
+      ...getWeekRange(baseDate, 0),
+    }))
+  }, [baseDate, editingId])
 
   const createMutation = useMutation({
     mutationFn: createEmployeeSchedule,
@@ -95,13 +111,13 @@ const EmployeeScheduleAssignmentPage = () => {
     setFormData({
       employee_id: '',
       schedule_template_id: '',
-      ...getWeekRange(0),
+      ...getWeekRange(baseDate, 0),
     })
     setEditingId(null)
   }
 
   const setThisWeek = () => {
-    const thisWeek = getWeekRange(0)
+    const thisWeek = getWeekRange(baseDate, 0)
     setFormData(prev => ({
       ...prev,
       ...thisWeek,
@@ -109,7 +125,7 @@ const EmployeeScheduleAssignmentPage = () => {
   }
 
   const setNextWeek = () => {
-    const nextWeek = getWeekRange(1)
+    const nextWeek = getWeekRange(baseDate, 1)
     setFormData(prev => ({
       ...prev,
       ...nextWeek,
@@ -175,7 +191,53 @@ const EmployeeScheduleAssignmentPage = () => {
   }
 
   const employeeList = employeeResponse?.data ?? []
-  const activeSchedules = schedulesResponse?.data?.filter(s => s.status === 'active') ?? []
+  const today = startOfDay(baseDate)
+  const thisWeekRange = getWeekRange(baseDate, 0)
+  const nextWeekRange = getWeekRange(baseDate, 1)
+  const thisWeekStart = parseISO(thisWeekRange.start_date)
+  const thisWeekEnd = parseISO(thisWeekRange.end_date)
+  const nextWeekStart = parseISO(nextWeekRange.start_date)
+  const nextWeekEnd = parseISO(nextWeekRange.end_date)
+  const allActiveSchedules = schedulesResponse?.data?.filter((s) => {
+    if (s.status !== 'active') return false
+    if (!s.start_date || !s.end_date) return false
+    return true
+  }) ?? []
+  const currentSchedules = allActiveSchedules.filter((s) => {
+    const start = parseISO(s.start_date)
+    const end = parseISO(s.end_date)
+    return !isBefore(end, today) && !isAfter(start, today)
+  })
+  const thisWeekSchedules = allActiveSchedules.filter((s) => {
+    const start = parseISO(s.start_date)
+    const end = parseISO(s.end_date)
+    return !isBefore(end, thisWeekStart) && !isAfter(start, thisWeekEnd)
+  })
+  const savedNextWeekSchedules = allActiveSchedules.filter((s) => {
+    const start = parseISO(s.start_date)
+    const end = parseISO(s.end_date)
+    return !isBefore(end, nextWeekStart) && !isAfter(start, nextWeekEnd)
+  })
+  const futureSchedules = allActiveSchedules.filter((s) => isBefore(today, parseISO(s.start_date)))
+  const nextWeekEmployeeIdsWithSavedSchedule = new Set(savedNextWeekSchedules.map(s => s.employee_id))
+  const suggestedNextWeekSchedules = thisWeekSchedules
+    .filter((s) => !nextWeekEmployeeIdsWithSavedSchedule.has(s.employee_id))
+    .map((s) => ({
+      ...s,
+      id: `suggested-${s.employee_id}`,
+      start_date: nextWeekRange.start_date,
+      end_date: nextWeekRange.end_date,
+      isSuggested: true,
+    }))
+  const futureSchedulesWithDefaults = [...savedNextWeekSchedules, ...suggestedNextWeekSchedules]
+  const uniqueFutureSchedules = [
+    ...futureSchedulesWithDefaults,
+    ...futureSchedules.filter((s) => {
+      const start = parseISO(s.start_date)
+      return isAfter(start, nextWeekEnd)
+    }),
+  ]
+  const shownSchedules = activeTab === 'future' ? uniqueFutureSchedules : currentSchedules
 
   return (
     <div>
@@ -297,11 +359,31 @@ const EmployeeScheduleAssignmentPage = () => {
 
       {/* Active Schedules Table */}
       <div className="card p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
           <CalendarDays size={14} className="text-brand-600" /> Active Schedules
-        </h2>
-        {activeSchedules.length === 0 ? (
-          <p className="py-6 text-center text-gray-400 text-sm">No active schedules assigned</p>
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('current')}
+              className={activeTab === 'current' ? 'btn-primary text-xs px-3 py-1.5' : 'btn-secondary text-xs px-3 py-1.5'}
+            >
+              Current
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('future')}
+              className={activeTab === 'future' ? 'btn-primary text-xs px-3 py-1.5' : 'btn-secondary text-xs px-3 py-1.5'}
+            >
+              Future Schedules
+            </button>
+          </div>
+        </div>
+        {shownSchedules.length === 0 ? (
+          <p className="py-6 text-center text-gray-400 text-sm">
+            {activeTab === 'future' ? 'No future schedules assigned' : 'No current schedules assigned'}
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100">
@@ -313,32 +395,54 @@ const EmployeeScheduleAssignmentPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {activeSchedules.map((schedule) => (
+              {shownSchedules.map((schedule) => (
                 <tr key={schedule.id} className="hover:bg-gray-50">
                   <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                     {getEmployeeName(schedule.employee_id)}
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
                     {getTemplateName(schedule.schedule_template_id)}
+                    {schedule.isSuggested && (
+                      <span className="ml-2 text-[10px] text-brand-600 font-semibold">Default (from this week)</span>
+                    )}
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
                     {format(new Date(schedule.start_date), 'MMM dd')} - {format(new Date(schedule.end_date), 'MMM dd, yyyy')}
                   </td>
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleEdit(schedule)}
-                        className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
-                    >
-                        <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(schedule)}
-                      disabled={deleteMutation.isPending}
-                        className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
-                    >
-                        <Trash2 size={14} />
-                    </button>
+                      {schedule.isSuggested ? (
+                        <button
+                          onClick={() => {
+                            setEditingId(null)
+                            setFormData({
+                              employee_id: schedule.employee_id,
+                              schedule_template_id: schedule.schedule_template_id,
+                              start_date: schedule.start_date,
+                              end_date: schedule.end_date,
+                            })
+                          }}
+                          className="btn-secondary text-xs px-2 py-1"
+                        >
+                          Use Default
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleEdit(schedule)}
+                            className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(schedule)}
+                            disabled={deleteMutation.isPending}
+                            className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

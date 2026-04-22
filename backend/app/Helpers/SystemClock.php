@@ -17,11 +17,28 @@ class SystemClock
      */
     public static function now(): Carbon
     {
-        $date = SystemSettings::where('key', 'system_date')->value('value');
-        $time = SystemSettings::where('key', 'system_time')->value('value');
+        $dateSetting = SystemSettings::where('key', 'system_date')->first();
+        $timeSetting = SystemSettings::where('key', 'system_time')->first();
+
+        $date = $dateSetting?->value;
+        $time = $timeSetting?->value;
 
         if ($date && $time) {
-            return Carbon::parse("{$date} {$time}");
+            $base = Carbon::parse("{$date} {$time}");
+
+            // Keep virtual time moving: advance from the saved baseline
+            // by the real elapsed seconds since either date/time was updated.
+            $anchorUpdatedAt = $dateSetting?->updated_at;
+            if ($timeSetting?->updated_at && (!$anchorUpdatedAt || $timeSetting->updated_at->gt($anchorUpdatedAt))) {
+                $anchorUpdatedAt = $timeSetting->updated_at;
+            }
+
+            if ($anchorUpdatedAt) {
+                $elapsedSeconds = max(0, $anchorUpdatedAt->diffInSeconds(Carbon::now()));
+                return $base->copy()->addSeconds($elapsedSeconds);
+            }
+
+            return $base;
         }
 
         if ($date) {

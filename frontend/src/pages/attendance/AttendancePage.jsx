@@ -35,7 +35,25 @@ const calculateHours = (clockInTime, clockOutTime) => {
 
 export default function AttendancePage() {
   const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'))
+  const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
+  const [monthlyStatus, setMonthlyStatus] = useState('')
+  const [monthlyDate, setMonthlyDate] = useState('')
   const qc = useQueryClient()
+
+  const monthlyParams = {
+    month,
+    include_absentees: true,
+    personal: false,
+    ...(monthlyEmployeeSearch.trim() ? { employee_search: monthlyEmployeeSearch.trim() } : {}),
+    ...(monthlyStatus ? { status: monthlyStatus } : {}),
+    ...(monthlyDate ? { date: monthlyDate } : {}),
+  }
+
+  const clearMonthlyFilters = () => {
+    setMonthlyEmployeeSearch('')
+    setMonthlyStatus('')
+    setMonthlyDate('')
+  }
 
   const { data: todayLogs = [], isLoading: todayLoading } = useQuery({
     queryKey: attendanceKeys.todayAll(),
@@ -124,8 +142,8 @@ export default function AttendancePage() {
   })
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
-    queryKey: attendanceKeys.list({ month, include_absentees: true }),
-    queryFn: () => getAttendance({ month, include_absentees: true, personal: false }),
+    queryKey: attendanceKeys.list(monthlyParams),
+    queryFn: () => getAttendance(monthlyParams),
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
@@ -135,14 +153,14 @@ export default function AttendancePage() {
     mutationFn: (employeeId) => clockIn('', employeeId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
-      qc.invalidateQueries({ queryKey: attendanceKeys.list({ month }) })
+      qc.invalidateQueries({ queryKey: attendanceKeys.all })
     },
   })
   const clockOutMutation = useMutation({
     mutationFn: (employeeId) => clockOut('', employeeId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
-      qc.invalidateQueries({ queryKey: attendanceKeys.list({ month }) })
+      qc.invalidateQueries({ queryKey: attendanceKeys.all })
     },
   })
 
@@ -302,12 +320,49 @@ export default function AttendancePage() {
 
       {/* Monthly log */}
       <div className="card p-5">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-3 mb-4">
           <h2 className="text-sm font-semibold text-gray-700">Monthly Log</h2>
-          <input
-            type="month" className="input w-44 text-sm"
-            value={month} onChange={e => setMonth(e.target.value)}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            <input
+              type="month"
+              className="input text-sm"
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+            />
+            <input
+              type="text"
+              className="input text-sm"
+              value={monthlyEmployeeSearch}
+              onChange={e => setMonthlyEmployeeSearch(e.target.value)}
+              placeholder="Search employee name"
+            />
+            <select
+              className="input text-sm"
+              value={monthlyStatus}
+              onChange={e => setMonthlyStatus(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="completed">Completed</option>
+              <option value="working">Working</option>
+              <option value="late">Late</option>
+              <option value="incomplete">Incomplete</option>
+              <option value="on_leave">On Leave</option>
+              <option value="absent">Absent</option>
+            </select>
+            <input
+              type="date"
+              className="input text-sm"
+              value={monthlyDate}
+              onChange={e => setMonthlyDate(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={clearMonthlyFilters}
+            >
+              Clear Filters
+            </button>
+          </div>
         </div>
         {monthlyLoading ? <PageSpinner /> : (
           <div className="overflow-x-auto">

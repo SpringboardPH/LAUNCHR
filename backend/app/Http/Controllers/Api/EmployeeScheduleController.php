@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\SystemClock;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
 use Carbon\Carbon;
@@ -157,6 +158,29 @@ class EmployeeScheduleController extends Controller
                 'success' => false,
                 'message' => 'Employee already has a schedule for this period.',
             ], 409);
+        }
+
+        $dateRangeChanged = $employeeSchedule->start_date->format('Y-m-d') !== $validated['start_date']
+            || $employeeSchedule->end_date->format('Y-m-d') !== $validated['end_date'];
+        $isHistoricalSchedule = $employeeSchedule->end_date->lt(SystemClock::today());
+
+        // Preserve historical schedule context only for past weeks.
+        // Current/future week edits should still update in-place.
+        if ($dateRangeChanged && $isHistoricalSchedule) {
+            $newSchedule = EmployeeSchedule::create([
+                'employee_id' => $employeeSchedule->employee_id,
+                'schedule_template_id' => $validated['schedule_template_id'],
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'status' => $validated['status'],
+            ]);
+            $newSchedule->load(['employee', 'template']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $newSchedule,
+                'message' => 'New schedule week created to preserve historical records.',
+            ]);
         }
 
         $employeeSchedule->update($validated);

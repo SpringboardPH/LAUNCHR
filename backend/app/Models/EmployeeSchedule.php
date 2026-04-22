@@ -35,12 +35,15 @@ class EmployeeSchedule extends Model
     public static function getForEmployeeOnDate($employeeId, $date)
     {
         $date = \Carbon\Carbon::parse($date);
+        $dateString = $date->toDateString();
         
         return self::where('employee_id', $employeeId)
-            ->where('start_date', '<=', $date)
-            ->where('end_date', '>=', $date)
-            ->where('status', 'active')
+            ->whereDate('start_date', '<=', $dateString)
+            ->whereDate('end_date', '>=', $dateString)
             ->with('template')
+            // Keep historical schedule context even if a record becomes archived/inactive later.
+            ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+            ->orderByDesc('updated_at')
             ->first();
     }
 

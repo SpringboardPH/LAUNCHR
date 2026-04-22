@@ -4,6 +4,15 @@ import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/u
 import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys } from '../../api/queries'
 import { Clock, Calendar, Save, RotateCcw, Zap } from 'lucide-react'
 
+const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
+
+const formatTimeForInput = (date) => date.toTimeString().split(' ')[0]
+
+const normalizeTimeValue = (timeValue) => {
+  if (!timeValue) return ''
+  return timeValue.length === 5 ? `${timeValue}:00` : timeValue
+}
+
 export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
@@ -17,26 +26,33 @@ export default function SystemSettingsPage() {
   useEffect(() => {
     if (settings.length > 0) {
       const now = new Date()
-      const defaultDate = now.toLocaleDateString('en-CA')
-      const defaultTime = now.toTimeString().split(' ')[0].slice(0, 5)
+      const defaultDate = formatDateForInput(now)
+      const defaultTime = formatTimeForInput(now)
 
       const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
-      const sysTime = settings.find(s => s.key === 'system_time')?.value || defaultTime
+      const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
       setDateTime({ date: sysDate, time: sysTime })
     }
   }, [settings])
 
   const updateSettingMutation = useMutation({
     mutationFn: async ({ date, time }) => {
+      const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
-      await updateAdminSetting('system_time', time, 'Virtual system time for simulation', 'string')
+      await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
       // the attendance clock page immediately reflects the new virtual time.
-      qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
-      qc.invalidateQueries({ queryKey: systemClockKeys.all })
-      qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: adminSettingsKeys.all }),
+        qc.invalidateQueries({ queryKey: systemClockKeys.all }),
+        qc.invalidateQueries({ queryKey: attendanceKeys.all }),
+      ])
+      await Promise.all([
+        qc.refetchQueries({ queryKey: systemClockKeys.all, type: 'active' }),
+        qc.refetchQueries({ queryKey: attendanceKeys.all, type: 'active' }),
+      ])
     }
   })
 
@@ -58,11 +74,11 @@ export default function SystemSettingsPage() {
       type: 'warning',
       onConfirm: () => {
         const now = new Date()
-        const defaultDate = now.toLocaleDateString('en-CA')
-        const defaultTime = now.toTimeString().split(' ')[0].slice(0, 5)
+        const defaultDate = formatDateForInput(now)
+        const defaultTime = formatTimeForInput(now)
 
         const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
-        const sysTime = settings.find(s => s.key === 'system_time')?.value || defaultTime
+        const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
         setDateTime({ date: sysDate, time: sysTime })
       }
     })
@@ -77,8 +93,8 @@ export default function SystemSettingsPage() {
       onConfirm: () => {
         // Capture the time at the exact moment the user confirms
         const now = new Date()
-        const date = now.toLocaleDateString('en-CA')
-        const time = now.toTimeString().split(' ')[0].slice(0, 5)
+        const date = formatDateForInput(now)
+        const time = formatTimeForInput(now)
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
@@ -144,6 +160,7 @@ export default function SystemSettingsPage() {
                   <Clock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-500 transition-colors" />
                   <input
                     type="time"
+                    step="1"
                     value={dateTime.time}
                     onChange={(e) => setDateTime(prev => ({ ...prev, time: e.target.value }))}
                     className="input pl-11 h-11"
