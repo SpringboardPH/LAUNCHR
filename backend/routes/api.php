@@ -63,6 +63,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 
+    // Shared lookup data for admin + HR forms
+    Route::middleware('role:admin,hr')->group(function () {
+        Route::get('/departments', [DepartmentController::class, 'index']);
+    });
+
     // System clock (virtual time used by attendance) - available to all authenticated users
     Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
 
@@ -102,6 +107,8 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // User Management (Admin)
         Route::delete('/admin/users/{id}/hard-delete', [UserController::class, 'hardDelete']);
+        Route::get('/admin/users/trashed', [UserController::class, 'trashed']);
+        Route::patch('/admin/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('admin/users', UserController::class);
     });
     

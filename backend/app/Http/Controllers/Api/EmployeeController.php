@@ -7,6 +7,7 @@ use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
 use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -163,7 +164,30 @@ class EmployeeController extends Controller
     public function destroy($id)
     {
         $employee = Employee::findOrFail($id);
-        $employee->delete(); // soft delete
+
+        $currentUser = request()->user();
+        if ($currentUser && $employee->user_id && $currentUser->id === $employee->user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot deactivate your own account.',
+            ], 403);
+        }
+
+        DB::transaction(function () use ($employee) {
+            EmployeeSchedule::where('employee_id', $employee->id)
+                ->where('status', 'active')
+                ->update(['status' => 'archived']);
+
+            $employee->update(['status' => 'inactive']);
+            $employee->delete(); // soft delete employee
+
+            if ($employee->user_id) {
+                $user = User::find($employee->user_id);
+                if ($user) {
+                    $user->delete(); // soft delete linked user
+                }
+            }
+        });
 
         return response()->json([
             'success' => true,
@@ -174,8 +198,30 @@ class EmployeeController extends Controller
     public function deactivate($id)
     {
         $employee = Employee::findOrFail($id);
-        $employee->update(['status' => 'inactive']);
-        $employee->delete(); // soft delete
+
+        $currentUser = request()->user();
+        if ($currentUser && $employee->user_id && $currentUser->id === $employee->user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot deactivate your own account.',
+            ], 403);
+        }
+
+        DB::transaction(function () use ($employee) {
+            EmployeeSchedule::where('employee_id', $employee->id)
+                ->where('status', 'active')
+                ->update(['status' => 'archived']);
+
+            $employee->update(['status' => 'inactive']);
+            $employee->delete(); // soft delete employee
+
+            if ($employee->user_id) {
+                $user = User::find($employee->user_id);
+                if ($user) {
+                    $user->delete(); // soft delete linked user
+                }
+            }
+        });
 
         return response()->json([
             'success' => true,
@@ -187,7 +233,17 @@ class EmployeeController extends Controller
     public function hardDelete($id)
     {
         $employee = Employee::withTrashed()->findOrFail($id);
-        $employee->forceDelete();
+
+        DB::transaction(function () use ($employee) {
+            if ($employee->user_id) {
+                $user = User::withTrashed()->find($employee->user_id);
+                if ($user) {
+                    $user->forceDelete();
+                }
+            }
+
+            $employee->forceDelete();
+        });
 
         return response()->json([
             'success' => true,
@@ -198,7 +254,18 @@ class EmployeeController extends Controller
     public function restore($id)
     {
         $employee = Employee::withTrashed()->findOrFail($id);
-        $employee->restore();
+
+        DB::transaction(function () use ($employee) {
+            $employee->restore();
+            $employee->update(['status' => 'active']);
+
+            if ($employee->user_id) {
+                $user = User::withTrashed()->find($employee->user_id);
+                if ($user && $user->trashed()) {
+                    $user->restore();
+                }
+            }
+        });
 
         return response()->json([
             'success' => true,

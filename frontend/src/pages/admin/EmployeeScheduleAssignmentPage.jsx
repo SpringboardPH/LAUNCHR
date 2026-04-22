@@ -220,7 +220,7 @@ const EmployeeScheduleAssignmentPage = () => {
       return
     }
 
-    const employeeName = getEmployeeName(schedule.employee_id)
+    const employeeName = getEmployeeName(schedule.employee_id, schedule.employee)
     const templateName = getTemplateName(schedule.schedule_template_id)
     setConfirmConfig({
       open: true,
@@ -235,7 +235,11 @@ const EmployeeScheduleAssignmentPage = () => {
     return templates.find(t => t.id === Number(templateId))?.name || 'Unknown'
   }
 
-  const getEmployeeName = (employeeId) => {
+  const getEmployeeName = (employeeId, scheduleEmployee = null) => {
+    if (scheduleEmployee?.first_name && scheduleEmployee?.last_name) {
+      return `${scheduleEmployee.first_name} ${scheduleEmployee.last_name}`
+    }
+
     const emp = employeeList.find(e => e.id === Number(employeeId))
     return emp ? `${emp.first_name} ${emp.last_name}` : 'Unknown'
   }
@@ -477,7 +481,7 @@ const EmployeeScheduleAssignmentPage = () => {
               {shownSchedules.map((schedule) => (
                 <tr key={schedule.id} className="hover:bg-gray-50">
                   <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
-                    {getEmployeeName(schedule.employee_id)}
+                    {getEmployeeName(schedule.employee_id, schedule.employee)}
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
                     {getTemplateName(schedule.schedule_template_id)}

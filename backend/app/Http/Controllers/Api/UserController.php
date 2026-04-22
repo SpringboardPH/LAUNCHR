@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,9 @@ class UserController extends Controller
      */
     public function index(Request $request)
     {
-        $query = User::with('employee');
+        $query = User::with(['employee' => function ($employeeQuery) {
+            $employeeQuery->withTrashed();
+        }]);
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -42,6 +45,42 @@ class UserController extends Controller
                 'last_page' => $users->lastPage(),
             ],
             'message' => 'Users retrieved successfully',
+        ]);
+    }
+
+    /**
+     * Display the soft-deleted users.
+     */
+    public function trashed(Request $request)
+    {
+        $query = User::onlyTrashed()->with(['employee' => function ($employeeQuery) {
+            $employeeQuery->withTrashed();
+        }]);
+
+        if ($search = $request->query('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($role = $request->query('role')) {
+            $query->where('role', $role);
+        }
+
+        $users = $query->orderBy('deleted_at', 'desc')->paginate(15);
+
+        return response()->json([
+            'success' => true,
+            'data' => $users->items(),
+            'pagination' => [
+                'total' => $users->total(),
+                'count' => $users->count(),
+                'per_page' => $users->perPage(),
+                'current_page' => $users->currentPage(),
+                'last_page' => $users->lastPage(),
+            ],
+            'message' => 'Deactivated users retrieved successfully',
         ]);
     }
 
@@ -136,12 +175,14 @@ class UserController extends Controller
 
         DB::transaction(function () use ($user) {
             if ($user->employee) {
+                EmployeeSchedule::where('employee_id', $user->employee->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'archived']);
+
                 $user->employee->update(['status' => 'inactive']);
                 $user->employee->delete();
             }
 
-            $user->email = sprintf('deleted+%d+%d@archived.local', $user->id, now()->timestamp);
-            $user->save();
             $user->delete();
         });
 
@@ -179,6 +220,42 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User permanently deleted',
+        ]);
+    }
+
+    /**
+     * Restore a soft-deleted user and linked employee record.
+     */
+    public function restore($id)
+    {
+        $user = User::withTrashed()->findOrFail($id);
+
+        DB::transaction(function () use ($user) {
+            $employee = Employee::withTrashed()->where('user_id', $user->id)->first();
+
+            if (
+                $employee &&
+                str_ends_with((string) $user->email, '@archived.local') &&
+                !User::withTrashed()
+                    ->where('email', $employee->email)
+                    ->where('id', '!=', $user->id)
+                    ->exists()
+            ) {
+                $user->email = $employee->email;
+                $user->save();
+            }
+
+            if ($employee) {
+                $employee->restore();
+                $employee->update(['status' => 'active']);
+            }
+
+            $user->restore();
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User restored successfully',
         ]);
     }
 }

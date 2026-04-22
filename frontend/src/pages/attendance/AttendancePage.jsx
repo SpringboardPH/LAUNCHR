@@ -8,7 +8,7 @@ import {
   getSystemClock, systemClockKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut, CalendarDays } from 'lucide-react'
+import { Clock, LogIn, LogOut } from 'lucide-react'
 import { getClockWindow } from '../../utils/attendance'
 
 // Calculate hours worked between two time strings (HH:MM:SS format)
@@ -275,50 +275,6 @@ export default function AttendancePage() {
       />
 
       <PageHeader title="Attendance" description={`Today: ${displayDateLabel}`} />
-
-      {/* Weekly schedule summary */}
-      <div className="card p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          <CalendarDays size={14} className="text-brand-600" /> Current Weekly Schedules
-        </h2>
-        {resolvedCurrentSchedules.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100">
-                <tr>
-                  {['Employee', 'Template', 'Week', 'Work Hours', 'Clock Window'].map(h => (
-                    <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {resolvedCurrentSchedules.map(schedule => (
-                  <tr key={schedule.id} className="hover:bg-gray-50">
-                    <td className="py-2.5 pr-4 font-medium text-gray-900">
-                      {schedule.employee?.first_name} {schedule.employee?.last_name}
-                    </td>
-                    <td className="py-2.5 pr-4 text-gray-600">{schedule.template?.name}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">
-                      {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd, yyyy')}
-                      {schedule.carried_forward && (
-                        <span className="ml-2 text-[10px] text-gray-500">(carried forward)</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 pr-4 text-gray-600">
-                      {schedule.template?.work_start_time?.substring(0, 5)} - {schedule.template?.work_end_time?.substring(0, 5)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-gray-600">
-                      {getDetailedClockWindow(schedule)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">No active weekly schedules for this week</p>
-        )}
-      </div>
 
       {/* Today's quick clock-in panel */}
       <div className="card p-5 mb-6">

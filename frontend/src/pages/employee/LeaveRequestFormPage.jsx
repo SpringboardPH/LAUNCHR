@@ -247,7 +247,10 @@ export default function LeaveRequestFormPage() {
                   <p>Weekend policy: <span className="font-medium text-gray-900">{includeWeekends ? 'Weekends count' : 'Weekends do not count'}</span></p>
                   {selectedBalance?.requires_balance && remainingBalance !== null && (
                     <p>
-                      Remaining balance: <span className="font-medium text-gray-900">{remainingBalance}</span>
+                      Remaining balance after request: <span className="font-medium text-gray-900">
+                        {Math.max(0, remainingBalance - requestedDays)}
+                      </span>
+                      <span className="text-gray-500"> / {remainingBalance}</span>
                     </p>
                   )}
                   {selectedBalance && !selectedBalance.requires_balance && (

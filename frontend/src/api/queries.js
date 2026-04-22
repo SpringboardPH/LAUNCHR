@@ -29,6 +29,14 @@ export const deactivateEmployee = (id) =>
 export const deleteEmployee = (id) =>
   api.delete(`/employees/${id}`).then(r => r.data)
 
+// ─── Departments ─────────────────────────────────────────────
+export const departmentKeys = {
+  all: ['departments'],
+}
+
+export const getDepartments = () =>
+  api.get('/departments').then(r => r.data.data)
+
 // ─── Attendance ──────────────────────────────────────────────
 export const attendanceKeys = {
   all: ['attendance'],
@@ -275,6 +283,7 @@ export const userKeys = {
   all: ['admin', 'users'],
   list: (params) => ['admin', 'users', 'list', params],
   detail: (id) => ['admin', 'users', id],
+  trashed: (params) => ['admin', 'users', 'trashed', params],
 }
 
 export const getUsers = (params) =>
@@ -298,3 +307,13 @@ export const deleteUser = (id) =>
 
 export const hardDeleteUser = (id) =>
   api.delete(`/admin/users/${id}/hard-delete`).then(r => r.data)
+
+export const getTrashedUsers = (params) =>
+  api.get('/admin/users/trashed', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+    total: r.data.pagination?.total,
+  }))
+
+export const restoreUser = (id) =>
+  api.patch(`/admin/users/${id}/restore`).then(r => r.data)

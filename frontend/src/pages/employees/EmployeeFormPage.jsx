@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getEmployee, createEmployee, updateEmployee, employeeKeys, getAdminDepartments, adminDepartmentKeys, userKeys } from '../../api/queries'
+import { getEmployee, createEmployee, updateEmployee, employeeKeys, getDepartments, departmentKeys, userKeys } from '../../api/queries'
 import { PageHeader, FormField, PageSpinner, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { useAuth } from '../../store/AuthContext'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
@@ -43,8 +43,8 @@ export default function EmployeeFormPage() {
   })
 
   const { data: departments = [] } = useQuery({
-    queryKey: adminDepartmentKeys.all,
-    queryFn: getAdminDepartments,
+    queryKey: departmentKeys.all,
+    queryFn: getDepartments,
   })
 
   // Filter only active departments

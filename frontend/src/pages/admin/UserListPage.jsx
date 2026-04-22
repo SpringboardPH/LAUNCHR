@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getUsers, deleteUser, hardDeleteUser, userKeys } from '../../api/queries'
+import { getUsers, getTrashedUsers, deleteUser, hardDeleteUser, restoreUser, userKeys, employeeScheduleKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
-import { Plus, Search, Pencil, Trash2, Users, UserX } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Users, UserX, RotateCcw, Archive } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function UserListPage() {
@@ -20,10 +20,18 @@ export default function UserListPage() {
     keepPreviousData: true,
   })
 
+  const { data: trashedData, isLoading: isLoadingTrashed } = useQuery({
+    queryKey: userKeys.trashed({ search }),
+    queryFn: () => getTrashedUsers({ search }),
+    keepPreviousData: true,
+  })
+
   const deleteMutation = useMutation({
     mutationFn: deleteUser,
     onSuccess: () => {
       queryClient.invalidateQueries(userKeys.all)
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'trashed'] })
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
     },
     onError: (error) => {
       alert(error.response?.data?.message || 'Failed to delete user')
@@ -34,13 +42,36 @@ export default function UserListPage() {
     mutationFn: hardDeleteUser,
     onSuccess: () => {
       queryClient.invalidateQueries(userKeys.all)
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'trashed'] })
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
     },
     onError: (error) => {
       alert(error.response?.data?.message || 'Failed to permanently delete user')
     }
   })
 
+  const restoreMutation = useMutation({
+    mutationFn: restoreUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries(userKeys.all)
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', 'trashed'] })
+      queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
+    },
+    onError: (error) => {
+      alert(error.response?.data?.message || 'Failed to restore user')
+    }
+  })
+
   const users = data?.data ?? []
+  const trashedUsers = trashedData?.data ?? []
+
+  const getDisplayEmail = (user) => {
+    const email = user?.email || ''
+    if (email.endsWith('@archived.local') && user?.employee?.email) {
+      return user.employee.email
+    }
+    return email
+  }
 
   return (
     <div>
@@ -97,7 +128,7 @@ export default function UserListPage() {
                     <td className="px-4 py-3">
                       <div>
                         <div className="font-medium text-gray-900">{u.name}</div>
-                        <div className="text-gray-500 text-xs">{u.email}</div>
+                        <div className="text-gray-500 text-xs">{getDisplayEmail(u)}</div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -169,6 +200,116 @@ export default function UserListPage() {
           </div>
         </div>
       )}
+
+      <div className="card overflow-hidden mt-6">
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Archive size={18} className="text-gray-500" />
+              Deactivated Users
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">View and restore soft-deleted user accounts.</p>
+          </div>
+          <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+            {trashedUsers.length} deactivated
+          </span>
+        </div>
+
+        {isLoadingTrashed ? (
+          <PageSpinner />
+        ) : trashedUsers.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              icon={Archive}
+              title="No deactivated users"
+              description="Soft-deleted users will appear here for review and restoration."
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">User</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Linked Employee</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Deleted At</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {trashedUsers.map(u => (
+                  <tr key={u.id} className="hover:bg-gray-50 transition-colors opacity-90">
+                    <td className="px-4 py-3">
+                      <div>
+                        <div className="font-medium text-gray-900">{u.name}</div>
+                        <div className="text-gray-500 text-xs">{getDisplayEmail(u)}</div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                        u.role === 'hr' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {u.role === 'admin' ? 'System Administrator' : 
+                         u.role === 'hr' ? 'Human Resources' : 'Standard Employee'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {u.employee ? (
+                        <div>
+                          <div className="text-gray-900">{u.employee.first_name} {u.employee.last_name}</div>
+                          <div className="text-gray-500 text-xs">{u.employee.department}</div>
+                        </div>
+                      ) : <span className="text-gray-400 italic">Not linked</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {u.deleted_at ? format(new Date(u.deleted_at), 'MMM d, yyyy') : 'Unknown'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => {
+                            setConfirmConfig({
+                              open: true,
+                              title: 'Restore User',
+                              message: `Restore ${u.name}? This will reactivate the linked employee record.`,
+                              onConfirm: () => restoreMutation.mutate(u.id),
+                              type: 'info'
+                            })
+                          }}
+                          disabled={restoreMutation.isPending || hardDeleteMutation.isPending}
+                          className="btn-ghost p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          title="Restore user"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setConfirmConfig({
+                              open: true,
+                              title: 'Hard Delete User',
+                              message: `Permanently delete ${u.name}? This cannot be undone.`,
+                              onConfirm: () => hardDeleteMutation.mutate(u.id),
+                              type: 'danger'
+                            })
+                          }}
+                          disabled={restoreMutation.isPending || hardDeleteMutation.isPending}
+                          className="btn-ghost p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                          title="Permanently delete user"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

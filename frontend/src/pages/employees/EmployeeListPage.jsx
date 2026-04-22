@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { getEmployees, deactivateEmployee, employeeKeys } from '../../api/queries'
+import { getEmployees, deactivateEmployee, employeeKeys, userKeys, employeeScheduleKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Search, UserX, Pencil, Eye, Users } from 'lucide-react'
 
@@ -19,7 +19,12 @@ export default function EmployeeListPage() {
 
   const deactivate = useMutation({
     mutationFn: deactivateEmployee,
-    onSuccess: () => qc.invalidateQueries({ queryKey: employeeKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeKeys.all })
+      qc.invalidateQueries({ queryKey: userKeys.all })
+      qc.invalidateQueries({ queryKey: ['admin', 'users', 'trashed'] })
+      qc.invalidateQueries({ queryKey: employeeScheduleKeys.all })
+    },
   })
 
   const employees = data?.data ?? []
