@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemClock;
 use App\Models\Employee;
 use App\Models\EmployeeLeaveBalance;
 use App\Models\LeaveRequest;
@@ -17,11 +18,12 @@ class LeaveController extends Controller
 {
     private function calculateCycle(Employee $employee): array
     {
-        $hireDate = Carbon::parse($employee->hire_date ?? now());
-        $currentYear = now()->year;
+        $hireDate = Carbon::parse($employee->hire_date ?? SystemClock::today());
+        $virtualNow = SystemClock::now();
+        $currentYear = $virtualNow->year;
 
         $cycleStart = $hireDate->copy()->year($currentYear);
-        if ($cycleStart->isFuture()) {
+        if ($cycleStart->gt($virtualNow)) {
             $cycleStart->subYear();
         }
 
@@ -62,10 +64,29 @@ class LeaveController extends Controller
 
             $used = LeaveRequest::where('employee_id', $employee->id)
                 ->where('leave_type', $leaveType->code)
-                ->whereBetween('start_date', [$cycle['start']->toDateString(), $cycle['end']->toDateString()])
                 ->whereIn('status', ['approved', 'pending'])
                 ->get()
-                ->sum(fn (LeaveRequest $leave) => $leave->calculateDaysRequested());
+                ->sum(function (LeaveRequest $leave) use ($cycle) {
+                    $leaveStart = Carbon::parse($leave->start_date)->startOfDay();
+                    $leaveEnd = Carbon::parse($leave->end_date)->startOfDay();
+
+                    if ($leaveEnd->lt($cycle['start']) || $leaveStart->gt($cycle['end'])) {
+                        return 0;
+                    }
+
+                    $effectiveStart = $leaveStart->copy()->max($cycle['start']);
+                    $effectiveEnd = $leaveEnd->copy()->min($cycle['end']);
+
+                    if ($effectiveEnd->lt($effectiveStart)) {
+                        return 0;
+                    }
+
+                    $clippedLeave = new LeaveRequest();
+                    $clippedLeave->start_date = $effectiveStart->toDateString();
+                    $clippedLeave->end_date = $effectiveEnd->toDateString();
+
+                    return $clippedLeave->calculateDaysRequested();
+                });
 
             $balances[$leaveType->code] = [
                 'id' => $leaveType->id,
@@ -108,7 +129,7 @@ class LeaveController extends Controller
                 'required',
                 Rule::exists('leave_types', 'code')->where(fn ($query) => $query->where('is_active', true)),
             ],
-            'start_date' => 'required|date|after_or_equal:today',
+            'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'reason' => 'nullable|string|max:1000',
         ]);
@@ -121,6 +142,17 @@ class LeaveController extends Controller
                 'success' => false,
                 'message' => 'Employee record not found.',
             ], 404);
+        }
+
+        $systemToday = SystemClock::today()->startOfDay();
+        if (Carbon::parse($request->start_date)->startOfDay()->lt($systemToday)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Start date must be today or a future date based on system time.',
+                'errors' => [
+                    'start_date' => ['Start date must be today or a future date.'],
+                ],
+            ], 422);
         }
 
         $daysRequested = $this->calculateRequestedDays($request->start_date, $request->end_date);

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
@@ -122,20 +124,61 @@ class UserController extends Controller
     public function destroy($id)
     {
         $user = User::findOrFail($id);
+        $currentUser = request()->user();
         
         // Prevent users from deleting themselves
-        if (auth()->id() === $user->id) {
+        if ($currentUser && $currentUser->id === $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'You cannot delete your own account.',
             ], 403);
         }
 
-        $user->delete();
+        DB::transaction(function () use ($user) {
+            if ($user->employee) {
+                $user->employee->update(['status' => 'inactive']);
+                $user->employee->delete();
+            }
+
+            $user->email = sprintf('deleted+%d+%d@archived.local', $user->id, now()->timestamp);
+            $user->save();
+            $user->delete();
+        });
 
         return response()->json([
             'success' => true,
-            'message' => 'User deleted successfully',
+            'message' => 'User soft deleted successfully',
+        ]);
+    }
+
+    /**
+     * Permanently remove the specified user.
+     */
+    public function hardDelete($id)
+    {
+        $user = User::withTrashed()->findOrFail($id);
+        $currentUser = request()->user();
+
+        if ($currentUser && $currentUser->id === $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot delete your own account.',
+            ], 403);
+        }
+
+        DB::transaction(function () use ($user) {
+            $employee = Employee::withTrashed()->where('user_id', $user->id)->first();
+
+            if ($employee) {
+                $employee->forceDelete();
+            }
+
+            $user->forceDelete();
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User permanently deleted',
         ]);
     }
 }

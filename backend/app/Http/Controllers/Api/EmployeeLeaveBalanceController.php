@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemClock;
 use App\Models\Employee;
 use App\Models\EmployeeLeaveBalance;
 use App\Models\LeaveRequest;
@@ -15,11 +16,12 @@ class EmployeeLeaveBalanceController extends Controller
 {
     private function calculateCycle(Employee $employee): array
     {
-        $hireDate = Carbon::parse($employee->hire_date ?? now());
-        $currentYear = now()->year;
+        $hireDate = Carbon::parse($employee->hire_date ?? SystemClock::today());
+        $virtualNow = SystemClock::now();
+        $currentYear = $virtualNow->year;
 
         $cycleStart = $hireDate->copy()->year($currentYear);
-        if ($cycleStart->isFuture()) {
+        if ($cycleStart->gt($virtualNow)) {
             $cycleStart->subYear();
         }
 
@@ -33,10 +35,29 @@ class EmployeeLeaveBalanceController extends Controller
     {
         return LeaveRequest::where('employee_id', $employee->id)
             ->where('leave_type', $leaveType->code)
-            ->whereBetween('start_date', [$cycleStart->toDateString(), $cycleEnd->toDateString()])
             ->whereIn('status', ['approved', 'pending'])
             ->get()
-            ->sum(fn (LeaveRequest $leave) => $leave->calculateDaysRequested());
+            ->sum(function (LeaveRequest $leave) use ($cycleStart, $cycleEnd) {
+                $leaveStart = Carbon::parse($leave->start_date)->startOfDay();
+                $leaveEnd = Carbon::parse($leave->end_date)->startOfDay();
+
+                if ($leaveEnd->lt($cycleStart) || $leaveStart->gt($cycleEnd)) {
+                    return 0;
+                }
+
+                $effectiveStart = $leaveStart->copy()->max($cycleStart);
+                $effectiveEnd = $leaveEnd->copy()->min($cycleEnd);
+
+                if ($effectiveEnd->lt($effectiveStart)) {
+                    return 0;
+                }
+
+                $clippedLeave = new LeaveRequest();
+                $clippedLeave->start_date = $effectiveStart->toDateString();
+                $clippedLeave->end_date = $effectiveEnd->toDateString();
+
+                return $clippedLeave->calculateDaysRequested();
+            });
     }
 
     public function show(Employee $employee)

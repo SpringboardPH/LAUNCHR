@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class EmployeeController extends Controller
 {
@@ -57,17 +58,9 @@ class EmployeeController extends Controller
     {
         $data = $request->validated();
 
-        // Auto-generate employee_id if not provided
-        if (empty($data['employee_id'])) {
-            $lastEmployee = Employee::latest('id')->first();
-            // Extract numeric part from last employee_id (e.g., "EMP001" -> 1)
-            $lastId = 0;
-            if ($lastEmployee && preg_match('/\d+/', $lastEmployee->employee_id, $matches)) {
-                $lastId = (int) $matches[0];
-            }
-            $nextId = $lastId + 1;
-            // Use 3-digit padding to match seeder format (EMP001, EMP002, etc.)
-            $data['employee_id'] = 'EMP' . str_pad($nextId, 3, '0', STR_PAD_LEFT);
+        $needsGeneratedEmployeeId = empty($data['employee_id']);
+        if ($needsGeneratedEmployeeId) {
+            $data['employee_id'] = 'TEMP-' . Str::uuid();
         }
 
         // Map basic_salary to salary if provided
@@ -76,7 +69,7 @@ class EmployeeController extends Controller
             unset($data['basic_salary']);
         }
 
-        $employee = DB::transaction(function () use ($data, $request) {
+        $employee = DB::transaction(function () use ($data, $request, $needsGeneratedEmployeeId) {
             $currentUser = $request->user();
             $isAdmin = $currentUser && $currentUser->role === 'admin';
 
@@ -90,7 +83,15 @@ class EmployeeController extends Controller
 
             // 2. Link the user to the employee data
             $data['user_id'] = $user->id;
-            return Employee::create($data);
+            $employee = Employee::create($data);
+
+            if ($needsGeneratedEmployeeId) {
+                $employee->update([
+                    'employee_id' => 'EMP' . str_pad((string) $employee->id, 3, '0', STR_PAD_LEFT),
+                ]);
+            }
+
+            return $employee;
         });
 
         $message = 'Employee and user account created successfully.';

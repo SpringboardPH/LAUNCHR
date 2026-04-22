@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { format, startOfWeek, endOfWeek, parseISO, isBefore, startOfDay, isAfter } from 'date-fns'
@@ -17,6 +17,14 @@ import {
 } from '../../api/queries'
 import { PageHeader, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarDays, Plus, Edit2, Trash2 } from 'lucide-react'
+
+const getApiErrorMessage = (error, fallbackMessage) => {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    fallbackMessage
+  )
+}
 
 const getWeekRange = (baseDate, weekOffset = 0) => {
   const today = baseDate ?? new Date()
@@ -41,11 +49,15 @@ const EmployeeScheduleAssignmentPage = () => {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState('current')
+  const [dismissedSuggestedSchedules, setDismissedSuggestedSchedules] = useState([])
   const { data: sysClock } = useQuery({
     queryKey: systemClockKeys.all,
     queryFn: getSystemClock,
   })
-  const baseDate = sysClock?.date ? parseISO(sysClock.date) : new Date()
+  const baseDate = useMemo(
+    () => (sysClock?.date ? parseISO(sysClock.date) : new Date()),
+    [sysClock?.date]
+  )
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     employee_id: '',
@@ -82,13 +94,16 @@ const EmployeeScheduleAssignmentPage = () => {
       ...prev,
       ...getWeekRange(baseDate, 0),
     }))
-  }, [baseDate, editingId])
+  }, [baseDate])
 
   const createMutation = useMutation({
     mutationFn: createEmployeeSchedule,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
       resetForm()
+    },
+    onError: (error) => {
+      alert(getApiErrorMessage(error, 'Failed to assign schedule.'))
     },
   })
 
@@ -97,6 +112,9 @@ const EmployeeScheduleAssignmentPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
       resetForm()
+    },
+    onError: (error) => {
+      alert(getApiErrorMessage(error, 'Failed to update schedule.'))
     },
   })
 
@@ -150,6 +168,33 @@ const EmployeeScheduleAssignmentPage = () => {
         },
       })
     } else {
+      // If an active schedule already exists for this employee/week, update it instead
+      // of creating a duplicate. This keeps edits working even when rows are shown as defaults.
+      const overlappingSavedSchedule = allActiveSchedules.find((schedule) => {
+        const sameEmployee = Number(schedule.employee_id) === Number(formData.employee_id)
+        if (!sameEmployee) return false
+
+        const existingStart = parseISO(schedule.start_date)
+        const existingEnd = parseISO(schedule.end_date)
+        const targetStart = parseISO(formData.start_date)
+        const targetEnd = parseISO(formData.end_date)
+
+        return !isBefore(existingEnd, targetStart) && !isAfter(existingStart, targetEnd)
+      })
+
+      if (overlappingSavedSchedule?.id) {
+        updateMutation.mutate({
+          id: overlappingSavedSchedule.id,
+          data: {
+            schedule_template_id: parseInt(formData.schedule_template_id),
+            start_date: formData.start_date,
+            end_date: formData.end_date,
+            status: 'active',
+          },
+        })
+        return
+      }
+
       createMutation.mutate({
         employee_id: parseInt(formData.employee_id),
         schedule_template_id: parseInt(formData.schedule_template_id),
@@ -160,7 +205,7 @@ const EmployeeScheduleAssignmentPage = () => {
   }
 
   const handleEdit = (schedule) => {
-    setEditingId(schedule.id)
+    setEditingId(schedule.isSuggested ? null : schedule.id)
     setFormData({
       employee_id: schedule.employee_id,
       schedule_template_id: schedule.schedule_template_id,
@@ -170,6 +215,11 @@ const EmployeeScheduleAssignmentPage = () => {
   }
 
   const handleDelete = (schedule) => {
+    if (schedule.isSuggested) {
+      setDismissedSuggestedSchedules(prev => [...new Set([...prev, schedule.id])])
+      return
+    }
+
     const employeeName = getEmployeeName(schedule.employee_id)
     const templateName = getTemplateName(schedule.schedule_template_id)
     setConfirmConfig({
@@ -213,6 +263,33 @@ const EmployeeScheduleAssignmentPage = () => {
     const end = parseISO(s.end_date)
     return !isBefore(end, thisWeekStart) && !isAfter(start, thisWeekEnd)
   })
+  const previousSchedules = allActiveSchedules
+    .filter((s) => isBefore(parseISO(s.end_date), thisWeekStart))
+    .sort((a, b) => parseISO(b.end_date) - parseISO(a.end_date))
+  const fallbackSchedulesByEmployee = new Map()
+  previousSchedules.forEach((schedule) => {
+    if (!fallbackSchedulesByEmployee.has(schedule.employee_id)) {
+      fallbackSchedulesByEmployee.set(schedule.employee_id, schedule)
+    }
+  })
+  const sourceSchedulesForDefaults = thisWeekSchedules.length > 0
+    ? thisWeekSchedules
+    : Array.from(fallbackSchedulesByEmployee.values())
+
+  const currentWeekEmployeeIdsWithSavedSchedule = new Set(thisWeekSchedules.map(s => s.employee_id))
+  const suggestedCurrentWeekSchedules = Array.from(fallbackSchedulesByEmployee.values())
+    .filter((s) => !currentWeekEmployeeIdsWithSavedSchedule.has(s.employee_id))
+    .map((s) => ({
+      ...s,
+      id: `suggested-current-${s.employee_id}-${thisWeekRange.start_date}`,
+      start_date: thisWeekRange.start_date,
+      end_date: thisWeekRange.end_date,
+      isSuggested: true,
+    }))
+  const currentSchedulesWithDefaults = [
+    ...thisWeekSchedules,
+    ...suggestedCurrentWeekSchedules,
+  ]
   const savedNextWeekSchedules = allActiveSchedules.filter((s) => {
     const start = parseISO(s.start_date)
     const end = parseISO(s.end_date)
@@ -220,11 +297,11 @@ const EmployeeScheduleAssignmentPage = () => {
   })
   const futureSchedules = allActiveSchedules.filter((s) => isBefore(today, parseISO(s.start_date)))
   const nextWeekEmployeeIdsWithSavedSchedule = new Set(savedNextWeekSchedules.map(s => s.employee_id))
-  const suggestedNextWeekSchedules = thisWeekSchedules
+  const suggestedNextWeekSchedules = sourceSchedulesForDefaults
     .filter((s) => !nextWeekEmployeeIdsWithSavedSchedule.has(s.employee_id))
     .map((s) => ({
       ...s,
-      id: `suggested-${s.employee_id}`,
+      id: `suggested-${s.employee_id}-${nextWeekRange.start_date}`,
       start_date: nextWeekRange.start_date,
       end_date: nextWeekRange.end_date,
       isSuggested: true,
@@ -237,7 +314,9 @@ const EmployeeScheduleAssignmentPage = () => {
       return isAfter(start, nextWeekEnd)
     }),
   ]
-  const shownSchedules = activeTab === 'future' ? uniqueFutureSchedules : currentSchedules
+  const shownSchedules = activeTab === 'future'
+    ? uniqueFutureSchedules.filter((schedule) => !dismissedSuggestedSchedules.includes(schedule.id))
+    : currentSchedulesWithDefaults.filter((schedule) => !dismissedSuggestedSchedules.includes(schedule.id))
 
   return (
     <div>
@@ -402,47 +481,27 @@ const EmployeeScheduleAssignmentPage = () => {
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
                     {getTemplateName(schedule.schedule_template_id)}
-                    {schedule.isSuggested && (
-                      <span className="ml-2 text-[10px] text-brand-600 font-semibold">Default (from this week)</span>
-                    )}
                   </td>
                   <td className="py-2.5 pr-4 text-gray-600 text-sm">
                     {format(new Date(schedule.start_date), 'MMM dd')} - {format(new Date(schedule.end_date), 'MMM dd, yyyy')}
                   </td>
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
-                      {schedule.isSuggested ? (
-                        <button
-                          onClick={() => {
-                            setEditingId(null)
-                            setFormData({
-                              employee_id: schedule.employee_id,
-                              schedule_template_id: schedule.schedule_template_id,
-                              start_date: schedule.start_date,
-                              end_date: schedule.end_date,
-                            })
-                          }}
-                          className="btn-secondary text-xs px-2 py-1"
-                        >
-                          Use Default
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleEdit(schedule)}
-                            className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(schedule)}
-                            disabled={deleteMutation.isPending}
-                            className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
+                      <button
+                        onClick={() => handleEdit(schedule)}
+                        className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
+                        title="Edit"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(schedule)}
+                        disabled={deleteMutation.isPending && !schedule.isSuggested}
+                        className="btn-ghost p-1.5 text-red-500 hover:bg-red-50 disabled:opacity-50"
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>

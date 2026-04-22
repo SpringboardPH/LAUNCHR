@@ -101,6 +101,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/admin/employees/{id}/restore', [EmployeeController::class, 'restore']);
         
         // User Management (Admin)
+        Route::delete('/admin/users/{id}/hard-delete', [UserController::class, 'hardDelete']);
         Route::apiResource('admin/users', UserController::class);
     });
     

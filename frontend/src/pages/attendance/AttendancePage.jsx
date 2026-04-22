@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
 import {
   getAttendanceToday, getAttendance, clockIn, clockOut,
   getEmployees, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
+  getSystemClock, systemClockKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, CalendarDays } from 'lucide-react'
 import { getClockWindow } from '../../utils/attendance'
 
@@ -34,14 +35,32 @@ const calculateHours = (clockInTime, clockOutTime) => {
 }
 
 export default function AttendancePage() {
-  const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'))
+  const [month, setMonth] = useState(null)
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
+  const [earlyClockOutConfirm, setEarlyClockOutConfirm] = useState({
+    open: false,
+    employeeId: null,
+  })
   const qc = useQueryClient()
 
+  const { data: sysClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchInterval: 30_000,
+  })
+
+  const defaultMonth = sysClock?.date
+    ? sysClock.date.substring(0, 7)
+    : format(new Date(), 'yyyy-MM')
+  const activeMonth = month ?? defaultMonth
+
   const monthlyParams = {
-    month,
+    month: activeMonth,
     include_absentees: true,
     personal: false,
     ...(monthlyEmployeeSearch.trim() ? { employee_search: monthlyEmployeeSearch.trim() } : {}),
@@ -69,8 +88,17 @@ export default function AttendancePage() {
     const template = schedule?.template
     if (!template) return '—'
 
-    const today = new Date().getDay()
+    const today = sysClock?.day_of_week ?? new Date().getDay()
     const dayRule = (template.day_rules || []).find(r => r.day === today)
+
+    if (dayRule && !dayRule.enabled) {
+      return (
+        <div className="flex flex-col gap-0.5 text-[10px] leading-tight text-amber-700">
+          <span className="font-medium">Not scheduled today</span>
+          <span>{template.name}</span>
+        </div>
+      )
+    }
 
     // Helper functions for time math
     const parse = (t) => {
@@ -157,10 +185,24 @@ export default function AttendancePage() {
     },
   })
   const clockOutMutation = useMutation({
-    mutationFn: (employeeId) => clockOut('', employeeId),
+    mutationFn: ({ employeeId, confirmEarlyClockOut = false }) =>
+      clockOut('', employeeId, confirmEarlyClockOut),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
+    },
+    onError: (error, variables) => {
+      const shouldConfirmEarlyClockOut =
+        error?.response?.status === 422 && error?.response?.data?.confirm_required
+
+      if (!shouldConfirmEarlyClockOut || variables?.confirmEarlyClockOut) {
+        return
+      }
+
+      setEarlyClockOutConfirm({
+        open: true,
+        employeeId: variables.employeeId,
+      })
     },
   })
 
@@ -169,26 +211,77 @@ export default function AttendancePage() {
   const logs = monthlyData?.data ?? []
   const todayLogsArray = Array.isArray(todayLogs) ? todayLogs : []
 
-  const currentDate = new Date()
+  const currentDate = sysClock?.date ? parseISO(sysClock.date) : new Date()
   const currentSchedules = activeSchedules.filter(schedule => {
     const start = parseISO(schedule.start_date)
     const end = parseISO(schedule.end_date)
     return currentDate >= start && currentDate <= end
   })
 
+  const currentWeekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
+  const currentWeekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })
+  const currentWeekStartStr = format(currentWeekStart, 'yyyy-MM-dd')
+  const currentWeekEndStr = format(currentWeekEnd, 'yyyy-MM-dd')
+
+  const hasCurrentScheduleByEmployee = new Set(currentSchedules.map((schedule) => schedule.employee_id))
+
+  const previousSchedules = activeSchedules
+    .filter((schedule) => parseISO(schedule.end_date) < currentDate)
+    .sort((a, b) => parseISO(b.end_date) - parseISO(a.end_date))
+
+  const latestPreviousByEmployee = new Map()
+  previousSchedules.forEach((schedule) => {
+    if (!latestPreviousByEmployee.has(schedule.employee_id)) {
+      latestPreviousByEmployee.set(schedule.employee_id, schedule)
+    }
+  })
+
+  const fallbackCurrentSchedules = Array.from(latestPreviousByEmployee.values())
+    .filter((schedule) => !hasCurrentScheduleByEmployee.has(schedule.employee_id))
+    .map((schedule) => ({
+      ...schedule,
+      id: `carry-forward-${schedule.employee_id}-${currentWeekStartStr}`,
+      start_date: currentWeekStartStr,
+      end_date: currentWeekEndStr,
+      carried_forward: true,
+    }))
+
+  const resolvedCurrentSchedules = [...currentSchedules, ...fallbackCurrentSchedules]
+
+  const displayDateLabel = sysClock?.date
+    ? format(parseISO(sysClock.date), 'EEEE, MMMM d, yyyy')
+    : format(new Date(), 'EEEE, MMMM d, yyyy')
+
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
-  const getScheduleForEmployee = (empId) => currentSchedules.find(s => s.employee_id === empId)
+  const getScheduleForEmployee = (empId) => resolvedCurrentSchedules.find(s => s.employee_id === empId)
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Attendance" description={`Today: ${format(new Date(), 'EEEE, MMMM d, yyyy')}`} />
+      <ConfirmModal
+        open={earlyClockOutConfirm.open}
+        onClose={() => setEarlyClockOutConfirm({ open: false, employeeId: null })}
+        onConfirm={() => {
+          if (!earlyClockOutConfirm.employeeId) return
+          clockOutMutation.mutate({
+            employeeId: earlyClockOutConfirm.employeeId,
+            confirmEarlyClockOut: true,
+          })
+          setEarlyClockOutConfirm({ open: false, employeeId: null })
+        }}
+        title="Clock Out Early?"
+        message="Clock out now even though hours will be counted as incomplete?"
+        type="danger"
+        confirmLabel="Confirm Clock Out"
+      />
+
+      <PageHeader title="Attendance" description={`Today: ${displayDateLabel}`} />
 
       {/* Weekly schedule summary */}
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
           <CalendarDays size={14} className="text-brand-600" /> Current Weekly Schedules
         </h2>
-        {currentSchedules.length > 0 ? (
+        {resolvedCurrentSchedules.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
@@ -199,7 +292,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {currentSchedules.map(schedule => (
+                {resolvedCurrentSchedules.map(schedule => (
                   <tr key={schedule.id} className="hover:bg-gray-50">
                     <td className="py-2.5 pr-4 font-medium text-gray-900">
                       {schedule.employee?.first_name} {schedule.employee?.last_name}
@@ -207,6 +300,9 @@ export default function AttendancePage() {
                     <td className="py-2.5 pr-4 text-gray-600">{schedule.template?.name}</td>
                     <td className="py-2.5 pr-4 text-gray-600">
                       {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd, yyyy')}
+                      {schedule.carried_forward && (
+                        <span className="ml-2 text-[10px] text-gray-500">(carried forward)</span>
+                      )}
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600">
                       {schedule.template?.work_start_time?.substring(0, 5)} - {schedule.template?.work_end_time?.substring(0, 5)}
@@ -234,9 +330,13 @@ export default function AttendancePage() {
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
-                  {['Employee', 'Schedule', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Action'].map(h => (
-                    <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
-                  ))}
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Employee</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-8">Schedule</th>
+                  <th className="pb-2 pl-3 text-left text-xs text-gray-400 font-medium pr-4">Clock In</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Clock Out</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Hours</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Status</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -248,7 +348,7 @@ export default function AttendancePage() {
                       <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                         {emp.first_name} {emp.last_name}
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600 text-sm">
+                      <td className="py-2.5 pr-8 text-gray-600 text-sm">
                         {schedule ? (
                           <div className="space-y-0.5">
                             <div className="font-medium text-gray-800 text-sm">{schedule.template?.name}</div>
@@ -263,7 +363,7 @@ export default function AttendancePage() {
                           <span className="text-gray-400">No schedule</span>
                         )}
                       </td>
-                      <td className="py-2.5 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
+                      <td className="py-2.5 pl-3 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log?.clock_in_time, log?.clock_out_time)}</td>
                       <td className="py-2.5 pr-4">
@@ -275,7 +375,10 @@ export default function AttendancePage() {
                           )
                         ) : (
                           (() => {
-                            const win = getClockWindow(schedule)
+                            const win = getClockWindow(schedule, sysClock)
+                            if (win?.isInactiveDay) {
+                              return <span className="badge-gray text-xs px-2 py-1 rounded">Not scheduled</span>
+                            }
                             const isPastShift = win && win.currentMinutes > win.outEnd
                             return isPastShift ? (
                               <span className="badge-red text-xs px-2 py-1 rounded">Absent</span>
@@ -287,16 +390,25 @@ export default function AttendancePage() {
                       </td>
                       <td className="py-2.5">
                         {!log || !log.clock_in_time ? (
+                          (() => {
+                            const win = getClockWindow(schedule, sysClock)
+                            const canClockIn = Boolean(win) && !win.isInactiveDay && win.currentMinutes >= win.inStart && win.currentMinutes <= win.outEnd
+                            return (
                           <button
                             onClick={() => clockInMutation.mutate(emp.id)}
-                            disabled={clockInMutation.isPending}
-                            className="btn-primary text-xs py-1.5 px-3"
+                            disabled={clockInMutation.isPending || !canClockIn}
+                            className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
                           >
-                            <LogIn size={12} /> Clock In
+                            <LogIn size={12} />
+                            {!canClockIn
+                              ? (win?.isInactiveDay ? 'Not scheduled today' : 'Clock in unavailable')
+                              : 'Clock In'}
                           </button>
+                            )
+                          })()
                         ) : !log.clock_out_time ? (
                           <button
-                            onClick={() => clockOutMutation.mutate(emp.id)}
+                            onClick={() => clockOutMutation.mutate({ employeeId: emp.id })}
                             disabled={clockOutMutation.isPending}
                             className="btn-secondary text-xs py-1.5 px-3"
                           >
@@ -326,7 +438,7 @@ export default function AttendancePage() {
             <input
               type="month"
               className="input text-sm"
-              value={month}
+                value={activeMonth}
               onChange={e => setMonth(e.target.value)}
             />
             <input
@@ -377,7 +489,7 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-gray-50">
                 {logs.map(log => (
                   <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{format(new Date(log.date), 'MMM dd, yyyy')}</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{format(parseISO(log.date), 'MMM dd, yyyy')}</td>
                     <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                       {log.employee?.first_name} {log.employee?.last_name}
                     </td>

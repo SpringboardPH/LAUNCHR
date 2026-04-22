@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Helpers\SystemClock;
 use Illuminate\Database\Eloquent\Model;
 
 class EmployeeSchedule extends Model
@@ -36,13 +37,26 @@ class EmployeeSchedule extends Model
     {
         $date = \Carbon\Carbon::parse($date);
         $dateString = $date->toDateString();
-        
-        return self::where('employee_id', $employeeId)
+
+        $activeSchedule = self::where('employee_id', $employeeId)
             ->whereDate('start_date', '<=', $dateString)
             ->whereDate('end_date', '>=', $dateString)
+            ->where('status', 'active')
             ->with('template')
-            // Keep historical schedule context even if a record becomes archived/inactive later.
-            ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if ($activeSchedule) {
+            return $activeSchedule;
+        }
+
+        // Carry-forward fallback: use the most recent prior active schedule
+        // when no explicit schedule exists for the date.
+        return self::where('employee_id', $employeeId)
+            ->where('status', 'active')
+            ->whereDate('end_date', '<', $dateString)
+            ->with('template')
+            ->orderByDesc('end_date')
             ->orderByDesc('updated_at')
             ->first();
     }
@@ -52,15 +66,28 @@ class EmployeeSchedule extends Model
      */
     public static function getCurrentForEmployee($employeeId)
     {
-        $now = \Carbon\Carbon::now();
+        $now = SystemClock::now();
         $weekStart = $now->copy()->startOfWeek();
         $weekEnd = $now->copy()->endOfWeek();
 
-        return self::where('employee_id', $employeeId)
+        $currentSchedule = self::where('employee_id', $employeeId)
             ->where('start_date', '<=', $weekEnd)
             ->where('end_date', '>=', $weekStart)
             ->where('status', 'active')
             ->with('template')
+            ->first();
+
+        if ($currentSchedule) {
+            return $currentSchedule;
+        }
+
+        // Carry forward latest prior active schedule when no explicit current week entry exists.
+        return self::where('employee_id', $employeeId)
+            ->where('status', 'active')
+            ->where('end_date', '<', $weekStart)
+            ->with('template')
+            ->orderByDesc('end_date')
+            ->orderByDesc('updated_at')
             ->first();
     }
 }

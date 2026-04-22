@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { createLeave, leaveKeys, getLeaves, getLeaveBalance } from '../../api/queries'
+import { createLeave, leaveKeys, getLeaves, getLeaveBalance, getSystemClock, systemClockKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
 import { format } from 'date-fns'
@@ -12,9 +12,7 @@ import { useAuth } from '../../store/AuthContext'
 
 const leaveSchema = z.object({
   leave_type: z.string().min(1, { message: 'Invalid leave type' }),
-  start_date: z.string().refine(d => new Date(d) >= new Date(new Date().setHours(0, 0, 0, 0)), {
-    message: 'Start date must be today or in the future',
-  }),
+  start_date: z.string().min(1, { message: 'Start date is required' }),
   end_date: z.string(),
   reason: z.string().optional(),
 }).refine(d => new Date(d.end_date) >= new Date(d.start_date), {
@@ -35,8 +33,17 @@ export default function LeaveRequestFormPage() {
     queryFn: () => getLeaves({ personal: true }),
   })
 
+  const { data: systemClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+  })
+
   const { data: balanceData } = useQuery({
-    queryKey: leaveKeys.balance(user?.id),
+    queryKey: [...leaveKeys.balance(user?.id), systemClock?.date],
     queryFn: () => getLeaveBalance(),
     staleTime: 0,
     refetchOnMount: 'always',
@@ -105,6 +112,16 @@ export default function LeaveRequestFormPage() {
   })
 
   const onSubmit = (data) => {
+    const virtualToday = systemClock?.date
+      ? new Date(`${systemClock.date}T00:00:00`)
+      : new Date(new Date().setHours(0, 0, 0, 0))
+    const selectedStart = new Date(`${data.start_date}T00:00:00`)
+
+    if (selectedStart < virtualToday) {
+      setLocalError('Start date must be today or in the future.')
+      return
+    }
+
     const days = calculateRequestedDays(data.start_date, data.end_date)
 
     if (days < 1) {

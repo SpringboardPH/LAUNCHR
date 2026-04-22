@@ -54,8 +54,12 @@ export const getMonthlyAttendance = (employeeId, month) =>
 export const clockIn = (notes, employeeId = null) =>
   api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)
 
-export const clockOut = (notes, employeeId = null) =>
-  api.post('/attendance/clock-out', { notes, employee_id: employeeId }).then(r => r.data.data)
+export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false) =>
+  api.post('/attendance/clock-out', {
+    notes,
+    employee_id: employeeId,
+    confirm_early_clock_out: confirmEarlyClockOut,
+  }).then(r => r.data.data)
 
 // ─── Leaves ──────────────────────────────────────────────────
 export const leaveKeys = {
@@ -291,3 +295,6 @@ export const updateUser = (id, data) =>
 
 export const deleteUser = (id) =>
   api.delete(`/admin/users/${id}`).then(r => r.data)
+
+export const hardDeleteUser = (id) =>
+  api.delete(`/admin/users/${id}/hard-delete`).then(r => r.data)

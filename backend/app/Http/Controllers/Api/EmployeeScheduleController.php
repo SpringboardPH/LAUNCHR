@@ -82,6 +82,26 @@ class EmployeeScheduleController extends Controller
             ], 422);
         }
 
+        $existingSchedule = EmployeeSchedule::where('employee_id', $validated['employee_id'])
+            ->whereDate('start_date', $validated['start_date'])
+            ->whereDate('end_date', $validated['end_date'])
+            ->first();
+
+        if ($existingSchedule) {
+            $existingSchedule->update([
+                'schedule_template_id' => $validated['schedule_template_id'],
+                'status' => 'active',
+            ]);
+
+            $existingSchedule->load(['employee', 'template']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $existingSchedule,
+                'message' => 'Schedule updated successfully',
+            ]);
+        }
+
         // Check for overlapping schedules
         $overlap = EmployeeSchedule::where('employee_id', $validated['employee_id'])
             ->where('status', 'active')
@@ -98,7 +118,10 @@ class EmployeeScheduleController extends Controller
             ], 409);
         }
 
-        $schedule = EmployeeSchedule::create($validated);
+        $schedule = EmployeeSchedule::create([
+            ...$validated,
+            'status' => 'active',
+        ]);
         $schedule->load(['employee', 'template']);
 
         return response()->json([

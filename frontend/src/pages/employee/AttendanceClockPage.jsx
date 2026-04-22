@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
+import { addMonths, format, parseISO } from 'date-fns'
 import {
   clockIn, clockOut, getAttendanceToday, getMonthlyAttendance,
   attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { getClockWindow } from '../../utils/attendance'
@@ -36,6 +36,7 @@ const calculateHours = (clockInTime, clockOutTime) => {
 
 export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
+  const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user, loading: authLoading } = useAuth()
@@ -97,12 +98,14 @@ export default function AttendanceClockPage() {
   })
 
   const { data: currentSchedule, isLoading: loadingSchedule } = useQuery({
-    queryKey: employeeScheduleKeys.currentForEmployee(user?.employee?.id),
+    queryKey: [...employeeScheduleKeys.currentForEmployee(user?.employee?.id), sysClock?.date],
     queryFn: () => getCurrentScheduleForEmployee(user?.employee?.id),
     enabled: !!user?.employee?.id,
   })
 
   const activeMonth = month ?? defaultMonth
+  const activeMonthDate = parseISO(`${activeMonth}-01`)
+  const activeMonthLabel = format(activeMonthDate, 'MMMM yyyy')
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
     queryKey: attendanceKeys.monthly(employeeId, activeMonth),
@@ -126,13 +129,22 @@ export default function AttendanceClockPage() {
     },
   })
   const outMutation = useMutation({
-    mutationFn: () => clockOut(notes),
+    mutationFn: ({ confirmEarlyClockOut = false } = {}) =>
+      clockOut(notes, null, confirmEarlyClockOut),
     onSuccess: () => {
       setNotes('')
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
-    onError: () => {
+    onError: (error, variables) => {
+      const shouldConfirmEarlyClockOut =
+        error?.response?.status === 422 && error?.response?.data?.confirm_required
+
+      if (shouldConfirmEarlyClockOut && !variables?.confirmEarlyClockOut) {
+        setEarlyClockOutConfirmOpen(true)
+        return
+      }
+
       setNotes('')
       refetch()
     },
@@ -143,11 +155,33 @@ export default function AttendanceClockPage() {
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
   const monthlyLogs = monthlyData?.data ?? []
+  const statusCounts = monthlyLogs.reduce((acc, log) => {
+    const status = log.status || 'unknown'
+    acc[status] = (acc[status] || 0) + 1
+    return acc
+  }, {})
+
+  const visualStatuses = [
+    { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
+    { key: 'late', label: 'Late', color: 'bg-amber-500' },
+    { key: 'incomplete', label: 'Incomplete', color: 'bg-orange-500' },
+    { key: 'absent', label: 'Absent', color: 'bg-rose-500' },
+    { key: 'on_leave', label: 'On Leave', color: 'bg-sky-500' },
+  ]
+
+  const totalVisualDays = visualStatuses.reduce((sum, item) => sum + (statusCounts[item.key] || 0), 0)
+
+  const moveMonth = (delta) => {
+    const next = addMonths(activeMonthDate, delta)
+    setMonth(format(next, 'yyyy-MM'))
+  }
 
   // Pass sysClock to window check so it uses the virtual time
   const window = getClockWindow(currentSchedule, sysClock)
-  const canClockIn = window?.isWithinInWindow
-  const canClockOut = window?.isWithinOutWindow
+  const canClockIn = Boolean(window) && !window.isInactiveDay && window.currentMinutes >= window.inStart && window.currentMinutes <= window.outEnd
+  const canClockOut = Boolean(window) && Boolean(isClockedIn) && !isClockedOut
+  const isTooEarlyToClockIn = Boolean(window) && !window.isInactiveDay && window.currentMinutes < window.inStart
+  const isClockInWindowClosed = Boolean(window) && !window.isInactiveDay && window.currentMinutes > window.outEnd
 
   // Formatted display values — show system clock, not browser clock
   const displayDateLabel = displayTime
@@ -164,6 +198,19 @@ export default function AttendanceClockPage() {
 
   return (
     <div>
+      <ConfirmModal
+        open={earlyClockOutConfirmOpen}
+        onClose={() => setEarlyClockOutConfirmOpen(false)}
+        onConfirm={() => {
+          outMutation.mutate({ confirmEarlyClockOut: true })
+          setEarlyClockOutConfirmOpen(false)
+        }}
+        title="Clock Out Early?"
+        message="Clock out now even though hours will be counted as incomplete?"
+        type="danger"
+        confirmLabel="Confirm Clock Out"
+      />
+
       <PageHeader
         title="Clock In / Out"
         description={displayDateLabel}
@@ -241,16 +288,20 @@ export default function AttendanceClockPage() {
                 className={`btn w-full ${!canClockIn ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
               >
                 <Clock size={16} />
-                {!canClockIn ? 'Not your scheduled time yet' : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
+                {!canClockIn
+                  ? (window?.isInactiveDay
+                    ? 'Not scheduled today'
+                    : (isTooEarlyToClockIn ? 'Not your scheduled time yet' : (isClockInWindowClosed ? 'Clock-in window closed' : 'Clock in unavailable')))
+                  : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
               </button>
             ) : !isClockedOut ? (
               <button
-                onClick={() => outMutation.mutate()}
+                onClick={() => outMutation.mutate({ confirmEarlyClockOut: false })}
                 disabled={outMutation.isPending || !canClockOut}
                 className={`btn w-full ${!canClockOut ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-secondary'}`}
               >
                 <LogOut size={16} />
-                {!canClockOut ? 'Not your scheduled time yet' : (outMutation.isPending ? 'Clocking out...' : 'Clock Out')}
+                {!canClockOut ? 'Not available' : (outMutation.isPending ? 'Clocking out...' : 'Clock Out')}
               </button>
             ) : (
               <div className="p-3 bg-gray-50 rounded-lg text-center">
@@ -274,12 +325,40 @@ export default function AttendanceClockPage() {
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">Only your own attendance records are shown here.</p>
               </div>
-              <input
-                type="month"
-                className="input w-44 text-sm"
-                value={activeMonth}
-                onChange={(e) => setMonth(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveMonth(-1)}>
+                  Prev
+                </button>
+                <span className="text-sm font-medium text-gray-700 min-w-[110px] text-center">{activeMonthLabel}</span>
+                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveMonth(1)}>
+                  Next
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-lg border border-gray-200 p-4 bg-gray-50">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Monthly Visualization</p>
+              {totalVisualDays > 0 ? (
+                <div className="space-y-3">
+                  {visualStatuses.map((item) => {
+                    const count = statusCounts[item.key] || 0
+                    const percent = totalVisualDays > 0 ? Math.round((count / totalVisualDays) * 100) : 0
+                    return (
+                      <div key={item.key}>
+                        <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                          <span>{item.label}</span>
+                          <span>{count} ({percent}%)</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-white overflow-hidden">
+                          <div className={`${item.color} h-2 rounded-full`} style={{ width: `${percent}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">No logs yet for {activeMonthLabel}.</p>
+              )}
             </div>
 
             {monthlyLoading ? (

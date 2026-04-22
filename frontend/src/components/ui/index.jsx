@@ -169,6 +169,14 @@ export function ScheduleDisplay({ schedule, compact = false, sysClock = null }) 
     <div className="text-xs text-gray-400 italic">No assigned schedule for this week.</div>
   )
 
+  if (window.isInactiveDay) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        {schedule.template?.name} is not scheduled for today.
+      </div>
+    )
+  }
+
   const { inStart, inEnd, outStart, outEnd, workStart, workEnd, formatTime } = window
 
   const WindowItem = ({ label, start, end, icon: Icon, color }) => (

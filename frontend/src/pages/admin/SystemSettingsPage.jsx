@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys } from '../../api/queries'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys } from '../../api/queries'
 import { Clock, Calendar, Save, RotateCcw, Zap } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
@@ -48,10 +48,14 @@ export default function SystemSettingsPage() {
         qc.invalidateQueries({ queryKey: adminSettingsKeys.all }),
         qc.invalidateQueries({ queryKey: systemClockKeys.all }),
         qc.invalidateQueries({ queryKey: attendanceKeys.all }),
+        qc.invalidateQueries({ queryKey: leaveKeys.all }),
+        qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.all }),
       ])
       await Promise.all([
         qc.refetchQueries({ queryKey: systemClockKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: attendanceKeys.all, type: 'active' }),
+        qc.refetchQueries({ queryKey: leaveKeys.all, type: 'active' }),
+        qc.refetchQueries({ queryKey: employeeLeaveBalanceKeys.all, type: 'active' }),
       ])
     }
   })

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, Spinner, Modal, FormField, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
+import { Edit2, Trash2 } from 'lucide-react'
 import {
   adminSettingsKeys,
   employeeKeys,
   employeeLeaveBalanceKeys,
   leaveKeys,
   leaveTypeKeys,
+  systemClockKeys,
   getAdminSettings,
   updateAdminSetting,
   getAdminLeaveTypes,
@@ -14,9 +16,9 @@ import {
   updateLeaveType,
   deleteLeaveType,
   getEmployees,
+  getSystemClock,
   getEmployeeLeaveBalances,
   upsertEmployeeLeaveBalance,
-  cancelEmployeeLeaveBalance,
 } from '../../api/queries'
 
 const EMPTY_TYPE_FORM = {
@@ -60,8 +62,17 @@ export default function AdminSettingsPage() {
     queryFn: () => getEmployees({ status: 'active' }),
   })
 
+  const { data: systemClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchInterval: 30_000,
+  })
+
   const { data: employeeBalanceData, isLoading: employeeBalanceLoading } = useQuery({
-    queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId),
+    queryKey: [...employeeLeaveBalanceKeys.detail(selectedEmployeeId), systemClock?.date],
     queryFn: () => getEmployeeLeaveBalances(selectedEmployeeId),
     enabled: Boolean(selectedEmployeeId),
   })
@@ -111,17 +122,6 @@ export default function AdminSettingsPage() {
     },
   })
 
-  const toggleTypeMutation = useMutation({
-    mutationFn: (leaveType) => updateLeaveType(leaveType.id, {
-      name: leaveType.name,
-      description: leaveType.description,
-      default_days: leaveType.default_days,
-      requires_balance: leaveType.requires_balance,
-      is_active: !leaveType.is_active,
-    }),
-    onSuccess: refreshLeaveData,
-  })
-
   const deleteTypeMutation = useMutation({
     mutationFn: (leaveTypeId) => deleteLeaveType(leaveTypeId),
     onSuccess: refreshLeaveData,
@@ -148,15 +148,6 @@ export default function AdminSettingsPage() {
     },
     onError: (error) => {
       setBalanceError(error?.response?.data?.message || 'Unable to save employee balance')
-    },
-  })
-
-  const cancelBalanceMutation = useMutation({
-    mutationFn: ({ leaveTypeId }) => cancelEmployeeLeaveBalance(selectedEmployeeId, leaveTypeId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId) })
-      qc.invalidateQueries({ queryKey: leaveKeys.balance(selectedEmployeeId) })
-      qc.invalidateQueries({ queryKey: leaveKeys.balance() })
     },
   })
 
@@ -229,16 +220,6 @@ export default function AdminSettingsPage() {
     })
   }
 
-  const handleCancelBalance = (leaveTypeId, leaveTypeName) => {
-    setConfirmConfig({
-      open: true,
-      title: 'Cancel Balance Override',
-      message: `Reset leave balance for "${leaveTypeName}" to its default value?`,
-      onConfirm: () => cancelBalanceMutation.mutate({ leaveTypeId }),
-      type: 'warning'
-    })
-  }
-
   const activeTypes = leaveTypes.filter((type) => type.is_active)
 
   return (
@@ -297,7 +278,7 @@ export default function AdminSettingsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
             <div>
               <h2 className="text-sm font-semibold text-gray-700">Leave Types</h2>
-              <p className="text-sm text-gray-500">Add, edit, activate, or deactivate leave types.</p>
+              <p className="text-sm text-gray-500">Add, edit, or delete leave types. Active status can be updated inside Edit.</p>
             </div>
             <button type="button" onClick={() => openTypeModal()} className="btn-primary">
               Add Leave Type
@@ -333,24 +314,22 @@ export default function AdminSettingsPage() {
                       <td className="px-4 py-3"><StatusBadge status={leaveType.is_active ? 'active' : 'inactive'} /></td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => openTypeModal(leaveType)} className="btn-secondary px-3 py-1.5 text-xs">
-                            Edit
-                          </button>
                           <button
                             type="button"
-                            onClick={() => toggleTypeMutation.mutate(leaveType)}
-                            disabled={toggleTypeMutation.isPending}
-                            className="btn-ghost px-3 py-1.5 text-xs"
+                            onClick={() => openTypeModal(leaveType)}
+                            className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
+                            title="Edit"
                           >
-                            {leaveType.is_active ? 'Deactivate' : 'Activate'}
+                            <Edit2 size={14} />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteType(leaveType)}
                             disabled={deleteTypeMutation.isPending}
-                            className="btn-ghost px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                            className="btn-ghost p-1.5 text-red-600 hover:bg-red-50"
+                            title="Delete"
                           >
-                            Delete
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>
@@ -452,19 +431,14 @@ export default function AdminSettingsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => openBalanceModal(balanceRow)} className="btn-secondary px-3 py-1.5 text-xs">
-                                {balanceRow.override?.is_active ? 'Adjust' : 'Set'}
+                              <button
+                                type="button"
+                                onClick={() => openBalanceModal(balanceRow)}
+                                className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
+                                title="Edit"
+                              >
+                                <Edit2 size={14} />
                               </button>
-                              {balanceRow.override?.is_active && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelBalance(balanceRow.leave_type.id, balanceRow.leave_type.name)}
-                                  disabled={cancelBalanceMutation.isPending}
-                                  className="btn-ghost px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-50"
-                                >
-                                  Cancel
-                                </button>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -552,7 +526,7 @@ export default function AdminSettingsPage() {
       <Modal
         open={balanceModalOpen}
         onClose={() => setBalanceModalOpen(false)}
-        title={`Set ${balanceForm.leaveTypeName || 'Leave Type'} Balance`}
+        title={`Edit ${balanceForm.leaveTypeName || 'Leave Type'} Override`}
         size="sm"
       >
         <form onSubmit={handleBalanceSubmit} className="space-y-4">
@@ -579,7 +553,7 @@ export default function AdminSettingsPage() {
             <div>
               <span className="font-medium">Active override</span>
               <p className="text-xs text-gray-500 mt-1">
-                On: use this employee-specific allocated days. Off: use the leave type default days.
+                On: use employee-specific allocated days. Off: use leave type default days.
               </p>
             </div>
             <input
@@ -595,7 +569,7 @@ export default function AdminSettingsPage() {
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={() => setBalanceModalOpen(false)} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={saveBalanceMutation.isPending} className="btn-primary">
-              {saveBalanceMutation.isPending ? 'Saving...' : 'Save balance'}
+              {saveBalanceMutation.isPending ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>

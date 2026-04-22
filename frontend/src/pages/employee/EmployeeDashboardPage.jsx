@@ -1,13 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
-import { getAttendanceToday, getLeaveBalance, attendanceKeys, leaveKeys, getCurrentScheduleForEmployee, employeeScheduleKeys } from '../../api/queries'
+import { getAttendanceToday, getLeaveBalance, getMonthlyAttendance, attendanceKeys, leaveKeys, getCurrentScheduleForEmployee, employeeScheduleKeys, getSystemClock, systemClockKeys } from '../../api/queries'
 import { PageHeader, StatCard, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
 import { Clock, CalendarOff, TrendingUp, LogOut, Plus } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuth()
+
+  const { data: sysClock, isLoading: loadingClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always',
+    refetchInterval: 30_000,
+  })
+
   const { data: todayAttendance, isLoading: loadingAttendance } = useQuery({
     queryKey: attendanceKeys.today(user?.id),
     queryFn: () => getAttendanceToday({ personal: true }),
@@ -16,7 +26,7 @@ export default function EmployeeDashboardPage() {
   })
 
   const { data: leaveBalance, isLoading: loadingBalance } = useQuery({
-    queryKey: leaveKeys.balance(user?.id),
+    queryKey: [...leaveKeys.balance(user?.id), sysClock?.date],
     queryFn: () => getLeaveBalance(),
     staleTime: 0,
     refetchOnMount: 'always',
@@ -24,23 +34,55 @@ export default function EmployeeDashboardPage() {
   })
 
   const { data: currentSchedule, isLoading: loadingSchedule } = useQuery({
-    queryKey: employeeScheduleKeys.currentForEmployee(user?.employee?.id),
+    queryKey: [...employeeScheduleKeys.currentForEmployee(user?.employee?.id), sysClock?.date],
     queryFn: () => getCurrentScheduleForEmployee(user?.employee?.id),
     enabled: !!user?.employee?.id,
   })
 
-  if (loadingAttendance || loadingBalance || loadingSchedule) return <PageSpinner />
+  const activeMonth = sysClock?.date ? sysClock.date.substring(0, 7) : format(new Date(), 'yyyy-MM')
+
+  const { data: monthlyAttendance, isLoading: loadingMonthlyAttendance } = useQuery({
+    queryKey: [...attendanceKeys.monthly(user?.employee?.id, activeMonth), sysClock?.date],
+    queryFn: () => getMonthlyAttendance(user?.employee?.id, activeMonth),
+    enabled: Boolean(user?.employee?.id) && Boolean(activeMonth),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  })
+
+  if (loadingAttendance || loadingBalance || loadingSchedule || loadingClock || loadingMonthlyAttendance) return <PageSpinner />
 
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
   const leaveBalances = Object.values(leaveBalance?.balances ?? {})
   const leaveCardColors = ['yellow', 'brand', 'blue', 'gray']
+  const displayDateLabel = sysClock?.date
+    ? format(parseISO(sysClock.date), 'EEEE, MMMM d, yyyy')
+    : format(new Date(), 'EEEE, MMMM d, yyyy')
+  const monthlyLogs = monthlyAttendance?.data ?? []
+
+  const monthlyStatusCounts = monthlyLogs.reduce((acc, log) => {
+    const status = log.status || 'unknown'
+    acc[status] = (acc[status] || 0) + 1
+    return acc
+  }, {})
+
+  const visualStatuses = [
+    { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
+    { key: 'late', label: 'Late', color: 'bg-amber-500' },
+    { key: 'incomplete', label: 'Incomplete', color: 'bg-orange-500' },
+    { key: 'absent', label: 'Absent', color: 'bg-rose-500' },
+    { key: 'on_leave', label: 'On Leave', color: 'bg-sky-500' },
+  ]
+
+  const totalVisualDays = visualStatuses.reduce((sum, item) => sum + (monthlyStatusCounts[item.key] || 0), 0)
+  const monthLabel = format(parseISO(`${activeMonth}-01`), 'MMMM yyyy')
 
   return (
     <div>
       <PageHeader
         title="My Dashboard"
-        description={format(new Date(), 'EEEE, MMMM d, yyyy')}
+        description={displayDateLabel}
       />
 
       {/* Quick Stats */}
@@ -69,7 +111,7 @@ export default function EmployeeDashboardPage() {
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-6">Today's Attendance</h2>
           <div className="mb-6 pb-6 border-b border-gray-100">
-            <ScheduleDisplay schedule={currentSchedule} />
+            <ScheduleDisplay schedule={currentSchedule} sysClock={sysClock} />
           </div>
           <div className="space-y-3">
             {isClockedIn ? (
@@ -143,6 +185,35 @@ export default function EmployeeDashboardPage() {
             <Plus size={14} /> Request Leave
           </Link>
         </div>
+      </div>
+
+      <div className="card p-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-700">Attendance Overview</h2>
+          <span className="text-xs text-gray-500">{monthLabel}</span>
+        </div>
+        {totalVisualDays > 0 ? (
+          <div className="space-y-3">
+            {visualStatuses.map((item) => {
+              const count = monthlyStatusCounts[item.key] || 0
+              const percent = totalVisualDays > 0 ? Math.round((count / totalVisualDays) * 100) : 0
+
+              return (
+                <div key={item.key}>
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <span>{item.label}</span>
+                    <span>{count} day{count === 1 ? '' : 's'} ({percent}%)</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div className={`${item.color} h-2 rounded-full`} style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">No attendance logs available for {monthLabel} yet.</p>
+        )}
       </div>
     </div>
   )

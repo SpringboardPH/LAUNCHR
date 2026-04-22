@@ -1,6 +1,6 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getEmployee, getLeaveBalance, employeeKeys, leaveKeys, employeeScheduleKeys, getCurrentScheduleForEmployee } from '../../api/queries'
+import { getEmployee, getLeaveBalance, employeeKeys, leaveKeys, employeeScheduleKeys, getCurrentScheduleForEmployee, getSystemClock, systemClockKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { ArrowLeft, Pencil, Mail, Phone, Calendar, Briefcase, Clock3, CalendarDays, ClipboardList } from 'lucide-react'
 import { format } from 'date-fns'
@@ -14,8 +14,17 @@ export default function EmployeeDetailPage() {
     queryFn: () => getEmployee(id),
   })
 
+  const { data: systemClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+  })
+
   const { data: balance } = useQuery({
-    queryKey: leaveKeys.balance(id),
+    queryKey: [...leaveKeys.balance(id), systemClock?.date],
     queryFn: () => getLeaveBalance(id),
     enabled: Boolean(id),
     staleTime: 0,
@@ -24,7 +33,7 @@ export default function EmployeeDetailPage() {
   })
 
   const { data: schedule } = useQuery({
-    queryKey: employeeScheduleKeys.currentForEmployee(id),
+    queryKey: [...employeeScheduleKeys.currentForEmployee(id), systemClock?.date],
     queryFn: () => getCurrentScheduleForEmployee(id),
     enabled: Boolean(id),
   })

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemClock;
 use App\Models\Employee;
 use App\Models\AttendanceLog;
 use App\Models\LeaveRequest;
@@ -14,10 +15,11 @@ class DashboardController extends Controller
 {
     public function summary()
     {
-        $today = Carbon::today();
-        $monthStart = Carbon::now()->startOfMonth();
-        $monthEnd = Carbon::now()->endOfMonth();
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        $today = SystemClock::today();
+        $now = SystemClock::now();
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd = $now->copy()->endOfMonth();
+        $thirtyDaysAgo = $now->copy()->subDays(30);
 
         // Total employees (active only)
         $totalEmployees = Employee::where('status', 'active')->count();

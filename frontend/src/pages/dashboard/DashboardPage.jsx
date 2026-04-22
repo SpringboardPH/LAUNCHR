@@ -1,21 +1,39 @@
 import { useQuery } from '@tanstack/react-query'
-import { getDashboard, dashboardKeys } from '../../api/queries'
+import { getDashboard, dashboardKeys, getSystemClock, systemClockKeys } from '../../api/queries'
 import { PageHeader, StatCard, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { Users, Clock, CalendarOff, Banknote, TrendingUp, AlertCircle, Zap } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({ queryKey: dashboardKeys.all, queryFn: () => getDashboard() })
+  const { data: sysClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+  })
+
+  const { data, isLoading } = useQuery({
+    queryKey: [...dashboardKeys.all, sysClock?.date],
+    queryFn: () => getDashboard(),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  })
 
   if (isLoading) return <PageSpinner />
 
   const s = data?.summary ?? {}
+  const displayDateLabel = sysClock?.date
+    ? format(parseISO(sysClock.date), 'EEEE, MMMM d, yyyy')
+    : format(new Date(), 'EEEE, MMMM d, yyyy')
 
   return (
     <div>
       <PageHeader
         title={`Good morning 👋`}
-        description={format(new Date(), 'EEEE, MMMM d, yyyy')}
+        description={displayDateLabel}
       />
 
       {/* Today's Status Cards */}

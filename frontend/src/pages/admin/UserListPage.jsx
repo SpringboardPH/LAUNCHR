@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getUsers, deleteUser, userKeys } from '../../api/queries'
+import { getUsers, deleteUser, hardDeleteUser, userKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
-import { Plus, Search, Pencil, Trash2, Users } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Users, UserX } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function UserListPage() {
@@ -27,6 +27,16 @@ export default function UserListPage() {
     },
     onError: (error) => {
       alert(error.response?.data?.message || 'Failed to delete user')
+    }
+  })
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: hardDeleteUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries(userKeys.all)
+    },
+    onError: (error) => {
+      alert(error.response?.data?.message || 'Failed to permanently delete user')
     }
   })
 
@@ -122,15 +132,31 @@ export default function UserListPage() {
                           onClick={() => {
                             setConfirmConfig({
                               open: true,
-                              title: 'Delete User',
-                              message: `Are you sure you want to delete ${u.name}?`,
+                              title: 'Soft Delete User',
+                              message: `Soft delete ${u.name}? This will deactivate the linked employee record.`,
                               onConfirm: () => deleteMutation.mutate(u.id),
                               type: 'danger'
                             })
                           }}
-                          disabled={currentUser?.id === u.id || deleteMutation.isLoading}
+                          disabled={currentUser?.id === u.id || deleteMutation.isPending || hardDeleteMutation.isPending}
                           className={`btn-ghost p-1.5 ${currentUser?.id === u.id ? 'text-gray-300' : 'text-red-400 hover:text-red-600 hover:bg-red-50'}`}
-                          title={currentUser?.id === u.id ? "Cannot delete yourself" : "Delete user"}
+                          title={currentUser?.id === u.id ? "Cannot delete yourself" : "Soft delete user"}
+                        >
+                          <UserX size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setConfirmConfig({
+                              open: true,
+                              title: 'Hard Delete User',
+                              message: `Permanently delete ${u.name}? This will remove the user and linked employee record.`,
+                              onConfirm: () => hardDeleteMutation.mutate(u.id),
+                              type: 'danger'
+                            })
+                          }}
+                          disabled={currentUser?.id === u.id || deleteMutation.isPending || hardDeleteMutation.isPending}
+                          className={`btn-ghost p-1.5 ${currentUser?.id === u.id ? 'text-gray-300' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                          title={currentUser?.id === u.id ? "Cannot delete yourself" : "Hard delete user"}
                         >
                           <Trash2 size={14} />
                         </button>

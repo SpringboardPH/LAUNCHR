@@ -29,6 +29,20 @@ export const getClockWindow = (schedule, sysClock = null) => {
 
   const dayRule = (template.day_rules || []).find(r => r.day === dayOfWeek)
 
+  if (dayRule && !dayRule.enabled) {
+    return {
+      isInactiveDay: true,
+      currentMinutes,
+      workStart: dayRule.clock_in?.substring(0, 5) || template.work_start_time?.substring(0, 5) || '—',
+      workEnd: dayRule.clock_out?.substring(0, 5) || template.work_end_time?.substring(0, 5) || '—',
+      formatTime: (m) => {
+        const h = Math.floor(m / 60)
+        const min = m % 60
+        return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
+      },
+    }
+  }
+
   let inStart, inEnd, outStart, outEnd
   let workStart = template.work_start_time?.substring(0, 5)
   let workEnd = template.work_end_time?.substring(0, 5)
