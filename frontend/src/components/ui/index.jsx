@@ -163,8 +163,8 @@ export function ConfirmModal({
 import { getClockWindow } from '../../utils/attendance'
 
 // ─── ScheduleDisplay ──────────────────────────────────────────
-export function ScheduleDisplay({ schedule, compact = false }) {
-  const window = getClockWindow(schedule)
+export function ScheduleDisplay({ schedule, compact = false, sysClock = null }) {
+  const window = getClockWindow(schedule, sysClock)
   if (!window) return (
     <div className="text-xs text-gray-400 italic">No assigned schedule for this week.</div>
   )

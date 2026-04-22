@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemClock;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
@@ -142,7 +143,7 @@ class AttendanceController extends Controller
             ], 404);
         }
 
-        $today = Carbon::today();
+        $today = SystemClock::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
         $dayRule = $this->getDayRuleForDate($schedule, $today);
 
@@ -184,7 +185,7 @@ class AttendanceController extends Controller
             ], 400);
         }
 
-        $clockInTime = now()->toTimeString();
+        $clockInTime = SystemClock::timeString();
         $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
         $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
@@ -271,7 +272,7 @@ class AttendanceController extends Controller
         }
 
         // Get today's attendance log
-        $today = Carbon::today();
+        $today = SystemClock::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
         $dayRule = $this->getDayRuleForDate($schedule, $today);
         $log = AttendanceLog::where('employee_id', $employee->id)
@@ -292,7 +293,7 @@ class AttendanceController extends Controller
             ], 400);
         }
 
-        $clockOutTime = now()->toTimeString();
+        $clockOutTime = SystemClock::timeString();
         $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
         $workEndTime = self::WORK_END_TIME;
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
@@ -386,7 +387,7 @@ class AttendanceController extends Controller
             [$year, $monthNum] = explode('-', $monthStr);
             $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
             $endDate = $startDate->copy()->endOfMonth();
-            $generationEndDate = $endDate->isPast() ? $endDate : Carbon::today();
+            $generationEndDate = $endDate->lt(SystemClock::today()) ? $endDate : SystemClock::today();
 
             $employees = Employee::where('status', 'active')->get();
             $logs = $query->orderBy('date', 'desc')->get()->groupBy('employee_id');
@@ -460,13 +461,15 @@ class AttendanceController extends Controller
                             }
 
                             if ($isWorkingDay) {
+                                $systemNow = SystemClock::now();
+                                $sysToday = SystemClock::today();
                                 $shiftEnd = null;
-                                if ($date->isToday()) {
+                                if ($date->isSameDay($sysToday)) {
                                     $shiftEndStr = $template->end_time ?? '18:00:00';
                                     $shiftEnd = $date->copy()->setTimeFrom(Carbon::parse($shiftEndStr));
                                 }
 
-                                if ($date->isPast() && (!$date->isToday() || (isset($shiftEnd) && now()->isAfter($shiftEnd)))) {
+                                if ($date->lt($sysToday) && (!$date->isSameDay($sysToday) || (isset($shiftEnd) && $systemNow->isAfter($shiftEnd)))) {
                                     $allRecords[] = [
                                         'employee_id' => $employee->id,
                                         'employee' => $employee,
@@ -534,7 +537,7 @@ class AttendanceController extends Controller
     public function today(Request $request)
     {
         $user = $request->user();
-        $today = Carbon::today();
+        $today = SystemClock::today();
         $isPersonal = $request->query('personal') === 'true';
 
         if (!$user->isAdminOrHr() || $isPersonal) {
@@ -626,15 +629,15 @@ class AttendanceController extends Controller
 
         $this->performAutoClockOut($employeeId);
 
-        $monthStr = $request->query('month', now()->format('Y-m'));
+        $monthStr = $request->query('month', SystemClock::now()->format('Y-m'));
         [$year, $monthNum] = explode('-', $monthStr);
 
         $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
         $endDate = $startDate->copy()->endOfMonth();
         
         // Don't generate absent records for future days
-        $today = Carbon::today();
-        $generationEndDate = $endDate->isPast() ? $endDate : $today;
+        $today = SystemClock::today();
+        $generationEndDate = $endDate->lt($today) ? $endDate : $today;
 
         // Get actual logs
         $logs = AttendanceLog::where('employee_id', $employeeId)
@@ -711,12 +714,13 @@ class AttendanceController extends Controller
                      if ($isWorkingDay) {
                          // Only mark as absent if it's NOT today, or if it IS today but the shift end has passed
                          $shiftEnd = null;
-                         if ($date->isToday()) {
+                         $systemNow = SystemClock::now();
+                         if ($date->isSameDay($today)) {
                              $shiftEndStr = $template->end_time ?? '18:00:00';
                              $shiftEnd = $date->copy()->setTimeFrom(Carbon::parse($shiftEndStr));
                          }
 
-                         if ($date->isPast() && (!$date->isToday() || (isset($shiftEnd) && now()->isAfter($shiftEnd)))) {
+                         if ($date->lt($today) && (!$date->isSameDay($today) || (isset($shiftEnd) && $systemNow->isAfter($shiftEnd)))) {
                              $allDays[] = [
                                  'employee_id' => $employeeId,
                                  'date' => $dateStr,
@@ -788,7 +792,7 @@ class AttendanceController extends Controller
                  }
             }
 
-            if ($clockOutEnd && Carbon::now()->isAfter($clockOutEnd)) {
+            if ($clockOutEnd && SystemClock::now()->isAfter($clockOutEnd)) {
                 $log->update([
                     'clock_out_time' => $dayRule ? $dayRule['clock_out'] : ($template->end_time ?? '18:00:00'),
                     'status' => 'completed',

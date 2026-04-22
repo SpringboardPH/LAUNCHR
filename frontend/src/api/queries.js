@@ -159,6 +159,13 @@ export const adminSettingsKeys = {
   defaults: ['admin', 'settings', 'defaults'],
 }
 
+export const systemClockKeys = {
+  all: ['system-clock'],
+}
+
+export const getSystemClock = () =>
+  api.get('/system-clock').then(r => r.data.data)
+
 export const getAdminSettings = () =>
   api.get('/admin/settings').then(r => r.data.data)
 

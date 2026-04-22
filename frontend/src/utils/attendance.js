@@ -1,12 +1,19 @@
 import { parseISO, format } from 'date-fns'
 
-export const getClockWindow = (schedule) => {
+/**
+ * sysClock: optional object from /api/system-clock
+ *   { day_of_week: number, minutes_since_midnight: number, time: "HH:MM:SS", date: "YYYY-MM-DD" }
+ * Falls back to real browser time if not provided.
+ */
+export const getClockWindow = (schedule, sysClock = null) => {
   const template = schedule?.template
   if (!template) return null
 
-  const now = new Date()
-  const today = now.getDay()
-  const dayRule = (template.day_rules || []).find(r => r.day === today)
+  // Use system clock if available, otherwise real browser time
+  const dayOfWeek = sysClock != null ? sysClock.day_of_week : new Date().getDay()
+  const currentMinutes = sysClock != null
+    ? sysClock.minutes_since_midnight
+    : new Date().getHours() * 60 + new Date().getMinutes()
 
   const parse = (t) => {
     if (!t) return 0
@@ -19,6 +26,8 @@ export const getClockWindow = (schedule) => {
     const min = m % 60
     return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
   }
+
+  const dayRule = (template.day_rules || []).find(r => r.day === dayOfWeek)
 
   let inStart, inEnd, outStart, outEnd
   let workStart = template.work_start_time?.substring(0, 5)
@@ -47,8 +56,6 @@ export const getClockWindow = (schedule) => {
     outStart = parse(template.clock_out_start || template.work_end_time)
     outEnd = parse(template.clock_out_end || template.work_end_time)
   }
-
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
 
   return {
     inStart,

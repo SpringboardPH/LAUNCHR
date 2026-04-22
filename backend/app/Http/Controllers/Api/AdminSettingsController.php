@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemClock;
 use App\Models\SystemSettings;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,32 @@ class AdminSettingsController extends Controller
             'success' => true,
             'data' => $settings,
             'message' => 'System settings retrieved',
+        ]);
+    }
+
+    /**
+     * Return the virtual system clock (date + time) so the frontend
+     * can display and validate against the admin-configured time.
+     *
+     * We intentionally return datetime WITHOUT a timezone offset so the
+     * browser treats it as local time — matching what the admin typed in.
+     * (If we returned an ISO string with +00:00, the browser would shift it
+     * by the user's UTC offset, showing the wrong time.)
+     */
+    public function systemClock()
+    {
+        $now = SystemClock::now();
+        return response()->json([
+            'success' => true,
+            'data' => [
+                // No timezone suffix — browser will parse as local time
+                'datetime'  => $now->format('Y-m-d\TH:i:s'),
+                'date'      => $now->toDateString(),
+                'time'      => $now->format('H:i:s'),
+                'time_hhmm' => $now->format('H:i'),
+                'day_of_week' => $now->dayOfWeek,  // 0 = Sunday
+                'minutes_since_midnight' => $now->hour * 60 + $now->minute,
+            ],
         ]);
     }
 

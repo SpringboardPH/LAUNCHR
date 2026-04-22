@@ -62,7 +62,10 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
-    
+
+    // System clock (virtual time used by attendance) - available to all authenticated users
+    Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
+
     // Admin Routes (Admin Only)
     Route::middleware('role:admin')->group(function () {
         // Settings

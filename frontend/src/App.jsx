@@ -22,6 +22,7 @@ import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
 
 import UserListPage from './pages/admin/UserListPage'
 import UserFormPage from './pages/admin/UserFormPage'
+import SystemSettingsPage from './pages/admin/SystemSettingsPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
@@ -114,6 +115,7 @@ export default function App() {
             <Route path="users" element={<UserListPage />} />
             <Route path="users/new" element={<UserFormPage />} />
             <Route path="users/:id/edit" element={<UserFormPage />} />
+            <Route path="system-settings" element={<SystemSettingsPage />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />

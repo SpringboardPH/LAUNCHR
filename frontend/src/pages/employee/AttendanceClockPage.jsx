@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { clockIn, clockOut, getAttendanceToday, getMonthlyAttendance, attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys } from '../../api/queries'
+import {
+  clockIn, clockOut, getAttendanceToday, getMonthlyAttendance,
+  attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys,
+  getSystemClock, systemClockKeys,
+} from '../../api/queries'
 import { PageHeader, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
@@ -32,13 +36,59 @@ const calculateHours = (clockInTime, clockOutTime) => {
 
 export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
-  const [month, setMonth] = useState(format(new Date(), 'yyyy-MM'))
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user, loading: authLoading } = useAuth()
 
   const employeeId = user?.employee?.id
 
+  // ── System clock (virtual time from backend) ──────────────────
+  const { data: sysClock, isLoading: sysClockLoading } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+    // Refresh every 30s so the display stays reasonably in sync
+    refetchInterval: 30_000,
+    staleTime: 0,
+  })
+
+  // Derive default month from system clock once it's loaded
+  const defaultMonth = sysClock?.date
+    ? sysClock.date.substring(0, 7)   // "YYYY-MM"
+    : format(new Date(), 'yyyy-MM')
+
+  const [month, setMonth] = useState(null)
+
+  // Set month once sysClock is available (only once)
+  useEffect(() => {
+    if (sysClock && month === null) {
+      setMonth(sysClock.date.substring(0, 7))
+    }
+  }, [sysClock, month])
+
+  // Live display clock — ticks every second but starts from system clock
+  const [displayTime, setDisplayTime] = useState(null)
+  const startTimeRef = useRef(null)
+
+  useEffect(() => {
+    if (!sysClock) return
+    // Record the wall-clock ms at the moment we received the server time
+    startTimeRef.current = {
+      serverMs: new Date(sysClock.datetime).getTime(),
+      localMs: Date.now(),
+    }
+    setDisplayTime(new Date(sysClock.datetime))
+  }, [sysClock])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!startTimeRef.current) return
+      const elapsed = Date.now() - startTimeRef.current.localMs
+      setDisplayTime(new Date(startTimeRef.current.serverMs + elapsed))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // ── Attendance data ───────────────────────────────────────────
   const { data: todayAttendance, isLoading, refetch } = useQuery({
     queryKey: attendanceKeys.today(user?.id),
     queryFn: () => getAttendanceToday({ personal: true }),
@@ -52,10 +102,12 @@ export default function AttendanceClockPage() {
     enabled: !!user?.employee?.id,
   })
 
+  const activeMonth = month ?? defaultMonth
+
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
-    queryKey: attendanceKeys.monthly(employeeId, month),
-    queryFn: () => getMonthlyAttendance(employeeId, month),
-    enabled: Boolean(employeeId),
+    queryKey: attendanceKeys.monthly(employeeId, activeMonth),
+    queryFn: () => getMonthlyAttendance(employeeId, activeMonth),
+    enabled: Boolean(employeeId) && Boolean(activeMonth),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -66,6 +118,7 @@ export default function AttendanceClockPage() {
     onSuccess: () => {
       setNotes('')
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
     onError: () => {
       setNotes('')
@@ -77,6 +130,7 @@ export default function AttendanceClockPage() {
     onSuccess: () => {
       setNotes('')
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
     onError: () => {
       setNotes('')
@@ -84,21 +138,35 @@ export default function AttendanceClockPage() {
     },
   })
 
-  if (isLoading || authLoading || loadingSchedule) return <PageSpinner />
+  if (isLoading || authLoading || loadingSchedule || sysClockLoading) return <PageSpinner />
 
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
   const monthlyLogs = monthlyData?.data ?? []
-  
-  const window = getClockWindow(currentSchedule)
+
+  // Pass sysClock to window check so it uses the virtual time
+  const window = getClockWindow(currentSchedule, sysClock)
   const canClockIn = window?.isWithinInWindow
   const canClockOut = window?.isWithinOutWindow
+
+  // Formatted display values — show system clock, not browser clock
+  const displayDateLabel = displayTime
+    ? format(displayTime, 'EEEE, MMMM d, yyyy')
+    : (sysClock?.date ?? format(new Date(), 'EEEE, MMMM d, yyyy'))
+
+  const displayTimeLabel = displayTime
+    ? format(displayTime, 'HH:mm:ss')
+    : (sysClock?.time ?? format(new Date(), 'HH:mm:ss'))
+
+  const displayDateShort = displayTime
+    ? format(displayTime, 'EEEE, MMMM d')
+    : (sysClock?.date ?? format(new Date(), 'EEEE, MMMM d'))
 
   return (
     <div>
       <PageHeader
         title="Clock In / Out"
-        description={format(new Date(), 'EEEE, MMMM d, yyyy')}
+        description={displayDateLabel}
         action={
           <button onClick={() => navigate('/employee')} className="btn-secondary">
             ← Back
@@ -114,10 +182,10 @@ export default function AttendanceClockPage() {
               <div className="inline-block bg-gradient-to-br from-brand-100 to-brand-50 p-8 rounded-full mb-4">
                 <Clock size={40} className="text-brand-600" />
               </div>
-              <div className="text-5xl font-bold text-gray-900 mb-2" id="currentTime">
-                {format(new Date(), 'HH:mm:ss')}
+              <div className="text-5xl font-bold text-gray-900 mb-2">
+                {displayTimeLabel}
               </div>
-              <p className="text-sm text-gray-500">{format(new Date(), 'EEEE, MMMM d')}</p>
+              <p className="text-sm text-gray-500">{displayDateShort}</p>
             </div>
 
             {/* Status Display */}
@@ -195,7 +263,7 @@ export default function AttendanceClockPage() {
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-6">Assigned Schedule</h2>
-            <ScheduleDisplay schedule={currentSchedule} />
+            <ScheduleDisplay schedule={currentSchedule} sysClock={sysClock} />
           </div>
 
           <div className="card p-5">
@@ -209,7 +277,7 @@ export default function AttendanceClockPage() {
               <input
                 type="month"
                 className="input w-44 text-sm"
-                value={month}
+                value={activeMonth}
                 onChange={(e) => setMonth(e.target.value)}
               />
             </div>
@@ -253,7 +321,7 @@ export default function AttendanceClockPage() {
                     ))}
                     {monthlyLogs.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No records for this month</td>
+                        <td colSpan={6} className="py-6 text-center text-gray-400 text-sm">No records for this month</td>
                       </tr>
                     )}
                   </tbody>
@@ -263,17 +331,6 @@ export default function AttendanceClockPage() {
           </div>
         </div>
       </div>
-
-      {/* Update current time every second */}
-      {typeof window !== 'undefined' && (
-        <script>
-          {`
-            setInterval(() => {
-              document.getElementById('currentTime').textContent = new Date().toLocaleTimeString('en-US', { hour12: false })
-            }, 1000)
-          `}
-        </script>
-      )}
     </div>
   )
 }
