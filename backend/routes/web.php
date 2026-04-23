@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Session\Middleware\StartSession;
 
 Route::get('/', function () {
     return response()->json([
@@ -12,4 +11,4 @@ Route::get('/', function () {
             'environment' => config('app.env'),
         ],
     ]);
-})->withoutMiddleware([StartSession::class]);
+});
