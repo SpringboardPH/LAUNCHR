@@ -37,6 +37,7 @@ class DatabaseSeeder extends Seeder
             EmployeeSeeder::class,
             LeaveTypeSeeder::class,
             ScheduleTemplateSeeder::class,
+            CalendarEventTypeSeeder::class,
         ]);
 
         // Create employee users linked to first 2 employees

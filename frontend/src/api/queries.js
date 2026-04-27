@@ -317,3 +317,46 @@ export const getTrashedUsers = (params) =>
 
 export const restoreUser = (id) =>
   api.patch(`/admin/users/${id}/restore`).then(r => r.data)
+
+// ─── Calendar (HR/Admin/Employee) ──────────────────────────────────────────
+export const calendarEventKeys = {
+  all: ['calendar-events'],
+  list: (params) => ['calendar-events', 'list', params],
+  detail: (id) => ['calendar-events', id],
+}
+
+export const getCalendarEvents = (params = {}) =>
+  api.get('/calendar-events', { params }).then(r => r.data.data)
+
+export const getCalendarEvent = (id) =>
+  api.get(`/calendar-events/${id}`).then(r => r.data.data)
+
+export const createCalendarEvent = (data) =>
+  api.post('/admin/calendar-events', data).then(r => r.data)
+
+export const updateCalendarEvent = (id, data) =>
+  api.put(`/admin/calendar-events/${id}`, data).then(r => r.data)
+
+export const deleteCalendarEvent = (id) =>
+  api.delete(`/admin/calendar-events/${id}`).then(r => r.data)
+
+export const calendarEventTypeKeys = {
+  all: ['calendar-event-types'],
+  list: (params) => ['calendar-event-types', 'list', params],
+  detail: (id) => ['calendar-event-types', id],
+}
+
+export const getCalendarEventTypes = (params = {}) =>
+  api.get('/calendar-event-types', { params }).then(r => r.data.data)
+
+export const getAdminCalendarEventTypes = (params = {}) =>
+  api.get('/admin/calendar-event-types', { params }).then(r => r.data.data)
+
+export const createCalendarEventType = (data) =>
+  api.post('/admin/calendar-event-types', data).then(r => r.data)
+
+export const updateCalendarEventType = (id, data) =>
+  api.put(`/admin/calendar-event-types/${id}`, data).then(r => r.data)
+
+export const deleteCalendarEventType = (id) =>
+  api.delete(`/admin/calendar-event-types/${id}`).then(r => r.data)

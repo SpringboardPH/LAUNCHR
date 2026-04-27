@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\EmployeeScheduleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\LeaveTypeController;
 use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
+use App\Http\Controllers\Api\CalendarEventController;
+use App\Http\Controllers\Api\CalendarEventTypeController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -51,6 +53,11 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::get('/leave-types', [LeaveTypeController::class, 'index']);
+    Route::get('/calendar-event-types', [CalendarEventTypeController::class, 'index']);
+
+    // Calendar
+    Route::get('/calendar-events', [CalendarEventController::class, 'index']);
+    Route::get('/calendar-events/{calendarEvent}', [CalendarEventController::class, 'show']);
     
     // Payroll
     Route::prefix('payroll')->group(function () {
@@ -95,6 +102,14 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('/{employee}/{leaveType}', [EmployeeLeaveBalanceController::class, 'upsert']);
             Route::delete('/{employee}/{leaveType}', [EmployeeLeaveBalanceController::class, 'destroy']);
         });
+
+        Route::prefix('admin/calendar-event-types')->group(function () {
+            Route::get('/', [CalendarEventTypeController::class, 'index']);
+            Route::post('/', [CalendarEventTypeController::class, 'store']);
+            Route::get('/{calendarEventType}', [CalendarEventTypeController::class, 'show']);
+            Route::put('/{calendarEventType}', [CalendarEventTypeController::class, 'update']);
+            Route::delete('/{calendarEventType}', [CalendarEventTypeController::class, 'destroy']);
+        });
         
         // Departments
         Route::apiResource('admin/departments', DepartmentController::class);
@@ -116,6 +131,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin,hr')->group(function () {
         Route::apiResource('admin/employee-schedules', EmployeeScheduleController::class);
         Route::apiResource('admin/schedule-templates', ScheduleTemplateController::class);
+        Route::apiResource('admin/calendar-events', CalendarEventController::class)->except(['index', 'show']);
     });
     Route::get('/admin/employee-schedules/employee/{employeeId}/current', [EmployeeScheduleController::class, 'getCurrentForEmployee']);
 });

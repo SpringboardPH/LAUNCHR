@@ -19,10 +19,12 @@ import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import LeaveRequestFormPage from './pages/employee/LeaveRequestFormPage'
 import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
+import CalendarPage from './pages/calendar/CalendarPage'
 
 import UserListPage from './pages/admin/UserListPage'
 import UserFormPage from './pages/admin/UserFormPage'
 import SystemSettingsPage from './pages/admin/SystemSettingsPage'
+import AdminCalendarEventTypesPage from './pages/admin/AdminCalendarEventTypesPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
@@ -116,12 +118,15 @@ export default function App() {
             <Route path="users/new" element={<UserFormPage />} />
             <Route path="users/:id/edit" element={<UserFormPage />} />
             <Route path="system-settings" element={<SystemSettingsPage />} />
+            <Route path="calendar-event-types" element={<AdminCalendarEventTypesPage />} />
+            <Route path="calendar" element={<CalendarPage readOnly={false} />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />
             <Route path="attendance" element={<AttendanceClockPage />} />
             <Route path="leaves/new" element={<LeaveRequestFormPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
+            <Route path="calendar" element={<CalendarPage readOnly={true} />} />
           </Route>
         </Routes>
       </BrowserRouter>

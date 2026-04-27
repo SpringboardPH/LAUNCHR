@@ -13,12 +13,14 @@ const COMMON_NAV = [
   { to: '/admin/attendance', icon: Clock, label: 'Attendance' },
   { to: '/admin/employee-schedules', icon: CalendarRange, label: 'Schedules' },
   { to: '/admin/leaves', icon: CalendarOff, label: 'Leaves' },
+  { to: '/admin/calendar', icon: CalendarRange, label: 'Calendar' },
   { to: '/admin/payroll', icon: Banknote, label: 'Payroll' },
 ]
 
 const ADMIN_ONLY_NAV = [
   { to: '/admin/system-settings', icon: Settings, label: 'System Settings' },
   { to: '/admin/settings', icon: Sliders, label: 'Configure Leave' },
+  { to: '/admin/calendar-event-types', icon: CalendarRange, label: 'Configure Calendar' },
   { to: '/admin/users', icon: UserCog, label: 'User Management' },
   { to: '/admin/departments', icon: Building2, label: 'Departments' },
   { to: '/admin/schedule-templates', icon: CalendarRange, label: 'Schedule Templates' },
@@ -28,6 +30,7 @@ const EMPLOYEE_NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'My Dashboard', end: true },
   { to: '/employee/attendance', icon: Clock, label: 'My Attendance' },
   { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
+  { to: '/employee/calendar', icon: CalendarRange, label: 'Company Calendar' },
   { to: '/employee/profile', icon: User, label: 'My Profile' },
 ]
 
@@ -66,11 +69,10 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {/* 1. Self Service Section (For HR only in AppLayout) */}
-          {user?.role === 'hr' && (
+          {user?.role === 'hr' ? (
             <>
-              <div className="mb-1">
-                <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
+              <div className="px-3 py-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
               </div>
               {EMPLOYEE_NAV.map(({ to, icon: Icon, label, end }) => (
                 <NavLink
@@ -87,36 +89,49 @@ export default function AppLayout() {
                   {label}
                 </NavLink>
               ))}
-              <div className="my-3 border-t border-gray-100 mx-3" />
+              
+              <div className="pt-5 mt-4 border-t border-gray-100 px-3 pb-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
+              </div>
+              {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
+                <NavLink
+                  key={to} to={to} end={end}
+                  onClick={() => setOpen(false)}
+                  className={({ isActive }) => clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )}
+                >
+                  <Icon size={16} />
+                  {label}
+                </NavLink>
+              ))}
             </>
-          )}
-
-          {/* 2. Management Section (HR Tools) */}
-          <div className="mb-1">
-            <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
-          </div>
-          {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
-            <NavLink
-              key={to} to={to} end={end}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) => clsx(
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                isActive
-                  ? 'bg-brand-50 text-brand-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              )}
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
-          ))}
-
-          {/* 3. Admin-only section (System Tools) */}
-          {user?.role === 'admin' && (
+          ) : (
             <>
-              <div className="my-3 border-t border-gray-100 mx-3" />
-              <div className="mb-1">
-                <p className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">System</p>
+              <div className="px-3 py-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
+              </div>
+              {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
+                <NavLink
+                  key={to} to={to} end={end}
+                  onClick={() => setOpen(false)}
+                  className={({ isActive }) => clsx(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    isActive
+                      ? 'bg-brand-50 text-brand-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  )}
+                >
+                  <Icon size={16} />
+                  {label}
+                </NavLink>
+              ))}
+
+              <div className="pt-5 mt-4 border-t border-gray-100 px-3 pb-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">System</p>
               </div>
               {ADMIN_ONLY_NAV.map(({ to, icon: Icon, label, end }) => (
                 <NavLink
@@ -145,7 +160,9 @@ export default function AppLayout() {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
-              <p className="text-xs text-gray-500 truncate">{user?.role}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.role === 'admin' ? 'Administrator' : 'Human Resources'}
+              </p>
             </div>
           </div>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">

@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\EmployeeSchedule;
 use App\Models\LeaveRequest;
 use App\Models\ScheduleTemplate;
+use App\Models\CalendarEvent;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -161,6 +162,16 @@ class AttendanceController extends Controller
             $log->notes = trim(str_replace(self::AUTO_CLOCK_OUT_NOTE, '', $log->notes));
             $log->save();
         }
+    }
+
+    private function getCalendarEventsForRange(Carbon $startDate, Carbon $endDate)
+    {
+        return CalendarEvent::whereBetween('event_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->with('type')
+            ->get()
+            ->keyBy(function($item) {
+                return $item->event_date->format('Y-m-d');
+            });
     }
 
     /**
@@ -517,6 +528,7 @@ class AttendanceController extends Controller
 
             $employees = Employee::where('status', 'active')->get();
             $logs = $query->orderBy('date', 'desc')->get()->groupBy('employee_id');
+            $events = $this->getCalendarEventsForRange($startDate, $endDate);
 
             // Get all approved leaves for these employees in this month
             $leaves = LeaveRequest::whereIn('employee_id', $employees->pluck('id'))
@@ -562,8 +574,32 @@ class AttendanceController extends Controller
                     if ($employeeLogs->has($dateStr)) {
                         $log = $employeeLogs->get($dateStr);
                         $log->template_name = $this->resolveTemplateName($log, $schedule);
+
+                        // If it's a holiday, mark it in the metadata
+                        if ($events->has($dateStr) && !$events->get($dateStr)->shouldCountAsAbsence()) {
+                            $log->holiday_name = $events->get($dateStr)->title;
+                        }
+
                         $allRecords[] = $log;
                     } elseif ($date->lte($generationEndDate)) {
+                        // Check for holiday first
+                        if ($events->has($dateStr)) {
+                            $event = $events->get($dateStr);
+                            if (!$event->shouldCountAsAbsence()) {
+                                $allRecords[] = [
+                                    'employee_id' => $employee->id,
+                                    'employee' => $employee,
+                                    'date' => $dateStr,
+                                    'clock_in_time' => null,
+                                    'clock_out_time' => null,
+                                    'status' => 'holiday',
+                                    'template_name' => $templateName,
+                                    'holiday_name' => $event->title,
+                                ];
+                                continue;
+                            }
+                        }
+
                         // Check for approved leave
                         $isOnLeave = $employeeLeaves->some(function($leave) use ($date) {
                             $lStart = Carbon::parse($leave->start_date)->startOfDay();
@@ -824,6 +860,7 @@ class AttendanceController extends Controller
             ->keyBy(function($item) {
                 return Carbon::parse($item->date)->format('Y-m-d');
             });
+        $events = $this->getCalendarEventsForRange($startDate, $endDate);
         $weeklyTemplateHints = [];
         foreach ($logs as $existingLog) {
             $templateId = $existingLog->schedule_template_id;
@@ -861,8 +898,30 @@ class AttendanceController extends Controller
             if ($logs->has($dateStr)) {
                 $log = $logs->get($dateStr);
                 $log->template_name = $this->resolveTemplateName($log, $schedule);
+
+                if ($events->has($dateStr) && !$events->get($dateStr)->shouldCountAsAbsence()) {
+                    $log->holiday_name = $events->get($dateStr)->title;
+                }
+
                 $allDays[] = $log;
             } elseif ($date->lte($generationEndDate)) {
+                // Check for holiday first
+                if ($events->has($dateStr)) {
+                    $event = $events->get($dateStr);
+                    if (!$event->shouldCountAsAbsence()) {
+                        $allDays[] = [
+                            'employee_id' => $employeeId,
+                            'date' => $dateStr,
+                            'clock_in_time' => null,
+                            'clock_out_time' => null,
+                            'status' => 'holiday',
+                            'template_name' => $templateName,
+                            'holiday_name' => $event->title,
+                        ];
+                        continue;
+                    }
+                }
+
                 // Check for approved leave first
                 $isOnLeave = $leaves->some(function($leave) use ($date) {
                     $lStart = Carbon::parse($leave->start_date)->startOfDay();
