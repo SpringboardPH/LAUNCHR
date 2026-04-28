@@ -15,6 +15,7 @@ const EMPTY_TYPE_FORM = {
   description: '',
   color: '#3b82f6', // Default blue-500
   counts_as_absence: false,
+  is_recurring_annual: false,
   is_active: true,
 }
 
@@ -65,6 +66,7 @@ export default function AdminCalendarEventTypesPage() {
         description: type.description || '',
         color: type.color,
         counts_as_absence: Boolean(type.counts_as_absence),
+        is_recurring_annual: Boolean(type.is_recurring_annual),
         is_active: Boolean(type.is_active),
       })
     } else {
@@ -146,6 +148,11 @@ export default function AdminCalendarEventTypesPage() {
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight ${type.counts_as_absence ? 'text-amber-600' : 'text-emerald-600'}`}>
                           {type.counts_as_absence ? 'Counts as Absence' : 'Non-Working / Holiday'}
                         </span>
+                        {type.is_recurring_annual && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-blue-600">
+                            🔄 Recurs Annually
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -248,6 +255,23 @@ export default function AdminCalendarEventTypesPage() {
                     type="checkbox"
                     checked={form.counts_as_absence}
                     onChange={(e) => setForm({ ...form, counts_as_absence: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm text-gray-700 cursor-pointer">
+                  <div className="flex items-center gap-1.5">
+                    <span>Recurs annually</span>
+                    <div className="group relative">
+                      <Info size={12} className="text-gray-400" />
+                      <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-gray-900 text-white text-[10px] rounded shadow-xl w-56 z-10">
+                        When enabled, events of this type will automatically repeat for 10 consecutive years. Useful for annual holidays like Christmas or New Year's Day.
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.is_recurring_annual}
+                    onChange={(e) => setForm({ ...form, is_recurring_annual: e.target.checked })}
                     className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                   />
                 </label>

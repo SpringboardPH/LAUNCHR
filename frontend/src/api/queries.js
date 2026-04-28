@@ -334,11 +334,26 @@ export const getCalendarEvent = (id) =>
 export const createCalendarEvent = (data) =>
   api.post('/admin/calendar-events', data).then(r => r.data)
 
-export const updateCalendarEvent = (id, data) =>
-  api.put(`/admin/calendar-events/${id}`, data).then(r => r.data)
+export const updateCalendarEvent = (id, data, updateScope = 'single') =>
+  api.put(`/admin/calendar-events/${id}`, { ...data, update_scope: updateScope }).then(r => r.data)
 
-export const deleteCalendarEvent = (id) =>
-  api.delete(`/admin/calendar-events/${id}`).then(r => r.data)
+export const deleteCalendarEvent = (id, deleteScope = 'single') =>
+  api.delete(`/admin/calendar-events/${id}`, { params: { delete_scope: deleteScope } }).then(r => r.data)
+
+export const importCalendarEvents = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/admin/calendar-events/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+export const exportCalendarEvents = (startDate = null, endDate = null) => {
+  const params = {}
+  if (startDate) params.start_date = startDate
+  if (endDate) params.end_date = endDate
+  return api.get('/admin/calendar-events/export', { params, responseType: 'blob' })
+}
 
 export const calendarEventTypeKeys = {
   all: ['calendar-event-types'],

@@ -11,12 +11,14 @@ class CalendarEventType extends Model
         'description',
         'color',
         'counts_as_absence',
+        'is_recurring_annual',
         'is_active',
         'created_by',
     ];
 
     protected $casts = [
         'counts_as_absence' => 'boolean',
+        'is_recurring_annual' => 'boolean',
         'is_active' => 'boolean',
     ];
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   calendarEventKeys, 
@@ -6,7 +6,9 @@ import {
   getCalendarEventTypes,
   createCalendarEvent,
   updateCalendarEvent,
-  deleteCalendarEvent
+  deleteCalendarEvent,
+  importCalendarEvents,
+  exportCalendarEvents,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, Modal, FormField } from '../../components/ui'
 import { Calendar } from '../../components/calendar/Calendar'
@@ -15,7 +17,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
-import { Calendar as CalendarIcon, Info, Trash2, Plus } from 'lucide-react'
+import { Calendar as CalendarIcon, Info, Trash2, Plus, Download, Upload } from 'lucide-react'
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
@@ -58,11 +60,20 @@ function CalendarLegend({ types = [] }) {
 export default function CalendarPage({ readOnly = false }) {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const fileInputRef = useRef(null)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isDayModalOpen, setIsDayModalOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [importFile, setImportFile] = useState(null)
+  const [importResult, setImportResult] = useState(null)
+  const [isUpdateScopeModalOpen, setIsUpdateScopeModalOpen] = useState(false)
+  const [isDeleteScopeModalOpen, setIsDeleteScopeModalOpen] = useState(false)
+  const [pendingUpdateData, setPendingUpdateData] = useState(null)
+  const [selectedUpdateScope, setSelectedUpdateScope] = useState('single')
+  const [selectedDeleteScope, setSelectedDeleteScope] = useState('single')
 
   // Capability check: User must be HR/Admin AND page must NOT be in readOnly mode
   const canManage = !readOnly && ['admin', 'hr'].includes(user?.role)
@@ -98,7 +109,7 @@ export default function CalendarPage({ readOnly = false }) {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => updateCalendarEvent(id, data),
+    mutationFn: ({ id, data, updateScope }) => updateCalendarEvent(id, data, updateScope),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarEventKeys.all })
       setIsModalOpen(false)
@@ -108,13 +119,61 @@ export default function CalendarPage({ readOnly = false }) {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteCalendarEvent,
+    mutationFn: ({ id, deleteScope }) => deleteCalendarEvent(id, deleteScope),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarEventKeys.all })
       setIsModalOpen(false)
       setSelectedEvent(null)
+      setIsDeleteScopeModalOpen(false)
     },
   })
+
+  const importMutation = useMutation({
+    mutationFn: importCalendarEvents,
+    onSuccess: (data) => {
+      setImportResult(data.data)
+      queryClient.invalidateQueries({ queryKey: calendarEventKeys.all })
+    },
+  })
+
+  const handleExport = async () => {
+    try {
+      const response = await exportCalendarEvents()
+      // Create a blob URL and trigger download
+      const url = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', 'holidays.csv')
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Failed to export holidays')
+    }
+  }
+
+  const handleImportFile = (event) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setImportFile(file)
+    }
+  }
+
+  const handleImportSubmit = () => {
+    if (!importFile) {
+      alert('Please select a file')
+      return
+    }
+    importMutation.mutate(importFile)
+  }
+
+  const closeImportModal = () => {
+    setIsImportModalOpen(false)
+    setImportFile(null)
+    setImportResult(null)
+  }
 
   const getEventsForDate = (date) => {
     if (!events || !date) return []
@@ -178,15 +237,63 @@ export default function CalendarPage({ readOnly = false }) {
 
   const onSubmit = (data) => {
     if (isEditMode && selectedEvent) {
-      updateMutation.mutate({ id: selectedEvent.id, data })
+      // Check if this event appears in multiple years (is annually recurring)
+      const allEventsWithTitle = events?.filter(e => 
+        e.title === selectedEvent.title && 
+        !e.is_leave
+      ) || []
+      
+      // If type exists and is_recurring_annual is true, it's recurring
+      const isRecurring = selectedEvent.type?.is_recurring_annual
+      
+      if (isRecurring) {
+        // Show update scope modal
+        console.log('Recurring event detected, opening update modal')
+        setPendingUpdateData(data)
+        setSelectedUpdateScope('future')
+        setIsUpdateScopeModalOpen(true)
+      } else {
+        // Single instance, just update normally
+        console.log('Single instance event, updating directly')
+        updateMutation.mutate({ id: selectedEvent.id, data, updateScope: 'single' })
+      }
     } else {
       createMutation.mutate(data)
     }
   }
 
+  const handleConfirmUpdate = () => {
+    if (pendingUpdateData && selectedEvent) {
+      updateMutation.mutate({
+        id: selectedEvent.id,
+        data: pendingUpdateData,
+        updateScope: selectedUpdateScope,
+      })
+      setIsUpdateScopeModalOpen(false)
+      setPendingUpdateData(null)
+    }
+  }
+
   const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this event?')) {
-      deleteMutation.mutate(selectedEvent.id)
+    // If type exists and is_recurring_annual is true, it's recurring
+    const isRecurring = selectedEvent.type?.is_recurring_annual
+
+    if (isRecurring) {
+      setSelectedDeleteScope('single')
+      setIsDeleteScopeModalOpen(true)
+    } else {
+      if (window.confirm('Are you sure you want to delete this event?')) {
+        deleteMutation.mutate({ id: selectedEvent.id, deleteScope: 'single' })
+      }
+    }
+  }
+
+  const handleConfirmDelete = () => {
+    if (selectedEvent) {
+      deleteMutation.mutate({
+        id: selectedEvent.id,
+        deleteScope: selectedDeleteScope,
+      })
     }
   }
 
@@ -197,6 +304,24 @@ export default function CalendarPage({ readOnly = false }) {
       <PageHeader 
         title={readOnly ? "Company Calendar" : "Manage Company Calendar"} 
         description={readOnly ? "View upcoming company events and holidays." : "Add and manage company-wide events and holidays."}
+        action={canManage && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleExport}
+              className="btn-secondary flex items-center gap-2 text-sm"
+            >
+              <Download size={16} />
+              Export
+            </button>
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              <Upload size={16} />
+              Import
+            </button>
+          </div>
+        )}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -378,6 +503,282 @@ export default function CalendarPage({ readOnly = false }) {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Update Scope Modal */}
+      <Modal
+        open={isUpdateScopeModalOpen}
+        onClose={() => {
+          setIsUpdateScopeModalOpen(false)
+          setPendingUpdateData(null)
+        }}
+        title="Update Recurring Event"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This event is part of a recurring annual series. How would you like to apply these changes?
+          </p>
+          
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50">
+              <input
+                type="radio"
+                name="updateScope"
+                value="single"
+                checked={selectedUpdateScope === 'single'}
+                onChange={(e) => setSelectedUpdateScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Just this year</p>
+                <p className="text-xs text-gray-500">Only update {selectedEvent?.event_date}</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50">
+              <input
+                type="radio"
+                name="updateScope"
+                value="future"
+                checked={selectedUpdateScope === 'future'}
+                onChange={(e) => setSelectedUpdateScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">This and future years</p>
+                <p className="text-xs text-gray-500">Update from {selectedEvent?.event_date} onwards</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50">
+              <input
+                type="radio"
+                name="updateScope"
+                value="all"
+                checked={selectedUpdateScope === 'all'}
+                onChange={(e) => setSelectedUpdateScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">All occurrences</p>
+                <p className="text-xs text-gray-500">Update all years of this event</p>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => {
+                setIsUpdateScopeModalOpen(false)
+                setPendingUpdateData(null)
+              }}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmUpdate}
+              className="btn-primary flex-1"
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? 'Updating...' : 'Confirm Update'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Scope Modal */}
+      <Modal
+        open={isDeleteScopeModalOpen}
+        onClose={() => {
+          setIsDeleteScopeModalOpen(false)
+        }}
+        title="Delete Recurring Event"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This event is part of a recurring annual series. How would you like to delete?
+          </p>
+          
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-red-50">
+              <input
+                type="radio"
+                name="deleteScope"
+                value="single"
+                checked={selectedDeleteScope === 'single'}
+                onChange={(e) => setSelectedDeleteScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Just this year</p>
+                <p className="text-xs text-gray-500">Only delete {selectedEvent?.event_date}</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-red-50">
+              <input
+                type="radio"
+                name="deleteScope"
+                value="future"
+                checked={selectedDeleteScope === 'future'}
+                onChange={(e) => setSelectedDeleteScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">This and future years</p>
+                <p className="text-xs text-gray-500">Delete from {selectedEvent?.event_date} onwards</p>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-red-50">
+              <input
+                type="radio"
+                name="deleteScope"
+                value="all"
+                checked={selectedDeleteScope === 'all'}
+                onChange={(e) => setSelectedDeleteScope(e.target.value)}
+                className="h-4 w-4"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-900">All occurrences</p>
+                <p className="text-xs text-gray-500">Delete all years of this event</p>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={() => {
+                setIsDeleteScopeModalOpen(false)
+              }}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              className="btn-ghost text-red-600 hover:bg-red-50 border border-red-200 flex-1"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        open={isImportModalOpen}
+        onClose={closeImportModal}
+        title="Import Holidays"
+        size="md"
+      >
+        <div className="space-y-4">
+          {!importResult ? (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-900">
+                  Upload a CSV or JSON file with your company holidays.{' '}
+                  <a 
+                    href="data:text/plain,date,title,type_name,description,is_recurring%0A2025-01-01,New Year's Day,Holiday,,yes%0A2025-12-25,Christmas Day,Holiday,,yes%0A2025-02-25,EDSA Revolution Day,Holiday,,yes" 
+                    download="holidays-template.csv"
+                    className="text-blue-600 hover:underline font-semibold"
+                  >
+                    Download CSV template
+                  </a>
+                </p>
+                <p className="text-xs text-blue-800 mt-2">
+                  Tip: Mark event types as recurring (yes) once, and all future imports with that type will automatically span 10 years.
+                </p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900">
+                <p className="font-semibold mb-2">Column Guide:</p>
+                <ul className="space-y-1">
+                  <li><strong>date:</strong> YYYY-MM-DD format (e.g., 2025-12-25)</li>
+                  <li><strong>title:</strong> Holiday name (required, e.g., "Christmas Day")</li>
+                  <li><strong>type_name:</strong> Event type to use or create (optional, defaults to "Holiday")</li>
+                  <li><strong>description:</strong> Additional notes (optional)</li>
+                  <li><strong>is_recurring:</strong> "yes" to mark this event TYPE as recurring annually for 10 years, "no" for one-time events</li>
+                </ul>
+              </div>
+
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.json,.txt"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                >
+                  <Upload size={18} />
+                  <span className="text-sm font-medium">
+                    {importFile ? importFile.name : 'Select file to upload'}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={closeImportModal}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportSubmit}
+                  disabled={!importFile || importMutation.isPending}
+                  className="btn-primary"
+                >
+                  {importMutation.isPending ? 'Importing...' : 'Import'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={importResult.errors.length === 0 ? 'bg-green-50 border border-green-200 rounded-lg p-3' : 'bg-yellow-50 border border-yellow-200 rounded-lg p-3'}>
+                <div className="space-y-2">
+                  <p className={importResult.errors.length === 0 ? 'font-semibold text-green-900' : 'font-semibold text-yellow-900'}>
+                    ✓ Imported {importResult.created} holiday(ies)
+                  </p>
+                  {importResult.skipped > 0 && (
+                    <p className={importResult.errors.length === 0 ? 'text-sm text-green-800' : 'text-sm text-yellow-800'}>
+                      ⚠ Skipped {importResult.skipped} entries
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {importResult.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <p className="text-xs font-semibold text-red-800 mb-2">Errors:</p>
+                  <ul className="space-y-1 text-xs text-red-700">
+                    {importResult.errors.map((error, idx) => (
+                      <li key={idx}>• {error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="pt-4">
+                <button
+                  onClick={closeImportModal}
+                  className="w-full btn-primary"
+                >
+                  Done
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </Modal>
     </div>
   )

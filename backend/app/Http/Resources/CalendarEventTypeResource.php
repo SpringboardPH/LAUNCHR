@@ -15,6 +15,7 @@ class CalendarEventTypeResource extends JsonResource
             'description' => $this->description,
             'color' => $this->color,
             'counts_as_absence' => $this->counts_as_absence,
+            'is_recurring_annual' => $this->is_recurring_annual,
             'is_active' => $this->is_active,
             'created_by' => $this->created_by,
             'created_at' => $this->created_at?->toIso8601String(),

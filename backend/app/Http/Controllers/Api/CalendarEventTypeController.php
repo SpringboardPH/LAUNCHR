@@ -51,6 +51,7 @@ public function index(Request $request)
             'description' => 'nullable|string|max:1000',
             'color' => 'required|string|regex:/^#[A-Fa-f0-9]{6}$/',
             'counts_as_absence' => 'required|boolean',
+            'is_recurring_annual' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -59,6 +60,7 @@ public function index(Request $request)
             'description' => $validated['description'] ?? null,
             'color' => $validated['color'],
             'counts_as_absence' => $validated['counts_as_absence'],
+            'is_recurring_annual' => $validated['is_recurring_annual'] ?? false,
             'is_active' => $validated['is_active'] ?? true,
             'created_by' => $request->user()->id,
         ]);
@@ -109,6 +111,7 @@ public function index(Request $request)
             'description' => 'nullable|string|max:1000',
             'color' => 'sometimes|string|regex:/^#[A-Fa-f0-9]{6}$/',
             'counts_as_absence' => 'sometimes|boolean',
+            'is_recurring_annual' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
 
