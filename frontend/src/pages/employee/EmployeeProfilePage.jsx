@@ -28,32 +28,31 @@ export default function EmployeeProfilePage() {
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Profile card */}
         <div className="card p-5 flex flex-col items-center text-center lg:col-span-1">
-          <div className="w-20 h-20 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-2xl font-semibold mb-4">
+          <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-xl font-semibold mb-3">
             {emp.first_name?.charAt(0)}{emp.last_name?.charAt(0)}
           </div>
-          <p className="font-semibold text-lg text-gray-900">{emp.first_name} {emp.last_name}</p>
-          <p className="text-sm text-gray-500 mb-3">{emp.position}</p>
+          <p className="font-semibold text-gray-900">{emp.first_name} {emp.last_name}</p>
+          <p className="text-sm text-gray-500 mb-2">{emp.position}</p>
           <StatusBadge status={emp.status} />
-          <p className="text-xs text-gray-400 font-mono mt-3">ID: {emp.employee_id}</p>
+          <p className="text-xs text-gray-400 font-mono mt-2">ID: {emp.employee_id}</p>
         </div>
 
         {/* Details */}
-        <div className="card p-6 lg:col-span-2 space-y-5">
-          <h2 className="text-base font-semibold text-gray-900 border-b border-gray-100 pb-2">Employment Details</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
+        <div className="card p-5 lg:col-span-2 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Employment Details</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
             {[
               { icon: Mail, label: 'Email Address', value: emp.email },
               { icon: Phone, label: 'Phone Number', value: emp.phone || '—' },
               { icon: Briefcase, label: 'Department', value: emp.department },
-              { icon: Calendar, label: 'Hire Date', value: emp.hire_date ? format(new Date(emp.hire_date), 'MMMM d, yyyy') : '—' },
+              { icon: Calendar, label: 'Hire Date', value: emp.hire_date ? format(new Date(emp.hire_date), 'MMM dd, yyyy') : '—' },
+              { icon: Briefcase, label: 'Salary', value: `₱${Number(emp.salary).toLocaleString()}` },
             ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-start gap-3">
-                <div className="bg-gray-50 p-2 rounded-lg">
-                  <Icon size={16} className="text-gray-500 shrink-0" />
-                </div>
+              <div key={label} className="flex items-start gap-2">
+                <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-0.5">{label}</p>
-                  <p className="font-medium text-gray-900">{value}</p>
+                  <p className="text-xs text-gray-400">{label}</p>
+                  <p className="font-medium text-gray-800">{value}</p>
                 </div>
               </div>
             ))}

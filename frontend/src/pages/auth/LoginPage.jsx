@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/ui/index.jsx'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('admin@hr.com')
   const [password, setPassword] = useState('password')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -66,10 +68,23 @@ export default function LoginPage() {
             </div>
             <div>
               <label className="label">Password</label>
-              <input
-                type="password" className="input" placeholder="••••••••"
-                value={password} onChange={e => setPassword(e.target.value)} required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  className="input pr-10"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {error && (
