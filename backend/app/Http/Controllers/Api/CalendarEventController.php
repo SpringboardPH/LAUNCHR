@@ -124,6 +124,27 @@ class CalendarEventController extends Controller
             'created_by' => $request->user()->id,
         ]);
 
+        $type = \App\Models\CalendarEventType::find($validated['calendar_event_type_id']);
+        if ($type && $type->is_recurring_annual) {
+            $startDate = \Illuminate\Support\Carbon::parse($validated['event_date']);
+            $endDate = $validated['end_date'] ? \Illuminate\Support\Carbon::parse($validated['end_date']) : $startDate;
+            $duration = $startDate->diffInDays($endDate);
+
+            for ($i = 1; $i <= 10; $i++) {
+                $nextStartDate = $startDate->copy()->addYears($i);
+                $nextEndDate = $nextStartDate->copy()->addDays($duration);
+
+                CalendarEvent::create([
+                    'calendar_event_type_id' => $validated['calendar_event_type_id'],
+                    'event_date' => $nextStartDate->format('Y-m-d'),
+                    'end_date' => $nextEndDate->format('Y-m-d'),
+                    'title' => $validated['title'],
+                    'description' => $validated['description'] ?? null,
+                    'created_by' => $request->user()->id,
+                ]);
+            }
+        }
+
         // Load the relation for the resource
         $event->load('type');
 
