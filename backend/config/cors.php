@@ -17,7 +17,7 @@ if ($frontendUrl = env('FRONTEND_URL')) {
 return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => array_values(array_unique($allowedOrigins)),
+    'allowed_origins' => explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5173')),
     'allowed_origins_patterns' => [
         '^https:\/\/.*\.vercel\.app$',
     ],
