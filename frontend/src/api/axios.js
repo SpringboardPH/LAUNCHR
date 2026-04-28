@@ -16,7 +16,7 @@ const baseBackendURL = baseURL.replace(/\/api$/, '')
 const api = axios.create({
   baseURL,
   headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-  withCredentials: true,
+  withCredentials: false,
 })
 
 // Helper to get CSRF token (calls the root endpoint, not /api)
