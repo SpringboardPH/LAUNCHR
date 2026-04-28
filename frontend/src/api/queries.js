@@ -69,6 +69,9 @@ export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false)
     confirm_early_clock_out: confirmEarlyClockOut,
   }).then(r => r.data.data)
 
+export const updateAttendanceLog = (id, data) =>
+  api.put(`/attendance/${id}`, data).then(r => r.data)
+
 // ─── Leaves ──────────────────────────────────────────────────
 export const leaveKeys = {
   all: ['leaves'],

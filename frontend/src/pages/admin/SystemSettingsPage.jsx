@@ -244,6 +244,7 @@ export default function SystemSettingsPage() {
             <p className="text-amber-800 mt-1 leading-relaxed">
               These settings override the global system time for all attendance and payroll calculations. 
               Changing these values may result in data inconsistency if not handled carefully.
+              ALWAYS use the "Set Current Date/Time" button to sync with real time AFTER making changes, to ensure all dependent data is recalculated correctly.
             </p>
           </div>
         </div>

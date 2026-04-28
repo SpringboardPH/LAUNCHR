@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
 import {
-  getAttendanceToday, getAttendance, clockIn, clockOut,
+  getAttendanceToday, getAttendance, clockIn, clockOut, updateAttendanceLog,
   getEmployees, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut } from 'lucide-react'
+import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
+import { Clock, LogIn, LogOut, Pencil } from 'lucide-react'
 import { getClockWindow } from '../../utils/attendance'
 
 // Calculate hours worked between two time strings (HH:MM:SS format)
@@ -43,6 +43,8 @@ export default function AttendancePage() {
     open: false,
     employeeId: null,
   })
+  const [editLog, setEditLog] = useState(null)
+  const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', notes: '' })
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -72,6 +74,16 @@ export default function AttendancePage() {
     setMonthlyEmployeeSearch('')
     setMonthlyStatus('')
     setMonthlyDate('')
+  }
+
+  const openEditModal = (log) => {
+    setEditLog(log)
+    setEditForm({
+      clock_in_time: log.clock_in_time || '',
+      clock_out_time: log.clock_out_time || '',
+      status: log.status || '',
+      notes: log.notes || '',
+    })
   }
 
   const { data: todayLogs = [], isLoading: todayLoading } = useQuery({
@@ -204,6 +216,14 @@ export default function AttendancePage() {
         employeeId: variables.employeeId,
       })
     },
+  })
+
+  const updateLogMutation = useMutation({
+    mutationFn: ({ id, data }) => updateAttendanceLog(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      setEditLog(null)
+    }
   })
 
   const activeEmployees = employees?.data ?? []
@@ -437,7 +457,7 @@ export default function AttendancePage() {
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
-                  {['Date', 'Employee', 'Schedule', 'Clock In', 'Clock Out', 'Hours', 'Status'].map(h => (
+                  {['Date', 'Employee', 'Schedule', 'Clock In', 'Clock Out', 'Hours', 'Status', 'Action'].map(h => (
                     <th key={h} className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">{h}</th>
                   ))}
                 </tr>
@@ -458,16 +478,45 @@ export default function AttendancePage() {
                     <td className="py-2.5">
                       <StatusBadge status={log.status} />
                     </td>
+                    <td className="py-2.5">
+                      <button onClick={() => openEditModal(log)} className="text-gray-400 hover:text-brand-600">
+                        <Pencil size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {logs.length === 0 && (
-                  <tr><td colSpan={7} className="py-6 text-center text-gray-400 text-sm">No records for this month</td></tr>
+                  <tr><td colSpan={8} className="py-6 text-center text-gray-400 text-sm">No records for this month</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      <Modal open={!!editLog} onClose={() => setEditLog(null)} title="Edit Attendance Log" size="md">
+        <form onSubmit={(e) => { 
+          e.preventDefault(); 
+          updateLogMutation.mutate({ id: editLog?.id, data: editForm });
+        }}>
+          <div className="space-y-4">
+            <FormField label="Clock In"><input type="time" step="1" className="input" value={editForm.clock_in_time} onChange={e => setEditForm({...editForm, clock_in_time: e.target.value})} /></FormField>
+            <FormField label="Clock Out"><input type="time" step="1" className="input" value={editForm.clock_out_time} onChange={e => setEditForm({...editForm, clock_out_time: e.target.value})} /></FormField>
+            <FormField label="Status">
+              <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                <option value="completed">Completed</option>
+                <option value="working">Working</option>
+                <option value="late">Late</option>
+                <option value="incomplete">Incomplete</option>
+                <option value="late+incomplete">Late+Incomplete</option>
+                <option value="absent">Absent</option>
+              </select>
+            </FormField>
+            <FormField label="Notes"><textarea className="input" value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></FormField>
+            <button type="submit" className="btn-primary w-full">Save Changes</button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

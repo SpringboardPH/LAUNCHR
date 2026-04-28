@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{employeeId}/monthly', [AttendanceController::class, 'monthly']);
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
+        Route::put('/{id}', [AttendanceController::class, 'update'])->middleware('role:admin,hr');
     });
     
     // Leave

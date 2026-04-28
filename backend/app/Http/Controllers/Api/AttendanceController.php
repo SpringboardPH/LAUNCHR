@@ -1024,6 +1024,27 @@ class AttendanceController extends Controller
         ]);
     }
 
+    public function update(Request $request, $id)
+    {
+        \Log::info("Attendance update request received for ID: " . $id, $request->all());
+        $log = AttendanceLog::findOrFail($id);
+
+        $validated = $request->validate([
+            'clock_in_time' => 'nullable|date_format:H:i:s',
+            'clock_out_time' => 'nullable|date_format:H:i:s',
+            'status' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $log->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'data' => $log,
+            'message' => 'Attendance log updated successfully',
+        ]);
+    }
+
     /**
      * Automatically clock out employees who missed their departure window
      */
