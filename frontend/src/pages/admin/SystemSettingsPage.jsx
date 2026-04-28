@@ -16,6 +16,7 @@ const normalizeTimeValue = (timeValue) => {
 export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
+  const [autoClockOut, setAutoClockOut] = useState(false)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
   const { data: settings = [], isLoading } = useQuery({
@@ -32,14 +33,22 @@ export default function SystemSettingsPage() {
       const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
       const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
       setDateTime({ date: sysDate, time: sysTime })
+      
+      const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')
+      if (autoClockOutSetting) {
+        setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
+      } else {
+        setAutoClockOut(false) // Default if not found
+      }
     }
   }, [settings])
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time }) => {
+    mutationFn: async ({ date, time, autoClockOut }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
+      await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -63,10 +72,10 @@ export default function SystemSettingsPage() {
   const handleSave = () => {
     setConfirmConfig({
       open: true,
-      title: 'Save System Time',
-      message: 'Are you sure you want to update the system date and time? This may affect attendance records and payroll calculations.',
+      title: 'Save System Settings',
+      message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate(dateTime)
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut })
     })
   }
 
@@ -84,6 +93,9 @@ export default function SystemSettingsPage() {
         const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
         const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
         setDateTime({ date: sysDate, time: sysTime })
+        
+        const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
+        setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
       }
     })
   }
@@ -132,6 +144,23 @@ export default function SystemSettingsPage() {
       />
 
       <div className="space-y-6">
+        <div className="card p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Attendance Automation</h2>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Enable Auto Clock-Out</p>
+              <p className="text-xs text-gray-500">Automatically clock out employees who miss their shift end.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoClockOut(!autoClockOut)}
+              className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${autoClockOut ? 'bg-brand-600' : 'bg-gray-300'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoClockOut ? 'translate-x-6' : ''}`} />
+            </button>
+          </div>
+        </div>
+
         <div className="card overflow-hidden">
           <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
             <div className="flex items-center gap-3">

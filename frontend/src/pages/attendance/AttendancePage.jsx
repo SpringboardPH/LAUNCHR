@@ -456,19 +456,7 @@ export default function AttendancePage() {
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_out_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
-                      {log.status === 'completed' ? (
-                        <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
-                      ) : log.status === 'working' ? (
-                        <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
-                      ) : log.status === 'on_leave' ? (
-                        <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
-                      ) : log.status === 'late' ? (
-                        <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
-                      ) : log.status === 'incomplete' ? (
-                        <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Incomplete</span>
-                      ) : (
-                        <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
-                      )}
+                      <StatusBadge status={log.status} />
                     </td>
                   </tr>
                 ))}

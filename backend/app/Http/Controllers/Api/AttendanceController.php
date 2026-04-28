@@ -175,27 +175,44 @@ class AttendanceController extends Controller
     }
 
     /**
-     * Calculate work status based on clock times
+     * Calculate work status based on clock times and template rules
      */
-    private function calculateStatus($clockInTime, $clockOutTime, $expectedHours = null, $workStartTime = null)
+    private function calculateStatus($clockInTime, $clockOutTime, $expectedHours = null, $workStartTime = null, $lateThreshold = 0)
     {
         if (!$clockInTime) {
             return 'absent';
         }
 
+        // If clocked in but not out
+        if (!$clockOutTime) {
+            return 'working';
+        }
+
         $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
         $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
         $workStartMinutes = $this->parseTimeToMinutes($workStartTime ?? self::WORK_START_TIME);
+        
         $requiredHours = $expectedHours ?? self::REQUIRED_HOURS;
-        $isLate = $clockInMinutes > $workStartMinutes;
+        
+        // Determine status components
+        $isLate = $clockInMinutes > ($workStartMinutes + $lateThreshold);
         $hoursWorked = max(0, ($clockOutMinutes - $clockInMinutes) / 60);
+        $isIncomplete = $hoursWorked < $requiredHours;
 
-        // Incomplete is strictly based on insufficient worked hours.
-        if ($hoursWorked < $requiredHours) {
+        // Combine logic
+        if ($isLate && $isIncomplete) {
+            return 'late+incomplete';
+        }
+        
+        if ($isLate) {
+            return 'late';
+        }
+        
+        if ($isIncomplete) {
             return 'incomplete';
         }
 
-        return $isLate ? 'late' : 'completed';
+        return 'completed';
     }
 
     /**
@@ -234,6 +251,20 @@ class AttendanceController extends Controller
         $today = SystemClock::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
         $dayRule = $this->getDayRuleForDate($schedule, $today);
+
+        // Check if employee is on leave today
+        $onLeave = \App\Models\LeaveRequest::where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $today->toDateString())
+            ->whereDate('end_date', '>=', $today->toDateString())
+            ->exists();
+            
+        if ($onLeave) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot clock in: Employee is on approved leave for today',
+            ], 400);
+        }
 
         if ($dayRule !== null) {
             if (empty($dayRule['enabled'])) {
@@ -456,7 +487,10 @@ class AttendanceController extends Controller
                 : ($schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null),
             $dayRule && !empty($dayRule['clock_in'])
                 ? $dayRule['clock_in']
-                : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null)
+                : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null),
+            $dayRule && isset($dayRule['late_threshold_minutes']) 
+                ? $dayRule['late_threshold_minutes'] 
+                : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0)
         );
         $log->save();
 
@@ -637,25 +671,15 @@ class AttendanceController extends Controller
                             }
 
                             if ($isWorkingDay) {
-                                $systemNow = SystemClock::now();
-                                $sysToday = SystemClock::today();
-                                $shiftEnd = null;
-                                if ($date->isSameDay($sysToday)) {
-                                    $shiftEndStr = $template->end_time ?? '18:00:00';
-                                    $shiftEnd = $date->copy()->setTimeFrom(Carbon::parse($shiftEndStr));
-                                }
-
-                                if ($date->lt($sysToday) && (!$date->isSameDay($sysToday) || (isset($shiftEnd) && $systemNow->isAfter($shiftEnd)))) {
-                                    $allRecords[] = [
-                                        'employee_id' => $employee->id,
-                                        'employee' => $employee,
-                                        'date' => $dateStr,
-                                        'clock_in_time' => null,
-                                        'clock_out_time' => null,
-                                        'status' => 'absent',
-                                        'template_name' => $templateName,
-                                    ];
-                                }
+                                $allRecords[] = [
+                                    'employee_id' => $employee->id,
+                                    'employee' => $employee,
+                                    'date' => $dateStr,
+                                    'clock_in_time' => null,
+                                    'clock_out_time' => null,
+                                    'status' => 'absent',
+                                    'template_name' => $templateName,
+                                ];
                             }
                         }
                     }
@@ -813,6 +837,12 @@ class AttendanceController extends Controller
             ]);
         } else {
             // HR/Admin get all employees' today records
+            // First, perform auto clock out for all employees
+            $employees = Employee::all();
+            foreach ($employees as $employee) {
+                $this->performAutoClockOut($employee->id);
+            }
+
             $records = AttendanceLog::with('employee')
                 ->where('date', $today)
                 ->orderBy('employee_id')
@@ -999,6 +1029,11 @@ class AttendanceController extends Controller
      */
     private function performAutoClockOut($employeeId)
     {
+        $enabled = \App\Models\SystemSettings::get('auto_clock_out_enabled', false);
+        if (!$enabled) {
+            return;
+        }
+
         $openLogs = AttendanceLog::where('employee_id', $employeeId)
             ->whereNotNull('clock_in_time')
             ->whereNull('clock_out_time')
@@ -1023,33 +1058,53 @@ class AttendanceController extends Controller
             }
 
             $clockOutEnd = null;
+            $autoClockOutTime = null;
+
             if ($dayRule) {
-                 $targetOut = Carbon::parse($dayRule['clock_out']);
-                 $targetOut = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
-                 
-                 $grace = (int)($dayRule['grace_minutes'] ?? 0);
-                 $type = $dayRule['grace_type'] ?? '-/+';
-                 
-                 $clockOutEnd = $targetOut->copy();
-                 if ($dayRule['grace_enabled'] && ($type === '+' || $type === '-/+')) {
-                     $clockOutEnd->addMinutes($grace);
-                 }
+                $targetOut = Carbon::parse($dayRule['clock_out']);
+                $targetOut = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
+
+                $grace = (int) ($dayRule['grace_minutes'] ?? 0);
+                $type = $dayRule['grace_type'] ?? '-/+';
+                $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+
+                $clockOutEnd = $targetOut->copy();
+                if ($graceEnabled && ($type === '+' || $type === '-/+')) {
+                    $clockOutEnd->addMinutes($grace);
+                }
+
+                // Clock out at the end of the grace window, not just the base time
+                $autoClockOutTime = $clockOutEnd->format('H:i:s');
             } else {
-                 $clockOutEndStr = $template->clock_out_end ?? $template->end_time;
-                 if ($clockOutEndStr) {
-                     $targetOut = Carbon::parse($clockOutEndStr);
-                     $clockOutEnd = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
-                 }
+                $clockOutEndStr = $template->clock_out_end ?? $template->end_time;
+                if ($clockOutEndStr) {
+                    $targetOut = Carbon::parse($clockOutEndStr);
+                    $clockOutEnd = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
+                    $autoClockOutTime = $clockOutEnd->format('H:i:s');
+                }
             }
 
-            if ($clockOutEnd && SystemClock::now()->isAfter($clockOutEnd)) {
+            if ($clockOutEnd && $autoClockOutTime && SystemClock::now()->isAfter($clockOutEnd)) {
+                // Derive expected hours from the day rule or template for accurate status
+                $workStartTime = $dayRule['clock_in'] ?? $template->work_start_time ?? self::WORK_START_TIME;
+                $expectedHours = $dayRule
+                    ? $this->calculateExpectedHoursFromRule($dayRule['clock_in'], $dayRule['clock_out'])
+                    : ($template->required_hours_per_day ?? self::REQUIRED_HOURS);
+
+                $status = $this->calculateStatus(
+                    $log->clock_in_time,
+                    $autoClockOutTime,
+                    $expectedHours,
+                    $workStartTime,
+                    $template->late_threshold_minutes ?? 0
+                );
+
                 $log->update([
-                    'clock_out_time' => $dayRule ? $dayRule['clock_out'] : ($template->end_time ?? '18:00:00'),
-                    'status' => 'completed',
-                    'notes' => ($log->notes ? $log->notes . "\n" : "") . self::AUTO_CLOCK_OUT_NOTE
+                    'clock_out_time' => $autoClockOutTime,
+                    'status'         => $status,
+                    'notes'          => ($log->notes ? $log->notes . "\n" : '') . self::AUTO_CLOCK_OUT_NOTE,
                 ]);
             }
         }
     }
 }
-

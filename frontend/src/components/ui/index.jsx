@@ -118,6 +118,9 @@ export function StatusBadge({ status }) {
     working:     'badge-green',
     on_leave:    'badge-blue',
     holiday:     'badge-purple',
+    incomplete:  'badge-orange',
+    'late+incomplete': 'badge-red',
+    completed:   'badge-green',
   }
   const label = status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
