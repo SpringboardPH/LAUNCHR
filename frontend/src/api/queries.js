@@ -26,9 +26,6 @@ export const updateEmployee = (id, data) =>
 export const deactivateEmployee = (id) =>
   api.patch(`/employees/${id}/deactivate`).then(r => r.data)
 
-export const deleteEmployee = (id) =>
-  api.delete(`/employees/${id}`).then(r => r.data)
-
 // ─── Departments ─────────────────────────────────────────────
 export const departmentKeys = {
   all: ['departments'],
@@ -134,9 +131,6 @@ export const getEmployeeLeaveBalances = (employeeId) =>
 export const upsertEmployeeLeaveBalance = (employeeId, leaveTypeId, data) =>
   api.put(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`, data).then(r => r.data)
 
-export const cancelEmployeeLeaveBalance = (employeeId, leaveTypeId) =>
-  api.delete(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`).then(r => r.data)
-
 // ─── Payroll ─────────────────────────────────────────────────
 export const payrollKeys = {
   all: ['payroll'],
@@ -187,17 +181,8 @@ export const getSystemClock = () =>
 export const getAdminSettings = () =>
   api.get('/admin/settings').then(r => r.data.data)
 
-export const getAdminSetting = (key) =>
-  api.get(`/admin/settings/${key}`).then(r => r.data.data)
-
 export const updateAdminSetting = (key, value, description, type = 'string') =>
   api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)
-
-export const initializeAdminSettings = () =>
-  api.post('/admin/settings/initialize').then(r => r.data)
-
-export const getSettingDefaults = () =>
-  api.get('/admin/settings/defaults').then(r => r.data.data)
 
 // ─── Admin Departments ──────────────────────────────────────────────
 export const adminDepartmentKeys = {
@@ -207,9 +192,6 @@ export const adminDepartmentKeys = {
 
 export const getAdminDepartments = () =>
   api.get('/admin/departments').then(r => r.data.data)
-
-export const getAdminDepartment = (id) =>
-  api.get(`/admin/departments/${id}`).then(r => r.data.data)
 
 export const createAdminDepartment = (data) =>
   api.post('/admin/departments', data).then(r => r.data)
@@ -227,12 +209,6 @@ export const restoreAdminDepartment = (id) =>
   api.patch(`/admin/departments/${id}/restore`).then(r => r.data)
 
 // ─── Admin Employee Management ──────────────────────────────────────────────
-export const hardDeleteEmployee = (id) =>
-  api.delete(`/admin/employees/${id}/hard-delete`).then(r => r.data)
-
-export const restoreEmployee = (id) =>
-  api.patch(`/admin/employees/${id}/restore`).then(r => r.data)
-
 // ─── Schedule Templates (Admin) ──────────────────────────────────────────────
 export const scheduleTemplateKeys = {
   all: ['admin', 'schedule-templates'],
@@ -241,9 +217,6 @@ export const scheduleTemplateKeys = {
 
 export const getScheduleTemplates = () =>
   api.get('/admin/schedule-templates').then(r => r.data.data)
-
-export const getScheduleTemplate = (id) =>
-  api.get(`/admin/schedule-templates/${id}`).then(r => r.data.data)
 
 export const createScheduleTemplate = (data) =>
   api.post('/admin/schedule-templates', data).then(r => r.data)
@@ -268,9 +241,6 @@ export const getEmployeeSchedules = (params) =>
     pagination: r.data.pagination,
     total: r.data.pagination?.total,
   }))
-
-export const getEmployeeSchedule = (id) =>
-  api.get(`/admin/employee-schedules/${id}`).then(r => r.data.data)
 
 export const getCurrentScheduleForEmployee = (employeeId) =>
   api.get(`/admin/employee-schedules/employee/${employeeId}/current`).then(r => r.data.data)
@@ -333,9 +303,6 @@ export const calendarEventKeys = {
 
 export const getCalendarEvents = (params = {}) =>
   api.get('/calendar-events', { params }).then(r => r.data.data)
-
-export const getCalendarEvent = (id) =>
-  api.get(`/calendar-events/${id}`).then(r => r.data.data)
 
 export const createCalendarEvent = (data) =>
   api.post('/admin/calendar-events', data).then(r => r.data)

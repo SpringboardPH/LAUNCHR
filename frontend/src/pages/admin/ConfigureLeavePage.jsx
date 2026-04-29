@@ -29,7 +29,7 @@ const EMPTY_TYPE_FORM = {
   is_active: true,
 }
 
-export default function AdminSettingsPage() {
+export default function ConfigureLeavePage() {
   const qc = useQueryClient()
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [typeModalOpen, setTypeModalOpen] = useState(false)

@@ -7,6 +7,7 @@ use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
 use App\Helpers\SystemClock;
+use App\Services\AttendanceService;
 use Illuminate\Support\Carbon;
 
 class AutoClockOut extends Command
@@ -29,16 +30,10 @@ class AutoClockOut extends Command
         $this->info('Auto clock-out completed.');
     }
 
-    private function parseTimeToMinutes(string $time): int
-    {
-        [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
-        return $hour * 60 + $minute;
-    }
-
     private function calculateExpectedHours(string $clockIn, string $clockOut): int
     {
-        $inMinutes  = $this->parseTimeToMinutes($clockIn);
-        $outMinutes = $this->parseTimeToMinutes($clockOut);
+        $inMinutes  = AttendanceService::parseTimeToMinutes($clockIn);
+        $outMinutes = AttendanceService::parseTimeToMinutes($clockOut);
         if ($outMinutes < $inMinutes) {
             $outMinutes += 1440;
         }
@@ -47,21 +42,7 @@ class AutoClockOut extends Command
 
     private function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): string
     {
-        if (!$clockIn) {
-            return 'absent';
-        }
-
-        $inMinutes      = $this->parseTimeToMinutes($clockIn);
-        $outMinutes     = $this->parseTimeToMinutes($clockOut);
-        $startMinutes   = $this->parseTimeToMinutes($workStart);
-        $isLate         = $inMinutes > $startMinutes;
-        $hoursWorked    = max(0, ($outMinutes - $inMinutes) / 60);
-
-        if ($hoursWorked < $expectedHours) {
-            return 'incomplete';
-        }
-
-        return $isLate ? 'late' : 'completed';
+        return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart);
     }
 
     private function performAutoClockOut($employeeId)

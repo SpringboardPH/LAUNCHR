@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getUsers, getTrashedUsers, deleteUser, hardDeleteUser, restoreUser, userKeys, employeeScheduleKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, EmptyState, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Search, Pencil, Trash2, Users, UserX, RotateCcw, Archive } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -12,7 +12,7 @@ export default function UserListPage() {
   const [search, setSearch] = useState('')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+
 
   const { data, isLoading } = useQuery({
     queryKey: userKeys.list({ search }),
@@ -79,7 +79,7 @@ export default function UserListPage() {
         title="User Management"
         description="Manage system access and roles"
         action={
-          <Link to="/admin/employees/new?manage_account=true" className="btn-primary">
+          <Link to="/hr/employees/new?manage_account=true" className="btn-primary">
             <Plus size={16} /> Add User
           </Link>
         }
@@ -107,7 +107,7 @@ export default function UserListPage() {
       {isLoading ? <PageSpinner /> : users.length === 0 ? (
         <EmptyState icon={Users} title="No users found"
           description={search ? "No users match your search criteria" : "No users exist in the system yet"}
-          action={<Link to="/admin/employees/new?manage_account=true" className="btn-primary"><Plus size={14} /> Add User</Link>}
+          action={<Link to="/hr/employees/new?manage_account=true" className="btn-primary"><Plus size={14} /> Add User</Link>}
         />
       ) : (
         <div className="card overflow-hidden">
@@ -155,7 +155,7 @@ export default function UserListPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         {u.employee && (
-                          <Link to={`/admin/employees/${u.employee.id}/edit?manage_account=true`} className="btn-ghost p-1.5" title="Edit Account">
+                          <Link to={`/hr/employees/${u.employee.id}/edit?manage_account=true`} className="btn-ghost p-1.5" title="Edit Account">
                             <Pencil size={14} />
                           </Link>
                         )}

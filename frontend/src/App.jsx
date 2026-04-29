@@ -4,7 +4,7 @@ import AppLayout from './components/layout/AppLayout'
 import EmployeeLayout from './components/layout/EmployeeLayout'
 import LoginPage from './pages/auth/LoginPage'
 import DashboardPage from './pages/dashboard/DashboardPage'
-import AdminSettingsPage from './pages/admin/AdminSettingsPage'
+import ConfigureLeavePage from './pages/admin/ConfigureLeavePage'
 import AdminDepartmentsPage from './pages/admin/AdminDepartmentsPage'
 import AdminScheduleTemplatesPage from './pages/admin/AdminScheduleTemplatesPage'
 import EmployeeScheduleAssignmentPage from './pages/admin/EmployeeScheduleAssignmentPage'
@@ -48,16 +48,6 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children
 }
 
-function PublicRoute({ children }) {
-  const { user, loading } = useAuth()
-  if (loading) return null
-  if (user) {
-    // Redirect employees to employee dashboard, others to admin dashboard
-    return <Navigate to={isEmployee(user) ? '/employee' : '/'} replace />
-  }
-  return children
-}
-
 function RootRoute() {
   const { user, loading } = useAuth()
   if (loading) return (
@@ -67,13 +57,14 @@ function RootRoute() {
   )
   // If logged in, redirect to appropriate dashboard
   if (user) {
-    return isEmployee(user) ? <Navigate to="/employee" replace /> : <Navigate to="/admin" replace />
+    if (['admin', 'hr'].includes(user.role)) return <Navigate to="/hr" replace />
+    return <Navigate to="/employee" replace />
   }
   // If not logged in, redirect to login
   return <Navigate to="/login" replace />
 }
 
-function AdminRoute({ children }) {
+function HrRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -85,10 +76,22 @@ function AdminRoute({ children }) {
   return children
 }
 
+function SystemAdminRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin') return <Navigate to="/hr" replace />
+  return children
+}
+
 function LayoutSelector() {
   const { user } = useAuth()
   // Admin is not allowed to access standard employee pages
-  if (user?.role === 'admin') return <Navigate to="/admin" replace />
+  if (user?.role === 'admin') return <Navigate to="/hr" replace />
   // HR uses the rich AppLayout to keep management links visible, standard employees use simple EmployeeLayout
   return user?.role === 'hr' ? <AppLayout /> : <EmployeeLayout />
 }
@@ -100,7 +103,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<RootRoute />} />
-          <Route path="/admin" element={<AdminRoute><AppLayout /></AdminRoute>}>
+          <Route path="/hr" element={<HrRoute><AppLayout /></HrRoute>}>
             <Route index element={<DashboardPage />} />
             <Route path="employees" element={<EmployeeListPage />} />
             <Route path="employees/new" element={<EmployeeFormPage />} />
@@ -110,16 +113,19 @@ export default function App() {
             <Route path="leaves" element={<LeavePage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
-            <Route path="settings" element={<AdminSettingsPage />} />
+            <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
+            <Route path="calendar" element={<CalendarPage readOnly={false} />} />
+          </Route>
+          <Route path="/admin" element={<SystemAdminRoute><AppLayout /></SystemAdminRoute>}>
+            <Route index element={<Navigate to="/hr" replace />} />
+            <Route path="configure-leave" element={<ConfigureLeavePage />} />
             <Route path="departments" element={<AdminDepartmentsPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
-            <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/new" element={<UserFormPage />} />
             <Route path="users/:id/edit" element={<UserFormPage />} />
             <Route path="system-settings" element={<SystemSettingsPage />} />
             <Route path="calendar-event-types" element={<AdminCalendarEventTypesPage />} />
-            <Route path="calendar" element={<CalendarPage readOnly={false} />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />

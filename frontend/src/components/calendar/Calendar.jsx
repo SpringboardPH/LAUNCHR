@@ -6,9 +6,8 @@ import {
   startOfWeek, 
   endOfWeek, 
   eachDayOfInterval, 
-  isSameMonth, 
-  isSameDay, 
-  addMonths, 
+  isSameMonth,
+  addMonths,
   subMonths,
   isToday
 } from 'date-fns'

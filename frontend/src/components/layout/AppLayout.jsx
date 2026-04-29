@@ -10,18 +10,18 @@ import { useState } from 'react'
 import clsx from 'clsx'
 
 const COMMON_NAV = [
-  { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/admin/employees', icon: Users, label: 'Employees' },
-  { to: '/admin/attendance', icon: Clock, label: 'Attendance' },
-  { to: '/admin/employee-schedules', icon: CalendarRange, label: 'Schedules' },
-  { to: '/admin/leaves', icon: CalendarOff, label: 'Leaves', badge: true },
-  { to: '/admin/calendar', icon: CalendarRange, label: 'Calendar' },
-  { to: '/admin/payroll', icon: Banknote, label: 'Payroll' },
+  { to: '/hr', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/hr/employees', icon: Users, label: 'Employees' },
+  { to: '/hr/attendance', icon: Clock, label: 'Attendance' },
+  { to: '/hr/employee-schedules', icon: CalendarRange, label: 'Schedules' },
+  { to: '/hr/leaves', icon: CalendarOff, label: 'Leaves', badge: true },
+  { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
+  { to: '/hr/payroll', icon: Banknote, label: 'Payroll' },
 ]
 
 const ADMIN_ONLY_NAV = [
   { to: '/admin/system-settings', icon: Settings, label: 'System Settings' },
-  { to: '/admin/settings', icon: Sliders, label: 'Configure Leave' },
+  { to: '/admin/configure-leave', icon: Sliders, label: 'Configure Leave' },
   { to: '/admin/calendar-event-types', icon: CalendarRange, label: 'Configure Calendar' },
   { to: '/admin/users', icon: UserCog, label: 'User Management' },
   { to: '/admin/departments', icon: Building2, label: 'Departments' },

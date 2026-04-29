@@ -48,13 +48,13 @@ export default function EmployeeDetailPage() {
         description={`${emp.position} · ${emp.department}`}
         action={
           <div className="flex gap-2">
-            <Link to={`/admin/employee-schedules?employee_id=${id}`} className="btn-secondary">
+            <Link to={`/hr/employee-schedules?employee_id=${id}`} className="btn-secondary">
               <CalendarDays size={14} /> Assign Schedule
             </Link>
-            <button onClick={() => navigate('/admin/employees')} className="btn-secondary">
+            <button onClick={() => navigate('/hr/employees')} className="btn-secondary">
               <ArrowLeft size={14} /> Back
             </button>
-            <Link to={`/admin/employees/${id}/edit`} className="btn-primary">
+            <Link to={`/hr/employees/${id}/edit`} className="btn-primary">
               <Pencil size={14} /> Edit
             </Link>
           </div>

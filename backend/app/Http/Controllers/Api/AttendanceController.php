@@ -10,6 +10,7 @@ use App\Models\EmployeeSchedule;
 use App\Models\LeaveRequest;
 use App\Models\ScheduleTemplate;
 use App\Models\CalendarEvent;
+use App\Services\AttendanceService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
@@ -180,40 +181,17 @@ class AttendanceController extends Controller
      */
     private function calculateStatus($clockInTime, $clockOutTime, $expectedHours = null, $workStartTime = null, $lateThreshold = 0)
     {
-        if (!$clockInTime) {
-            return 'absent';
-        }
-
-        // If clocked in but not out
-        if (!$clockOutTime) {
+        // Special case: Currently working
+        if ($clockInTime && !$clockOutTime) {
             return 'working';
         }
 
-        $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
-        $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
-        $workStartMinutes = $this->parseTimeToMinutes($workStartTime ?? self::WORK_START_TIME);
-        
-        $requiredHours = $expectedHours ?? self::REQUIRED_HOURS;
-        
-        // Determine status components
-        $isLate = $clockInMinutes > ($workStartMinutes + $lateThreshold);
-        $hoursWorked = max(0, ($clockOutMinutes - $clockInMinutes) / 60);
-        $isIncomplete = $hoursWorked < $requiredHours;
-
-        // Combine logic
-        if ($isLate && $isIncomplete) {
-            return 'late+incomplete';
-        }
-        
-        if ($isLate) {
-            return 'late';
-        }
-        
-        if ($isIncomplete) {
-            return 'incomplete';
-        }
-
-        return 'completed';
+        return AttendanceService::calculateStatus(
+            $clockInTime,
+            $clockOutTime,
+            $expectedHours ?? 9, // Fallback to reasonable default
+            $workStartTime ?? '09:00:00'
+        );
     }
 
     /**

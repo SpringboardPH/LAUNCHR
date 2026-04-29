@@ -257,11 +257,7 @@ const EmployeeScheduleAssignmentPage = () => {
     if (!s.start_date || !s.end_date) return false
     return true
   }) ?? []
-  const currentSchedules = allActiveSchedules.filter((s) => {
-    const start = parseISO(s.start_date)
-    const end = parseISO(s.end_date)
-    return !isBefore(end, today) && !isAfter(start, today)
-  })
+
   const thisWeekSchedules = allActiveSchedules.filter((s) => {
     const start = parseISO(s.start_date)
     const end = parseISO(s.end_date)

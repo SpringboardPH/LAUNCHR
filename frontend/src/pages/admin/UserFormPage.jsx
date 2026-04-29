@@ -24,7 +24,7 @@ export default function UserFormPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
-  const [pendingData, setPendingData] = useState(null)
+
 
   const { data: user, isLoading } = useQuery({
     queryKey: userKeys.detail(id),
@@ -72,7 +72,7 @@ export default function UserFormPage() {
       delete data.password
     }
 
-    setPendingData(data)
+
     setConfirmConfig({
       open: true,
       title: isEdit ? 'Save Changes' : 'Create User',

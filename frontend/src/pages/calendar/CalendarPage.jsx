@@ -17,7 +17,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
-import { Calendar as CalendarIcon, Info, Trash2, Plus, Download, Upload } from 'lucide-react'
+import { Calendar as CalendarIcon, Trash2, Plus, Download, Upload } from 'lucide-react'
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200),
@@ -92,8 +92,6 @@ export default function CalendarPage({ readOnly = false }) {
     register,
     handleSubmit,
     reset,
-    setValue,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(eventSchema),
@@ -237,12 +235,6 @@ export default function CalendarPage({ readOnly = false }) {
 
   const onSubmit = (data) => {
     if (isEditMode && selectedEvent) {
-      // Check if this event appears in multiple years (is annually recurring)
-      const allEventsWithTitle = events?.filter(e => 
-        e.title === selectedEvent.title && 
-        !e.is_leave
-      ) || []
-      
       // If type exists and is_recurring_annual is true, it's recurring
       const isRecurring = selectedEvent.type?.is_recurring_annual
       

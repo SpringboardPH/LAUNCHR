@@ -52,8 +52,7 @@ export default function LoginPage() {
           <div className="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center mb-3">
             <span className="text-white font-bold text-lg">HR</span>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">HR System</h1>
-          <p className="text-sm text-gray-500 mt-1">Springboard Philippines</p>
+          <h1 className="text-xl font-semibold text-gray-900">Springboard Philippines</h1>
         </div>
 
         <div className="card p-6">
@@ -98,6 +97,9 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
+        <p className="text-center text-xs text-gray-400 mt-6">
+          LAUNCHR &copy; {new Date().getFullYear()} made by aaron luyun
+        </p>
       </div>
     </div>
   )

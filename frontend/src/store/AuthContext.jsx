@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
-    try { await api.post('/logout') } catch {}
+    try { await api.post('/logout') } catch { /* ignore */ }
     localStorage.removeItem('hr_token')
     delete api.defaults.headers.common['Authorization']
     

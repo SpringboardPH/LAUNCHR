@@ -11,7 +11,7 @@ const normalizeApiBaseURL = (value) => {
 }
 
 const baseURL = normalizeApiBaseURL(import.meta.env.VITE_API_BASE_URL)
-const baseBackendURL = baseURL.replace(/\/api$/, '')
+
 
 const api = axios.create({
   baseURL,
@@ -19,14 +19,6 @@ const api = axios.create({
   withCredentials: false,
 })
 
-// Helper to get CSRF token (calls the root endpoint, not /api)
-export const getCsrfToken = async () => {
-  try {
-    await axios.get(`${baseBackendURL}/sanctum/csrf-cookie`, { withCredentials: true })
-  } catch (err) {
-    console.error('CSRF token fetch failed:', err)
-  }
-}
 
 // Attach stored token on every request
 api.interceptors.request.use(config => {

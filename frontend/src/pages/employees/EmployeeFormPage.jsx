@@ -68,7 +68,7 @@ export default function EmployeeFormPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: employeeKeys.all })
       qc.invalidateQueries({ queryKey: userKeys.all })
-      navigate(manageAccount ? '/admin/users' : '/admin/employees')
+      navigate(manageAccount ? '/admin/users' : '/hr/employees')
     },
   })
 
@@ -80,7 +80,7 @@ export default function EmployeeFormPage() {
         title={manageAccount ? (isEdit ? 'Manage User Account' : 'Add User Account') : (isEdit ? 'Edit Employee' : 'Add Employee')}
         description={manageAccount ? 'Manage login credentials and system permissions' : (isEdit ? `Editing ${emp?.first_name} ${emp?.last_name}` : 'Fill in the details below')}
         action={
-          <button onClick={() => navigate(manageAccount ? '/admin/users' : '/admin/employees')} className="btn-secondary">
+          <button onClick={() => navigate(manageAccount ? '/admin/users' : '/hr/employees')} className="btn-secondary">
             <ArrowLeft size={14} /> Back
           </button>
         }
@@ -188,7 +188,7 @@ export default function EmployeeFormPage() {
         )}
 
         <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={() => navigate(manageAccount ? '/admin/users' : '/admin/employees')} className="btn-secondary">
+          <button type="button" onClick={() => navigate(manageAccount ? '/admin/users' : '/hr/employees')} className="btn-secondary">
             Cancel
           </button>
           <button type="submit" disabled={mutation.isPending} className="btn-primary">

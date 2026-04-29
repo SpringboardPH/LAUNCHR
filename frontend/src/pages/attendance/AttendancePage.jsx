@@ -11,29 +11,7 @@ import {
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX } from 'lucide-react'
 import { getClockWindow } from '../../utils/attendance'
-
-// Calculate hours worked between two time strings (HH:MM:SS format)
-const calculateHours = (clockInTime, clockOutTime) => {
-  if (!clockInTime || !clockOutTime) return '—'
-  
-  try {
-    const [inH, inM, inS] = clockInTime.split(':').map(Number)
-    const [outH, outM, outS] = clockOutTime.split(':').map(Number)
-    
-    const inMinutes = inH * 60 + inM + inS / 60
-    const outMinutes = outH * 60 + outM + outS / 60
-    const diffMinutes = outMinutes - inMinutes
-    
-    if (diffMinutes < 0) return '—'
-    
-    const hours = Math.floor(diffMinutes / 60)
-    const minutes = Math.round(diffMinutes % 60)
-    
-    return `${hours}h ${minutes}m`
-  } catch {
-    return '—'
-  }
-}
+import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
   const [month, setMonth] = useState(null)
@@ -366,7 +344,7 @@ export default function AttendancePage() {
                       </td>
                       <td className="py-2.5 pl-3 pr-4 text-gray-600">{log?.clock_in_time ?? '—'}</td>
                       <td className="py-2.5 pr-4 text-gray-600">{log?.clock_out_time ?? '—'}</td>
-                      <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log?.clock_in_time, log?.clock_out_time)}</td>
+                      <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHoursWorked(log?.clock_in_time, log?.clock_out_time)}</td>
                       <td className="py-2.5 pr-4">
                         {log ? (
                           log.clock_out_time ? (
@@ -499,7 +477,7 @@ export default function AttendancePage() {
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_in_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_out_time ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
+                    <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHoursWorked(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
                       <StatusBadge status={log.status} />
                     </td>

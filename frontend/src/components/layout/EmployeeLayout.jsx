@@ -50,7 +50,7 @@ export default function EmployeeLayout() {
           <div className="px-3 py-2">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
           </div>
-          {NAV.map(({ to, icon: Icon, label, end }) => (
+          {NAV.map(({ to, icon: Icon, label }) => (
             <a
               key={to} href={to} onClick={(e) => {
                 e.preventDefault()
