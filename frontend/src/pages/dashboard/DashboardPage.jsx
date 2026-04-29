@@ -98,15 +98,23 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Leave by type */}
+        {/* Pending leave requests */}
         <div className="card p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Pending Leaves by Type</h2>
-          {data?.leave_by_type?.length ? (
-            <div className="space-y-3">
-              {data.leave_by_type.map(item => (
-                <div key={item.type} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 capitalize">{item.type}</span>
-                  <span className="text-sm font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded">{item.count}</span>
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Pending Leave Requests</h2>
+          {data?.recent_leaves?.length ? (
+            <div className="space-y-4 max-h-[160px] overflow-y-auto pr-2">
+              {data.recent_leaves.map(leave => (
+                <div key={leave.id} className="flex flex-col gap-1 border-b border-gray-50 pb-3 last:border-0 last:pb-0">
+                  <div className="flex justify-between items-start">
+                    <span className="text-sm font-medium text-gray-900">
+                      {leave.employee?.first_name} {leave.employee?.last_name}
+                    </span>
+                    <StatusBadge status={leave.status} />
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span className="capitalize">{leave.leave_type?.replace(/_/g, ' ')}</span>
+                    <span>{leave.days_requested}d</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -114,38 +122,6 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-400 text-center py-6">No pending leaves</p>
           )}
         </div>
-      </div>
-
-      {/* Pending leave requests */}
-      <div className="card p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Pending Leave Requests</h2>
-        {data?.recent_leaves?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100">
-                <tr>
-                  {['Employee', 'Type', 'Days', 'Status'].map(h => (
-                    <th key={h} className="pb-2 text-left text-xs text-gray-500 font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {data.recent_leaves.map(leave => (
-                  <tr key={leave.id}>
-                    <td className="py-3 font-medium text-gray-900">
-                      {leave.employee?.first_name} {leave.employee?.last_name}
-                    </td>
-                    <td className="py-3 text-gray-600 capitalize">{leave.leave_type?.replace(/_/g, ' ')}</td>
-                    <td className="py-3 text-gray-600">{leave.days_requested}d</td>
-                    <td className="py-3"><StatusBadge status={leave.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400 text-center py-6">No pending leaves</p>
-        )}
       </div>
 
       {s.last_payroll && (

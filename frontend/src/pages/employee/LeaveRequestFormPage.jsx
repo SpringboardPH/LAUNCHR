@@ -301,6 +301,7 @@ export default function LeaveRequestFormPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Dates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Days</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -318,11 +319,18 @@ export default function LeaveRequestFormPage() {
                       <td className="px-4 py-3">
                         <StatusBadge status={leave.status} />
                       </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[150px] truncate" title={leave.rejection_reason || leave.reason}>
+                        {leave.status === 'rejected' ? (
+                          <span className="text-red-600 font-medium">Rejected: {leave.rejection_reason || 'No reason provided'}</span>
+                        ) : (
+                          leave.reason || '—'
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {myLeaves.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-12 text-center">
+                      <td colSpan={5} className="py-12 text-center">
                         <CalendarOff size={32} className="text-gray-200 mx-auto mb-2" />
                         <p className="text-sm text-gray-400">You have no leave requests</p>
                       </td>

@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { format } from 'date-fns'
 import {
   getLeaves, createLeave, approveLeave, rejectLeave,
-  getEmployees, getLeaveTypes, leaveKeys, employeeKeys, leaveTypeKeys,
+  getEmployees, getLeaveTypes, leaveKeys, employeeKeys, leaveTypeKeys, dashboardKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Check, X, CalendarOff } from 'lucide-react'
@@ -47,12 +47,20 @@ export default function LeavePage() {
 
   const approveMutation = useMutation({
     mutationFn: approveLeave,
-    onSuccess: () => qc.invalidateQueries({ queryKey: leaveKeys.all }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: leaveKeys.all })
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+    },
   })
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }) => rejectLeave(id, reason),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: leaveKeys.all }); setRejectModal(null); setRejectReason('') },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: leaveKeys.all })
+      qc.invalidateQueries({ queryKey: dashboardKeys.all })
+      setRejectModal(null)
+      setRejectReason('')
+    },
   })
 
   const leaves = data?.data ?? []
@@ -136,7 +144,13 @@ export default function LeavePage() {
                     {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{leave.days_requested}d</td>
-                  <td className="px-4 py-3 text-gray-500 max-w-xs truncate">{leave.reason}</td>
+                  <td className="px-4 py-3 text-gray-500 max-w-xs truncate" title={leave.status === 'rejected' ? leave.rejection_reason : leave.reason}>
+                    {leave.status === 'rejected' ? (
+                      <span className="text-red-600 font-medium">RJ: {leave.rejection_reason || 'No reason provided'}</span>
+                    ) : (
+                      leave.reason
+                    )}
+                  </td>
                   <td className="px-4 py-3"><StatusBadge status={leave.status} /></td>
                   <td className="px-4 py-3">
                     {leave.status === 'pending' && (

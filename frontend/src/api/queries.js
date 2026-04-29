@@ -100,7 +100,7 @@ export const approveLeave = (id) =>
   api.patch(`/leaves/${id}/approve`).then(r => r.data)
 
 export const rejectLeave = (id, reason) =>
-  api.patch(`/leaves/${id}/reject`, { reason }).then(r => r.data)
+  api.patch(`/leaves/${id}/reject`, { rejection_reason: reason }).then(r => r.data)
 
 export const leaveTypeKeys = {
   all: ['leave-types'],

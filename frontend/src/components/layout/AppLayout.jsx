@@ -1,5 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
+import { useQuery } from '@tanstack/react-query'
+import { getDashboard, dashboardKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
   Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders
@@ -12,7 +14,7 @@ const COMMON_NAV = [
   { to: '/admin/employees', icon: Users, label: 'Employees' },
   { to: '/admin/attendance', icon: Clock, label: 'Attendance' },
   { to: '/admin/employee-schedules', icon: CalendarRange, label: 'Schedules' },
-  { to: '/admin/leaves', icon: CalendarOff, label: 'Leaves' },
+  { to: '/admin/leaves', icon: CalendarOff, label: 'Leaves', badge: true },
   { to: '/admin/calendar', icon: CalendarRange, label: 'Calendar' },
   { to: '/admin/payroll', icon: Banknote, label: 'Payroll' },
 ]
@@ -38,6 +40,15 @@ export default function AppLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+
+  const { data: dashboardData } = useQuery({
+    queryKey: dashboardKeys.all,
+    queryFn: () => getDashboard(),
+    enabled: !!user && ['admin', 'hr'].includes(user.role),
+    staleTime: 60_000,
+  })
+
+  const pendingLeavesCount = dashboardData?.summary?.pending_leaves ?? 0
 
   const handleLogout = async () => {
     await logout()
@@ -93,7 +104,7 @@ export default function AppLayout() {
               <div className="pt-5 mt-4 border-t border-gray-100 px-3 pb-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
               </div>
-              {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
+              {COMMON_NAV.map(({ to, icon: Icon, label, end, badge }) => (
                 <NavLink
                   key={to} to={to} end={end}
                   onClick={() => setOpen(false)}
@@ -105,7 +116,12 @@ export default function AppLayout() {
                   )}
                 >
                   <Icon size={16} />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {badge && pendingLeavesCount > 0 && (
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                      {pendingLeavesCount}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </>
@@ -114,7 +130,7 @@ export default function AppLayout() {
               <div className="px-3 py-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Management</p>
               </div>
-              {COMMON_NAV.map(({ to, icon: Icon, label, end }) => (
+              {COMMON_NAV.map(({ to, icon: Icon, label, end, badge }) => (
                 <NavLink
                   key={to} to={to} end={end}
                   onClick={() => setOpen(false)}
@@ -126,7 +142,12 @@ export default function AppLayout() {
                   )}
                 >
                   <Icon size={16} />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {badge && pendingLeavesCount > 0 && (
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                      {pendingLeavesCount}
+                    </span>
+                  )}
                 </NavLink>
               ))}
 
