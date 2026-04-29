@@ -12,12 +12,14 @@ use Illuminate\Support\Carbon;
 
 class MarkAbsentEmployees extends Command
 {
-    protected $signature = 'attendance:mark-absent';
+    protected $signature = 'attendance:mark-absent {date?}';
     protected $description = 'Scan for scheduled working days with no attendance log and mark them as absent';
 
     public function handle()
     {
-        $today = SystemClock::today();
+        $dateInput = $this->argument('date');
+        $today = $dateInput ? Carbon::parse($dateInput) : SystemClock::today();
+        
         $employees = Employee::where('status', 'active')->get();
 
         foreach ($employees as $employee) {

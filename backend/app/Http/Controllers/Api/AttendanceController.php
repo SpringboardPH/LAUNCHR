@@ -10,6 +10,7 @@ use App\Models\EmployeeSchedule;
 use App\Models\LeaveRequest;
 use App\Models\ScheduleTemplate;
 use App\Models\CalendarEvent;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -1043,6 +1044,42 @@ class AttendanceController extends Controller
             'data' => $log,
             'message' => 'Attendance log updated successfully',
         ]);
+    }
+
+    /**
+     * Manually trigger the mark-absent command for a specific date
+     */
+    public function bulkMarkAbsent(Request $request)
+    {
+        $user = $request->user();
+        if (!$user->isAdminOrHr()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Only HR/Admin can trigger this action.',
+            ], 403);
+        }
+
+        $request->validate([
+            'date' => 'required|date|before_or_equal:today',
+        ]);
+
+        $date = $request->input('date');
+
+        try {
+            Artisan::call('attendance:mark-absent', [
+                'date' => $date
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Successfully processed absentee marking for {$date}.",
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error running mark-absent command: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

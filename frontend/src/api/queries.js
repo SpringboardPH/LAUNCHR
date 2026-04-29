@@ -72,6 +72,9 @@ export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false)
 export const updateAttendanceLog = (id, data) =>
   api.put(`/attendance/${id}`, data).then(r => r.data)
 
+export const bulkMarkAbsent = (date) =>
+  api.post('/attendance/bulk-mark-absent', { date }).then(r => r.data)
+
 // ─── Leaves ──────────────────────────────────────────────────
 export const leaveKeys = {
   all: ['leaves'],

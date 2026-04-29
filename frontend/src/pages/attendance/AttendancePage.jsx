@@ -6,9 +6,10 @@ import {
   getEmployees, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
+  bulkMarkAbsent
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut, Pencil } from 'lucide-react'
+import { Clock, LogIn, LogOut, Pencil, UserX } from 'lucide-react'
 import { getClockWindow } from '../../utils/attendance'
 
 // Calculate hours worked between two time strings (HH:MM:SS format)
@@ -45,6 +46,7 @@ export default function AttendancePage() {
   })
   const [editLog, setEditLog] = useState(null)
   const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', notes: '' })
+  const [markAbsentModal, setMarkAbsentModal] = useState({ open: false, date: format(new Date(), 'yyyy-MM-dd') })
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -54,6 +56,18 @@ export default function AttendancePage() {
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
     refetchInterval: 30_000,
+  })
+
+  const bulkMarkAbsentMutation = useMutation({
+    mutationFn: (date) => bulkMarkAbsent(date),
+    onSuccess: (data) => {
+      alert(data.message || 'Absentees marked successfully')
+      qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      setMarkAbsentModal({ ...markAbsentModal, open: false })
+    },
+    onError: (error) => {
+      alert(error?.response?.data?.message || 'Failed to mark absentees')
+    }
   })
 
   const defaultMonth = sysClock?.date
@@ -294,7 +308,18 @@ export default function AttendancePage() {
         confirmLabel="Confirm Clock Out"
       />
 
-      <PageHeader title="Attendance" description={`Today: ${displayDateLabel}`} />
+      <PageHeader 
+        title="Attendance" 
+        description={`Today: ${displayDateLabel}`} 
+        action={
+          <button
+            onClick={() => setMarkAbsentModal({ ...markAbsentModal, open: true })}
+            className="btn-secondary text-sm"
+          >
+            <UserX size={16} /> Mark Absentees
+          </button>
+        }
+      />
 
       {/* Today's quick clock-in panel */}
       <div className="card p-5 mb-6">
@@ -516,6 +541,55 @@ export default function AttendancePage() {
             <button type="submit" className="btn-primary w-full">Save Changes</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal 
+        open={markAbsentModal.open} 
+        onClose={() => setMarkAbsentModal({ ...markAbsentModal, open: false })} 
+        title="Mark Employees Absent" 
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 text-sm text-blue-700">
+            <p className="font-semibold mb-1">Optional Feature</p>
+            <p>
+              This manually marks employees as absent if they have no attendance logs for the selected date. 
+              The system already does this automatically every day at 11:59 PM.
+            </p>
+            <p className="mt-2">
+              Use this only if you need to mark absences for a day that hasn't been processed yet, 
+              or if the automatic process didn't run.
+            </p>
+          </div>
+
+          <FormField label="Target Date">
+            <input 
+              type="date" 
+              className="input" 
+              value={markAbsentModal.date} 
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={e => setMarkAbsentModal({ ...markAbsentModal, date: e.target.value })} 
+            />
+          </FormField>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button 
+              type="button" 
+              className="btn-secondary"
+              onClick={() => setMarkAbsentModal({ ...markAbsentModal, open: false })}
+            >
+              Cancel
+            </button>
+            <button 
+              type="button" 
+              className="btn-primary"
+              disabled={bulkMarkAbsentMutation.isPending}
+              onClick={() => bulkMarkAbsentMutation.mutate(markAbsentModal.date)}
+            >
+              {bulkMarkAbsentMutation.isPending ? 'Processing...' : 'Run Marking Process'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )
