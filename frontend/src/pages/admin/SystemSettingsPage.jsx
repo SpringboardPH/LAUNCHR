@@ -16,6 +16,7 @@ const normalizeTimeValue = (timeValue) => {
 export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
+  const [absentMarkingTime, setAbsentMarkingTime] = useState('23:59')
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
@@ -34,6 +35,9 @@ export default function SystemSettingsPage() {
       const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
       setDateTime({ date: sysDate, time: sysTime })
       
+      const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
+      setAbsentMarkingTime(markingTime.substring(0, 5))
+
       const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')
       if (autoClockOutSetting) {
         setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
@@ -44,11 +48,12 @@ export default function SystemSettingsPage() {
   }, [settings])
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut }) => {
+    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
       await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
+      await updateAdminSetting('absent_marking_time', absentMarkingTime, 'Time when the system automatically marks employees as absent', 'string')
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -75,7 +80,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime })
     })
   }
 
@@ -94,6 +99,9 @@ export default function SystemSettingsPage() {
         const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
         setDateTime({ date: sysDate, time: sysTime })
         
+        const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
+        setAbsentMarkingTime(markingTime.substring(0, 5))
+
         const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
         setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
       }
@@ -114,7 +122,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time })
+        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime })
       }
     })
   }
@@ -146,18 +154,37 @@ export default function SystemSettingsPage() {
       <div className="space-y-6">
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Attendance Automation</h2>
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-gray-900">Enable Auto Clock-Out</p>
-              <p className="text-xs text-gray-500">Automatically clock out employees who miss their shift end.</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Enable Auto Clock-Out</p>
+                <p className="text-xs text-gray-500">Automatically clock out employees who miss their shift end.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoClockOut(!autoClockOut)}
+                className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${autoClockOut ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoClockOut ? 'translate-x-6' : ''}`} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setAutoClockOut(!autoClockOut)}
-              className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${autoClockOut ? 'bg-brand-600' : 'bg-gray-300'}`}
-            >
-              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${autoClockOut ? 'translate-x-6' : ''}`} />
-            </button>
+
+            <div className="p-4 border rounded-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Absent Marking Time</p>
+                  <p className="text-xs text-gray-500">Time when the system automatically marks unscheduled employees as absent.</p>
+                </div>
+                <div className="w-full sm:w-40">
+                  <input
+                    type="time"
+                    value={absentMarkingTime}
+                    onChange={(e) => setAbsentMarkingTime(e.target.value)}
+                    className="input h-10"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -174,7 +201,7 @@ export default function SystemSettingsPage() {
             </div>
           </div>
 
-          <div className="p-6 space-y-8">
+          <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField label="System Date" required>
                 <div className="relative group">
@@ -201,36 +228,38 @@ export default function SystemSettingsPage() {
                 </div>
               </FormField>
             </div>
+          </div>
+        </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-gray-100">
+        <div className="card p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={handleSetCurrent}
+              className="btn-ghost text-brand-600 hover:bg-brand-50 flex items-center gap-2 px-4 py-2.5"
+            >
+              <Zap size={18} />
+              <span className="font-semibold">Set Current Date/Time</span>
+            </button>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
                 type="button"
-                onClick={handleSetCurrent}
-                className="btn-ghost text-brand-600 hover:bg-brand-50 flex items-center gap-2 px-4 py-2.5"
+                onClick={handleCancel}
+                className="btn-secondary flex-1 sm:flex-none justify-center items-center gap-2 px-5 py-2.5"
               >
-                <Zap size={18} />
-                <span className="font-semibold">Set Current Date/Time</span>
+                <RotateCcw size={18} />
+                Cancel
               </button>
-
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="btn-secondary flex-1 sm:flex-none justify-center items-center gap-2 px-5 py-2.5"
-                >
-                  <RotateCcw size={18} />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={updateSettingMutation.isPending}
-                  className="btn-primary flex-1 sm:flex-none justify-center items-center gap-2 px-6 py-2.5"
-                >
-                  {updateSettingMutation.isPending ? <Spinner size="sm" /> : <Save size={18} />}
-                  <span>{updateSettingMutation.isPending ? 'Saving...' : 'Save Settings'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={updateSettingMutation.isPending}
+                className="btn-primary flex-1 sm:flex-none justify-center items-center gap-2 px-6 py-2.5"
+              >
+                {updateSettingMutation.isPending ? <Spinner size="sm" /> : <Save size={18} />}
+                <span>{updateSettingMutation.isPending ? 'Saving...' : 'Save Settings'}</span>
+              </button>
             </div>
           </div>
         </div>

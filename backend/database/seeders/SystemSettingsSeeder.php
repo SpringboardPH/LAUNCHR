@@ -70,6 +70,12 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Hours worked that counts as overtime',
                 'type' => 'integer',
             ],
+            [
+                'key' => 'absent_marking_time',
+                'value' => '23:59',
+                'description' => 'Time when the system automatically marks employees as absent (HH:MM)',
+                'type' => 'string',
+            ],
         ];
 
         foreach ($settings as $setting) {

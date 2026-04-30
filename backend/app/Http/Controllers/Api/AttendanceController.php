@@ -12,6 +12,7 @@ use App\Models\ScheduleTemplate;
 use App\Models\CalendarEvent;
 use App\Services\AttendanceService;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
@@ -26,19 +27,20 @@ class AttendanceController extends Controller
     private const LATE_CLOCK_OUT = '18:15:00';
     private const REQUIRED_HOURS = 9;
 
-    private function getScheduleForDate($employeeId, Carbon $date)
+    private function getScheduleForDate(int|string|null $employeeId, Carbon $date)
     {
         return EmployeeSchedule::getForEmployeeOnDate($employeeId, $date);
     }
 
-    private function parseTimeToMinutes($time)
+    private function parseTimeToMinutes(?string $time)
     {
+        if (!$time) return 0;
         [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
 
         return $hour * 60 + $minute;
     }
 
-    private function minutesToTime($minutes)
+    private function minutesToTime(int $minutes)
     {
         $normalized = ($minutes % 1440 + 1440) % 1440;
         $hours = intdiv($normalized, 60);
@@ -47,7 +49,7 @@ class AttendanceController extends Controller
         return sprintf('%02d:%02d:00', $hours, $remainingMinutes);
     }
 
-    private function getDayRuleForDate($schedule, Carbon $date)
+    private function getDayRuleForDate(?EmployeeSchedule $schedule, Carbon $date)
     {
         if (!$schedule || !$schedule->template || !is_array($schedule->template->day_rules)) {
             return null;
@@ -62,7 +64,7 @@ class AttendanceController extends Controller
         return null;
     }
 
-    private function applyGraceWindow($targetTime, $graceType, $graceMinutes = 15)
+    private function applyGraceWindow(string $targetTime, string $graceType, int $graceMinutes = 15)
     {
         $targetMinutes = $this->parseTimeToMinutes($targetTime);
         $startMinutes = $targetMinutes;
@@ -82,8 +84,9 @@ class AttendanceController extends Controller
         ];
     }
 
-    private function calculateExpectedHoursFromRule($clockIn, $clockOut)
+    private function calculateExpectedHoursFromRule(?string $clockIn, ?string $clockOut)
     {
+        if (!$clockIn || !$clockOut) return self::REQUIRED_HOURS;
         $inMinutes = $this->parseTimeToMinutes($clockIn);
         $outMinutes = $this->parseTimeToMinutes($clockOut);
         if ($outMinutes < $inMinutes) {
@@ -93,14 +96,14 @@ class AttendanceController extends Controller
         return max(1, round(($outMinutes - $inMinutes) / 60));
     }
 
-    private function resolveTemplateName($log, $schedule): ?string
+    private function resolveTemplateName(?AttendanceLog $log, ?EmployeeSchedule $schedule): ?string
     {
         return $log?->schedule_template_name
             ?? $schedule?->template?->name
             ?? null;
     }
 
-    private function resolveTemplateContextForDate($schedule, string $weekKey, array $weeklyTemplateHints, array &$templateCache): array
+    private function resolveTemplateContextForDate(?EmployeeSchedule $schedule, string $weekKey, array $weeklyTemplateHints, array &$templateCache): array
     {
         if ($schedule && $schedule->template) {
             return [$schedule->template, $schedule->template->name];
@@ -123,7 +126,7 @@ class AttendanceController extends Controller
         return [$template, $hint['name'] ?? $template?->name];
     }
 
-    private function getScheduledEndTimeForDate($schedule, ?array $dayRule, Carbon $date): ?Carbon
+    private function getScheduledEndTimeForDate(?EmployeeSchedule $schedule, ?array $dayRule, Carbon $date): ?Carbon
     {
         if ($dayRule && !empty($dayRule['clock_out'])) {
             $clockOut = Carbon::parse($dayRule['clock_out']);
@@ -142,7 +145,7 @@ class AttendanceController extends Controller
         return $date->copy()->setTime($end->hour, $end->minute, 0);
     }
 
-    private function maybeReopenAutoClockedOutLog($log, $schedule, ?array $dayRule, Carbon $today): void
+    private function maybeReopenAutoClockedOutLog(?AttendanceLog $log, ?EmployeeSchedule $schedule, ?array $dayRule, Carbon $today): void
     {
         if (!$log || !$log->clock_out_time || !$log->notes) {
             return;
@@ -179,7 +182,7 @@ class AttendanceController extends Controller
     /**
      * Calculate work status based on clock times and template rules
      */
-    private function calculateStatus($clockInTime, $clockOutTime, $expectedHours = null, $workStartTime = null, $lateThreshold = 0)
+    private function calculateStatus(?string $clockInTime, ?string $clockOutTime, int|float|null $expectedHours = null, ?string $workStartTime = null, int $lateThreshold = 0)
     {
         // Special case: Currently working
         if ($clockInTime && !$clockOutTime) {
@@ -730,7 +733,7 @@ class AttendanceController extends Controller
     /**
      * Get single attendance record
      */
-    public function show(Request $request, $id)
+    public function show(Request $request, int|string $id)
     {
         $employee = $request->user()->employee;
         $record = AttendanceLog::where('employee_id', $employee->id)
@@ -837,7 +840,7 @@ class AttendanceController extends Controller
     /**
      * Get monthly attendance records for an employee
      */
-    public function monthly(Request $request, $employeeId)
+    public function monthly(Request $request, int|string $employeeId)
     {
         $user = $request->user();
         
@@ -1003,9 +1006,9 @@ class AttendanceController extends Controller
         ]);
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, int|string $id)
     {
-        \Log::info("Attendance update request received for ID: " . $id, $request->all());
+        Log::info("Attendance update request received for ID: " . $id, $request->all());
         $log = AttendanceLog::findOrFail($id);
 
         $validated = $request->validate([
@@ -1063,10 +1066,10 @@ class AttendanceController extends Controller
     /**
      * Automatically clock out employees who missed their departure window
      */
-    private function performAutoClockOut($employeeId)
+    private function performAutoClockOut(int|string $employeeId)
     {
-        $enabled = \App\Models\SystemSettings::get('auto_clock_out_enabled', false);
-        if (!$enabled) {
+        $enabled = \App\Models\SystemSettings::where('key', 'auto_clock_out_enabled')->value('value');
+        if ($enabled === 'false' || !$enabled) {
             return;
         }
 
