@@ -37,9 +37,9 @@ class AttendanceService
             return 'half_day';
         }
 
-        // Worked less than half the shift → incomplete
+        // Worked less than half the shift → undertime (previously incomplete)
         if ($hoursWorked < $halfExpected) {
-            return 'incomplete';
+            return 'undertime';
         }
 
         return $isLate ? 'late' : 'completed';

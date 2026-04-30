@@ -44,7 +44,7 @@ export default function DashboardPage() {
           <StatCard label="Absent" value={s.absent_today ?? 0} icon={Users} color="gray" />
           <StatCard label="Late" value={s.late_today ?? 0} icon={AlertCircle} color="yellow" />
           <StatCard label="On Leave" value={s.on_leave_today ?? 0} icon={CalendarOff} color="blue" />
-          <StatCard label="Incomplete" value={s.incomplete_hours_today ?? 0} icon={Zap} color="orange" />
+          <StatCard label="Short Hours" value={s.short_hours_today ?? 0} icon={Zap} color="orange" />
         </div>
       </div>
 

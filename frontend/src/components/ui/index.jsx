@@ -118,9 +118,8 @@ export function StatusBadge({ status }) {
     working:     'badge-green',
     on_leave:    'badge-blue',
     holiday:     'badge-purple',
-    incomplete:  'badge-orange',
+    undertime:   'badge-orange',
     half_day:    'badge-orange',
-    'late+incomplete': 'badge-red',
     completed:   'badge-green',
   }
   const label = status?.replace(/_/g, ' ')

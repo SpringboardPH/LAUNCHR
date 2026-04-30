@@ -437,7 +437,7 @@ export default function AttendancePage() {
               <option value="completed">Completed</option>
               <option value="working">Working</option>
               <option value="late">Late</option>
-              <option value="incomplete">Incomplete</option>
+              <option value="undertime">Undertime</option>
               <option value="half_day">Half Day</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
@@ -512,9 +512,8 @@ export default function AttendancePage() {
                 <option value="completed">Completed</option>
                 <option value="working">Working</option>
                 <option value="late">Late</option>
-                <option value="incomplete">Incomplete</option>
+                <option value="undertime">Undertime</option>
                 <option value="half_day">Half Day</option>
-                <option value="late+incomplete">Late+Incomplete</option>
                 <option value="absent">Absent</option>
               </select>
             </FormField>

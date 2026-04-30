@@ -49,19 +49,9 @@ class DashboardController extends Controller
             ->where('end_date', '>=', $today)
             ->count();
 
-        // Employees with incomplete hours today (worked < 9 hours)
-        $incompleteHours = AttendanceLog::where('date', $today)
-            ->whereNotNull('clock_in_time')
-            ->whereNotNull('clock_out_time')
-            ->get()
-            ->filter(function($log) {
-                [$inH, $inM] = sscanf($log->clock_in_time, '%d:%d');
-                [$outH, $outM] = sscanf($log->clock_out_time, '%d:%d');
-                $inMinutes = $inH * 60 + $inM;
-                $outMinutes = $outH * 60 + $outM;
-                $hoursWorked = ($outMinutes - $inMinutes) / 60;
-                return $hoursWorked < 9;
-            })
+        // Employees with undertime/half-day today
+        $shortHoursToday = AttendanceLog::where('date', $today)
+            ->whereIn('status', ['undertime', 'half_day'])
             ->count();
 
         // Attendance rate this month
@@ -83,8 +73,7 @@ class DashboardController extends Controller
         
         $onTimeCount = 0;
         foreach ($allLogs as $log) {
-            [$hour, $minute] = sscanf($log->clock_in_time, '%d:%d');
-            if (($hour * 60 + $minute) <= (9 * 60)) {
+            if ($log->status !== 'late') {
                 $onTimeCount++;
             }
         }
@@ -144,7 +133,7 @@ class DashboardController extends Controller
                     'absent_today' => $absentToday,
                     'late_today' => $lateToday,
                     'on_leave_today' => $onLeaveToday,
-                    'incomplete_hours_today' => $incompleteHours,
+                    'short_hours_today' => $shortHoursToday,
                     'new_hires_30_days' => $newHires,
                     'pending_leaves' => $pendingLeaves,
                     'attendance_rate' => $attendanceRate,
