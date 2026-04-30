@@ -145,6 +145,7 @@ export default function AttendanceClockPage() {
         return
       }
 
+      alert(error?.response?.data?.message || 'Failed to clock out')
       setNotes('')
       refetch()
     },
@@ -165,6 +166,7 @@ export default function AttendanceClockPage() {
     { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
     { key: 'late', label: 'Late', color: 'bg-amber-500' },
     { key: 'incomplete', label: 'Incomplete', color: 'bg-orange-500' },
+    { key: 'half_day', label: 'Half Day', color: 'bg-orange-300' },
     { key: 'absent', label: 'Absent', color: 'bg-rose-500' },
     { key: 'on_leave', label: 'On Leave', color: 'bg-sky-500' },
   ]
@@ -392,6 +394,8 @@ export default function AttendanceClockPage() {
                             <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
                           ) : log.status === 'incomplete' ? (
                             <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Incomplete</span>
+                          ) : log.status === 'half_day' ? (
+                            <span className="badge-orange text-[10px] px-1.5 py-0.5 rounded">Half Day</span>
                           ) : (
                             <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
                           )}

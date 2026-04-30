@@ -119,6 +119,7 @@ export function StatusBadge({ status }) {
     on_leave:    'badge-blue',
     holiday:     'badge-purple',
     incomplete:  'badge-orange',
+    half_day:    'badge-orange',
     'late+incomplete': 'badge-red',
     completed:   'badge-green',
   }
@@ -235,4 +236,3 @@ export function ScheduleDisplay({ schedule, compact = false, sysClock = null }) 
     </div>
   )
 }
-

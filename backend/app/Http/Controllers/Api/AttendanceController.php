@@ -189,8 +189,8 @@ class AttendanceController extends Controller
         return AttendanceService::calculateStatus(
             $clockInTime,
             $clockOutTime,
-            $expectedHours ?? 9, // Fallback to reasonable default
-            $workStartTime ?? '09:00:00'
+            $expectedHours ?? self::REQUIRED_HOURS,
+            $workStartTime ?? self::WORK_START_TIME
         );
     }
 

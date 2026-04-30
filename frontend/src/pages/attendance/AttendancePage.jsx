@@ -199,14 +199,15 @@ export default function AttendancePage() {
       const shouldConfirmEarlyClockOut =
         error?.response?.status === 422 && error?.response?.data?.confirm_required
 
-      if (!shouldConfirmEarlyClockOut || variables?.confirmEarlyClockOut) {
+      if (shouldConfirmEarlyClockOut && !variables?.confirmEarlyClockOut) {
+        setEarlyClockOutConfirm({
+          open: true,
+          employeeId: variables.employeeId,
+        })
         return
       }
 
-      setEarlyClockOutConfirm({
-        open: true,
-        employeeId: variables.employeeId,
-      })
+      alert(error?.response?.data?.message || 'Failed to clock out')
     },
   })
 
@@ -437,6 +438,7 @@ export default function AttendancePage() {
               <option value="working">Working</option>
               <option value="late">Late</option>
               <option value="incomplete">Incomplete</option>
+              <option value="half_day">Half Day</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
             </select>
@@ -511,6 +513,7 @@ export default function AttendancePage() {
                 <option value="working">Working</option>
                 <option value="late">Late</option>
                 <option value="incomplete">Incomplete</option>
+                <option value="half_day">Half Day</option>
                 <option value="late+incomplete">Late+Incomplete</option>
                 <option value="absent">Absent</option>
               </select>

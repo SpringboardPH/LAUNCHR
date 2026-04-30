@@ -30,8 +30,15 @@ class AttendanceService
         $startMinutes = self::parseTimeToMinutes($workStart);
         $isLate = $inMinutes > $startMinutes;
         $hoursWorked = max(0, ($outMinutes - $inMinutes) / 60);
+        $halfExpected = $expectedHours / 2;
 
-        if ($hoursWorked < $expectedHours) {
+        // Worked at least half the shift but less than the full expected hours → half_day
+        if ($hoursWorked >= $halfExpected && $hoursWorked < $expectedHours) {
+            return 'half_day';
+        }
+
+        // Worked less than half the shift → incomplete
+        if ($hoursWorked < $halfExpected) {
             return 'incomplete';
         }
 
