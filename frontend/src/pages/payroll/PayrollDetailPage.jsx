@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { getPayrollRun, exportPayroll, payrollKeys } from '../../api/queries'
+import { getPayroll, exportPayroll, payrollKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
 import { ArrowLeft, Download } from 'lucide-react'
 
@@ -11,7 +11,7 @@ export default function PayrollDetailPage() {
 
   const { data: run, isLoading } = useQuery({
     queryKey: payrollKeys.detail(id),
-    queryFn: () => getPayrollRun(id),
+    queryFn: () => getPayroll(id),
   })
 
   if (isLoading) return <PageSpinner />

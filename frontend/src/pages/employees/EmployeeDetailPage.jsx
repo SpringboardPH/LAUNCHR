@@ -82,7 +82,8 @@ export default function EmployeeDetailPage() {
               { icon: Phone,    label: 'Phone',           value: emp.phone || '—' },
               { icon: Briefcase,label: 'Department',      value: emp.department },
               { icon: Calendar, label: 'Hire date',       value: format(new Date(emp.hire_date), 'MMM dd, yyyy') },
-              { icon: Briefcase,label: 'Salary',         value: `₱${Number(emp.salary).toLocaleString()}` },
+              { icon: Briefcase,label: 'Salary',          value: `₱${Number(emp.salary).toLocaleString()} (${emp.rate_type})` },
+              { icon: Briefcase,label: 'Undeclared (Info)',value: emp.undeclared_salary ? `₱${Number(emp.undeclared_salary).toLocaleString()}` : '—' },
               { icon: CreditCard,label: 'Bank Account',    value: emp.bank_account_number || '—' },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-start gap-2">

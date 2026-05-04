@@ -21,6 +21,8 @@ class Employee extends Model
         'department',
         'hire_date',
         'salary',
+        'undeclared_salary',
+        'rate_type',
         'status',
         'notes',
         'bank_account_number',
@@ -29,6 +31,7 @@ class Employee extends Model
     protected $casts = [
         'hire_date' => 'date',
         'salary' => 'decimal:2',
+        'undeclared_salary' => 'decimal:2',
     ];
 
     public function getFullNameAttribute()

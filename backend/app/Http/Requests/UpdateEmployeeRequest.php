@@ -34,6 +34,8 @@ class UpdateEmployeeRequest extends FormRequest
             'hire_date' => 'required|date',
             'salary' => 'required_without:basic_salary|numeric|min:0',
             'basic_salary' => 'required_without:salary|numeric|min:0',
+            'undeclared_salary' => 'nullable|numeric|min:0',
+            'rate_type' => 'required|in:monthly,daily',
             'status' => 'nullable|in:active,inactive,on_leave',
             'notes' => 'nullable|string|max:1000',
             'bank_account_number' => 'nullable|string|min:10|max:12',

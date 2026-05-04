@@ -72,14 +72,14 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className={clsx('relative bg-white rounded-xl shadow-xl w-full', sizes[size])}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+      <div className={clsx('relative bg-white rounded-xl shadow-xl w-full flex flex-col max-h-[90vh]', sizes[size])}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <X size={16} />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   )
@@ -121,6 +121,7 @@ export function StatusBadge({ status }) {
     undertime:   'badge-orange',
     half_day:    'badge-orange',
     completed:   'badge-green',
+    overtime:    'badge-purple',
   }
   const label = status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>

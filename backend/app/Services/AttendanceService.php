@@ -52,13 +52,48 @@ class AttendanceService
 
     /**
      * Parse time string to minutes.
-     *
-     * @param string $time
-     * @return int
      */
     public static function parseTimeToMinutes(string $time): int
     {
         [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
         return $hour * 60 + $minute;
+    }
+
+    /**
+     * Calculate detailed metrics for payroll.
+     */
+    public static function calculateDetails(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): array
+    {
+        if (!$clockIn || !$clockOut) {
+            return [
+                'hours_worked' => 0,
+                'overtime_hours' => 0,
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'status' => $clockIn ? 'working' : 'absent'
+            ];
+        }
+
+        $inMin = self::parseTimeToMinutes($clockIn);
+        $outMin = self::parseTimeToMinutes($clockOut);
+        $startMin = self::parseTimeToMinutes($workStart);
+
+        if ($outMin < $inMin) $outMin += 1440;
+
+        $minutesWorked = $outMin - $inMin;
+        $hoursWorked = $minutesWorked / 60;
+        $lateMin = max(0, $inMin - $startMin);
+        
+        $overtimeHours = max(0, $hoursWorked - $expectedHours);
+        $expectedMinutes = $expectedHours * 60;
+        $undertimeMin = max(0, $expectedMinutes - $minutesWorked);
+
+        return [
+            'hours_worked' => $hoursWorked,
+            'overtime_hours' => $overtimeHours,
+            'late_minutes' => $lateMin,
+            'undertime_minutes' => $undertimeMin,
+            'status' => self::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart)
+        ];
     }
 }

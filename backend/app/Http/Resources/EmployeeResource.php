@@ -26,6 +26,8 @@ class EmployeeResource extends JsonResource
             'department' => $this->department,
             'hire_date' => $this->hire_date?->format('Y-m-d'),
             'salary' => (float) $this->salary,
+            'undeclared_salary' => (float) $this->undeclared_salary,
+            'rate_type' => $this->rate_type,
             'status' => $this->status,
             'notes' => $this->notes,
             'bank_account_number' => $this->bank_account_number,

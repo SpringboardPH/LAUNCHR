@@ -17,7 +17,9 @@ const schema = z.object({
   position:     z.string().min(1, 'Required'),
   department:   z.string().min(1, 'Required'),
   hire_date:    z.string().min(1, 'Required'),
-  salary:       z.coerce.number().min(0, 'Must be ≥ 0'),
+  salary:            z.coerce.number().min(0, 'Must be ≥ 0'),
+  undeclared_salary: z.coerce.number().optional(),
+  rate_type:         z.enum(['monthly', 'daily']),
   role:         z.enum(['employee', 'hr', 'admin']).optional(),
   password:     z.string().min(8, 'Must be at least 8 characters').optional().or(z.literal('')),
   bank_account_number: z.string().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
@@ -53,10 +55,12 @@ export default function EmployeeFormPage() {
   // Filter only active departments
   const activeDepts = departments.filter(d => !d.deleted_at)
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { salary: 0, role: 'employee', password: '' },
+    defaultValues: { salary: 0, undeclared_salary: 0, rate_type: 'monthly', role: 'employee', password: '' },
   })
+
+  const rateType = watch('rate_type')
 
   useEffect(() => {
     if (emp) reset({
@@ -141,14 +145,24 @@ export default function EmployeeFormPage() {
           </FormField>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <FormField label="Hire date" error={errors.hire_date?.message} required>
             <input type="date" {...register('hire_date')} className={`input ${errors.hire_date ? 'input-error' : ''}`} />
           </FormField>
-          <FormField label="Salary (₱/month)" error={errors.salary?.message} required>
+          <FormField label="Rate Type" error={errors.rate_type?.message} required>
+            <select {...register('rate_type')} className={`input ${errors.rate_type ? 'input-error' : ''}`}>
+              <option value="monthly">Monthly Fixed</option>
+              <option value="daily">Daily Rate</option>
+            </select>
+          </FormField>
+          <FormField label={rateType === 'daily' ? 'Daily Rate (₱)' : 'Monthly Salary (₱)'} error={errors.salary?.message} required>
             <input type="number" step="0.01" {...register('salary')} className={`input ${errors.salary ? 'input-error' : ''}`} />
           </FormField>
         </div>
+
+        <FormField label="Undeclared Amount (Info Only)" error={errors.undeclared_salary?.message}>
+          <input type="number" step="0.01" {...register('undeclared_salary')} className="input" placeholder="Optional side information" />
+        </FormField>
 
         <FormField label="Bank Account Number" error={errors.bank_account_number?.message}>
           <input {...register('bank_account_number')} className={`input ${errors.bank_account_number ? 'input-error' : ''}`} placeholder="10-12 digits" />

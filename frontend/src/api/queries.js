@@ -137,25 +137,28 @@ export const upsertEmployeeLeaveBalance = (employeeId, leaveTypeId, data) =>
 // ─── Payroll ─────────────────────────────────────────────────
 export const payrollKeys = {
   all: ['payroll'],
-  list: () => ['payroll', 'list'],
+  list: (params) => ['payroll', 'list', params],
   detail: (id) => ['payroll', id],
 }
 
-export const getPayrollRuns = () =>
-  api.get('/payroll').then(r => r.data.data)
+export const getPayrolls = (params) =>
+  api.get('/payroll', { params }).then(r => r.data.data)
 
-export const getPayrollRun = (id) =>
+export const getPayroll = (id) =>
   api.get(`/payroll/${id}`).then(r => r.data.data)
 
-export const runPayroll = (data) =>
-  api.post('/payroll/run', data).then(r => r.data)
+export const generatePayroll = (data) =>
+  api.post('/payroll/generate', data).then(r => r.data)
+
+export const updatePayroll = (id, data) =>
+  api.put(`/payroll/${id}`, data).then(r => r.data)
 
 export const exportPayroll = (id, label) => {
   api.get(`/payroll/${id}/export`, { responseType: 'blob' }).then(res => {
     const url = URL.createObjectURL(new Blob([res.data]))
     const a = document.createElement('a')
     a.href = url
-    a.download = `payroll-${label}.csv`
+    a.download = `payroll-${label}.json`
     a.click()
     URL.revokeObjectURL(url)
   })
