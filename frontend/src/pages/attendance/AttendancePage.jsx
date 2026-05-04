@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
+import clsx from 'clsx'
+import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, isWeekend } from 'date-fns'
 import {
   getAttendanceToday, getAttendance, clockIn, clockOut, updateAttendanceLog,
   getEmployees, attendanceKeys, employeeKeys,
@@ -9,12 +10,14 @@ import {
   bulkMarkAbsent
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle } from 'lucide-react'
+import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List } from 'lucide-react'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
   const [activeCutoff, setActiveCutoff] = useState(null)
+  const [viewMode, setViewMode] = useState('list') // 'list' or 'grid'
+  const [includeWeekends, setIncludeWeekends] = useState(true)
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
@@ -467,7 +470,25 @@ export default function AttendancePage() {
       <div className="card p-5">
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Attendance Log</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-gray-700">Attendance Log</h2>
+              <div className="flex items-center bg-gray-100 p-1 rounded-lg">
+                <button 
+                  onClick={() => setViewMode('list')}
+                  title="List View"
+                  className={clsx("p-1.5 rounded-md transition-all", viewMode === 'list' ? "bg-white shadow-sm text-brand-600" : "text-gray-400 hover:text-gray-600")}
+                >
+                  <List size={16} />
+                </button>
+                <button 
+                  onClick={() => setViewMode('grid')}
+                  title="Grid Visualizer"
+                  className={clsx("p-1.5 rounded-md transition-all", viewMode === 'grid' ? "bg-white shadow-sm text-brand-600" : "text-gray-400 hover:text-gray-600")}
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <button 
                 type="button" 
@@ -488,7 +509,10 @@ export default function AttendancePage() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className={clsx(
+            "grid gap-3",
+            viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-5" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
+          )}>
             <input
               type="text"
               className="input text-sm"
@@ -517,6 +541,20 @@ export default function AttendancePage() {
               value={monthlyDate}
               onChange={e => setMonthlyDate(e.target.value)}
             />
+            {viewMode === 'grid' && (
+              <div className="flex items-center gap-2 px-3 bg-gray-50 border border-gray-100 rounded-lg animate-in fade-in slide-in-from-left-2 duration-300">
+                <input 
+                  type="checkbox" 
+                  id="includeWeekends"
+                  checked={includeWeekends}
+                  onChange={e => setIncludeWeekends(e.target.checked)}
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-600 h-4 w-4"
+                />
+                <label htmlFor="includeWeekends" className="text-xs font-medium text-gray-600 cursor-pointer">
+                  Include Weekends
+                </label>
+              </div>
+            )}
             <button
               type="button"
               className="btn-secondary text-sm"
@@ -526,7 +564,8 @@ export default function AttendancePage() {
             </button>
           </div>
         </div>
-        {monthlyLoading ? <PageSpinner /> : (
+
+        {monthlyLoading ? <PageSpinner /> : viewMode === 'list' ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
@@ -564,6 +603,95 @@ export default function AttendancePage() {
                 )}
               </tbody>
             </table>
+          </div>
+        ) : (
+          /* Grid Visualizer */
+          <div className="overflow-x-auto">
+            {(() => {
+              const cutoffDates = eachDayOfInterval({
+                start: parseISO(currentCutoff.startDate),
+                end: parseISO(currentCutoff.endDate)
+              }).filter(date => includeWeekends || !isWeekend(date))
+
+              const groupedByEmployee = logs.reduce((acc, log) => {
+                const empId = log.employee_id
+                if (!acc[empId]) {
+                  acc[empId] = {
+                    name: `${log.employee?.first_name} ${log.employee?.last_name}`,
+                    data: {}
+                  }
+                }
+                acc[empId].data[format(parseISO(log.date), 'yyyy-MM-dd')] = log
+                return acc
+              }, {})
+
+              const GRID_STATUS_MAP = {
+                completed: { letter: 'C', color: 'bg-green-500 text-white' },
+                late:      { letter: 'L', color: 'bg-yellow-400 text-yellow-900' },
+                absent:    { letter: 'A', color: 'bg-red-500 text-white' },
+                undertime: { letter: 'U', color: 'bg-orange-500 text-white' },
+                half_day:  { letter: 'H', color: 'bg-orange-400 text-white' },
+                overtime:  { letter: 'O', color: 'bg-blue-600 text-white' },
+                on_leave:  { letter: 'V', color: 'bg-blue-400 text-white' },
+                holiday:   { letter: 'H', color: 'bg-purple-500 text-white' },
+                working:   { letter: 'W', color: 'bg-green-400 text-white' },
+              }
+
+              const employeeList = Object.entries(groupedByEmployee).sort((a, b) => a[1].name.localeCompare(b[1].name))
+
+              return (
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 bg-white z-10 p-2 text-left text-[10px] font-bold text-gray-400 uppercase border-b border-r border-gray-100 min-w-[150px]">Employee</th>
+                      {cutoffDates.map(date => (
+                        <th key={date.toString()} className="p-1 text-center border-b border-gray-100 min-w-[32px]">
+                          <div className="text-[10px] font-bold text-gray-400">{format(date, 'dd')}</div>
+                          <div className="text-[9px] text-gray-300 uppercase">{format(date, 'EEE').charAt(0)}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employeeList.map(([empId, emp]) => (
+                      <tr key={empId} className="hover:bg-gray-50 group">
+                        <td className="sticky left-0 bg-white group-hover:bg-gray-50 z-10 p-2 text-xs font-medium text-gray-700 border-r border-gray-50 truncate max-w-[150px]">
+                          {emp.name}
+                        </td>
+                        {cutoffDates.map(date => {
+                          const dateStr = format(date, 'yyyy-MM-dd')
+                          const log = emp.data[dateStr]
+                          const status = log?.status
+                          const config = GRID_STATUS_MAP[status]
+
+                          return (
+                            <td key={dateStr} className="p-1 border-b border-gray-50 text-center">
+                              {status ? (
+                                <button
+                                  onClick={() => openEditModal(log)}
+                                  className={clsx(
+                                    "w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold transition-transform hover:scale-110 shadow-sm mx-auto",
+                                    config?.color || 'bg-gray-100 text-gray-400'
+                                  )}
+                                  title={`${emp.name} - ${format(date, 'MMM dd')}: ${status.replace('_', ' ')}`}
+                                >
+                                  {config?.letter || '?'}
+                                </button>
+                              ) : (
+                                <div className="w-6 h-6 mx-auto rounded-md border border-dashed border-gray-100" />
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                    {employeeList.length === 0 && (
+                      <tr><td colSpan={cutoffDates.length + 1} className="py-10 text-center text-gray-400 text-sm italic">No data available for this selection</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )
+            })()}
           </div>
         )}
       </div>
