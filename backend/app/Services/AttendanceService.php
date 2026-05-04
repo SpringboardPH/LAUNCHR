@@ -32,12 +32,17 @@ class AttendanceService
         $hoursWorked = max(0, ($outMinutes - $inMinutes) / 60);
         $halfExpected = $expectedHours / 2;
 
+        // Worked more than expected → overtime
+        if ($hoursWorked > $expectedHours) {
+            return 'overtime';
+        }
+
         // Worked at least half the shift but less than the full expected hours → half_day
         if ($hoursWorked >= $halfExpected && $hoursWorked < $expectedHours) {
             return 'half_day';
         }
 
-        // Worked less than half the shift → undertime (previously incomplete)
+        // Worked less than half the shift → undertime
         if ($hoursWorked < $halfExpected) {
             return 'undertime';
         }

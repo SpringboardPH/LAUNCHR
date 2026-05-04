@@ -132,3 +132,29 @@ export const getClockWindow = (schedule, sysClock = null) => {
     formatTime
   }
 }
+export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, workStart) => {
+  if (!clockIn) return 'absent'
+  
+  const parse = (t) => {
+    if (!t) return 0
+    const [h, m] = t.split(':').map(Number)
+    return h * 60 + (m || 0)
+  }
+  
+  const inMin = parse(clockIn)
+  const outMin = clockOut ? parse(clockOut) : inMin
+  const startMin = parse(workStart)
+  
+  let effectiveOut = outMin
+  if (effectiveOut < inMin) effectiveOut += 1440
+  
+  const hoursWorked = Math.max(0, (effectiveOut - inMin) / 60)
+  const halfExpected = expectedHours / 2
+  const isLate = inMin > startMin
+
+  if (hoursWorked > expectedHours) return 'overtime'
+  if (hoursWorked >= halfExpected && hoursWorked < expectedHours) return 'half_day'
+  if (hoursWorked < halfExpected) return 'undertime'
+  
+  return isLate ? 'late' : 'completed'
+}

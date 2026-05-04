@@ -9,8 +9,8 @@ import {
   bulkMarkAbsent
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut, Pencil, UserX } from 'lucide-react'
-import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
+import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle } from 'lucide-react'
+import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
@@ -25,6 +25,12 @@ export default function AttendancePage() {
   const [editLog, setEditLog] = useState(null)
   const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', notes: '' })
   const [markAbsentModal, setMarkAbsentModal] = useState({ open: false, date: format(new Date(), 'yyyy-MM-dd') })
+  const [statusConfirmModal, setStatusConfirmModal] = useState({
+    open: false,
+    detectedStatus: '',
+    onConfirm: () => {},
+  })
+  
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -220,9 +226,46 @@ export default function AttendancePage() {
     mutationFn: ({ id, data }) => updateAttendanceLog(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
+      qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
       setEditLog(null)
+      setStatusConfirmModal({ ...statusConfirmModal, open: false })
     }
   })
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    
+    // Calculate detected status
+    const logSchedule = editLog?.employee_id ? getScheduleForEmployee(editLog.employee_id) : null
+    const template = logSchedule?.template
+    const expectedHours = template?.required_hours_per_day || 9
+    const workStart = template?.work_start_time || '09:00:00'
+    
+    const detected = calculateAttendanceStatus(
+      editForm.clock_in_time,
+      editForm.clock_out_time,
+      expectedHours,
+      workStart
+    )
+
+    const specialStatuses = ['undertime', 'half_day', 'overtime']
+    
+    if (specialStatuses.includes(detected) && detected !== editForm.status) {
+      setStatusConfirmModal({
+        open: true,
+        detectedStatus: detected,
+        onConfirm: (useDetected) => {
+          const finalData = {
+            ...editForm,
+            status: useDetected ? detected : editForm.status
+          }
+          updateLogMutation.mutate({ id: editLog?.id, data: finalData })
+        }
+      })
+    } else {
+      updateLogMutation.mutate({ id: editLog?.id, data: editForm })
+    }
+  }
 
   const activeEmployees = employees?.data ?? []
   const activeSchedules = scheduleResponse?.data ?? []
@@ -359,7 +402,7 @@ export default function AttendancePage() {
                       <td className="py-2.5 pr-4">
                         {log ? (
                           log.clock_out_time ? (
-                            <span className="badge-gray text-xs px-2 py-1 rounded">Done</span>
+                            <StatusBadge status={log.status} />
                           ) : (
                             <span className="badge-green text-xs px-2 py-1 rounded">Working</span>
                           )
@@ -371,7 +414,7 @@ export default function AttendancePage() {
                             }
                             const isPastShift = win && win.currentMinutes > win.outEnd
                             return isPastShift ? (
-                              <span className="badge-red text-xs px-2 py-1 rounded">Absent</span>
+                              <StatusBadge status="absent" />
                             ) : (
                               <span className="badge-gray text-xs px-2 py-1 rounded">Not yet</span>
                             )
@@ -464,6 +507,7 @@ export default function AttendancePage() {
               <option value="late">Late</option>
               <option value="undertime">Undertime</option>
               <option value="half_day">Half Day</option>
+              <option value="overtime">Overtime</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
             </select>
@@ -525,27 +569,105 @@ export default function AttendancePage() {
       </div>
 
       <Modal open={!!editLog} onClose={() => setEditLog(null)} title="Edit Attendance Log" size="md">
-        <form onSubmit={(e) => { 
-          e.preventDefault(); 
-          updateLogMutation.mutate({ id: editLog?.id, data: editForm });
-        }}>
+        <form onSubmit={handleEditSubmit}>
           <div className="space-y-4">
-            <FormField label="Clock In"><input type="time" step="1" className="input" value={editForm.clock_in_time} onChange={e => setEditForm({...editForm, clock_in_time: e.target.value})} /></FormField>
-            <FormField label="Clock Out"><input type="time" step="1" className="input" value={editForm.clock_out_time} onChange={e => setEditForm({...editForm, clock_out_time: e.target.value})} /></FormField>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Clock In"><input type="time" step="1" className="input" value={editForm.clock_in_time} onChange={e => setEditForm({...editForm, clock_in_time: e.target.value})} /></FormField>
+              <FormField label="Clock Out"><input type="time" step="1" className="input" value={editForm.clock_out_time} onChange={e => setEditForm({...editForm, clock_out_time: e.target.value})} /></FormField>
+            </div>
+            
             <FormField label="Status">
-              <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
-                <option value="completed">Completed</option>
-                <option value="working">Working</option>
-                <option value="late">Late</option>
-                <option value="undertime">Undertime</option>
-                <option value="half_day">Half Day</option>
-                <option value="absent">Absent</option>
-              </select>
+              <div className="space-y-2">
+                <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                  <option value="completed">Completed</option>
+                  <option value="working">Working</option>
+                  <option value="late">Late</option>
+                  <option value="undertime">Undertime</option>
+                  <option value="half_day">Half Day</option>
+                  <option value="overtime">Overtime</option>
+                  <option value="absent">Absent</option>
+                  <option value="on_leave">On Leave</option>
+                </select>
+                
+                {(() => {
+                  const logSchedule = editLog?.employee_id ? getScheduleForEmployee(editLog.employee_id) : null
+                  const template = logSchedule?.template
+                  const expectedHours = template?.required_hours_per_day || 9
+                  const workStart = template?.work_start_time || '09:00:00'
+                  const detected = calculateAttendanceStatus(editForm.clock_in_time, editForm.clock_out_time, expectedHours, workStart)
+                  
+                  if (detected !== editForm.status) {
+                    return (
+                      <div className="flex items-center gap-2 p-2 bg-brand-50 rounded-lg border border-brand-100">
+                        <AlertCircle size={14} className="text-brand-600" />
+                        <span className="text-[10px] text-brand-700 font-medium">
+                          System detected: <span className="uppercase font-bold">{detected.replace('_', ' ')}</span>
+                        </span>
+                        <button 
+                          type="button" 
+                          onClick={() => setEditForm({...editForm, status: detected})}
+                          className="ml-auto text-[10px] text-brand-600 hover:underline font-bold"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+              </div>
             </FormField>
-            <FormField label="Notes"><textarea className="input" value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></FormField>
-            <button type="submit" className="btn-primary w-full">Save Changes</button>
+            
+            <FormField label="Notes"><textarea className="input text-sm" rows={3} value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></FormField>
+            
+            <div className="pt-2">
+              <button type="submit" disabled={updateLogMutation.isPending} className="btn-primary w-full h-11 text-sm shadow-sm">
+                {updateLogMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </form>
+      </Modal>
+
+      <Modal 
+        open={statusConfirmModal.open} 
+        onClose={() => setStatusConfirmModal({ ...statusConfirmModal, open: false })}
+        title="Confirm Attendance Status"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col items-center text-center py-2">
+            <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 mb-3">
+              <AlertCircle size={24} />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">Status Verification Required</h3>
+            <p className="text-xs text-gray-500 mt-2 px-2">
+              The system detected this shift as <span className="font-bold text-gray-900 uppercase">{statusConfirmModal.detectedStatus.replace('_', ' ')}</span>.
+              Is this the correct status for this log?
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 gap-2 pt-2">
+            <button 
+              onClick={() => statusConfirmModal.onConfirm(true)}
+              className="btn-primary w-full"
+            >
+              Yes, set as {statusConfirmModal.detectedStatus.replace('_', ' ')}
+            </button>
+            <button 
+              onClick={() => statusConfirmModal.onConfirm(false)}
+              className="btn-secondary w-full"
+            >
+              No, keep my selection
+            </button>
+            <button 
+              onClick={() => setStatusConfirmModal({ ...statusConfirmModal, open: false })}
+              className="btn-ghost w-full text-xs text-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal 
