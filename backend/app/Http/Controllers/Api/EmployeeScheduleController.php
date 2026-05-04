@@ -228,4 +228,37 @@ class EmployeeScheduleController extends Controller
             'message' => 'Schedule deactivated successfully',
         ]);
     }
+
+    public function mySchedules(Request $request)
+    {
+        $employeeId = $request->user()->employee?->id;
+        if (!$employeeId) {
+            return response()->json(['success' => false, 'message' => 'Employee profile not found.'], 404);
+        }
+
+        $query = EmployeeSchedule::with(['template'])
+            ->where('employee_id', $employeeId);
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $schedules = $query->orderBy('start_date', 'desc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $schedules,
+        ]);
+    }
+
+    public function setMySchedule(Request $request)
+    {
+        $employeeId = $request->user()->employee?->id;
+        if (!$employeeId) {
+            return response()->json(['success' => false, 'message' => 'Employee profile not found.'], 404);
+        }
+
+        $request->merge(['employee_id' => $employeeId]);
+        return $this->store($request);
+    }
 }

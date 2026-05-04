@@ -31,6 +31,7 @@ const ADMIN_ONLY_NAV = [
 const EMPLOYEE_NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'My Dashboard', end: true },
   { to: '/employee/attendance', icon: Clock, label: 'My Attendance' },
+  { to: '/employee/schedule', icon: CalendarRange, label: 'My Schedule' },
   { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
   { to: '/employee/calendar', icon: CalendarRange, label: 'Company Calendar' },
   { to: '/employee/profile', icon: User, label: 'My Profile' },

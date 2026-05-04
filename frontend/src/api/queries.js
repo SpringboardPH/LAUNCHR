@@ -257,6 +257,15 @@ export const updateEmployeeSchedule = (id, data) =>
 export const deleteEmployeeSchedule = (id) =>
   api.delete(`/admin/employee-schedules/${id}`).then(r => r.data)
 
+export const getMySchedules = (params) =>
+  api.get('/my-schedules', { params }).then(r => r.data.data)
+
+export const setMySchedule = (data) =>
+  api.post('/my-schedules', data).then(r => r.data)
+
+export const getAvailableTemplates = () =>
+  api.get('/schedule-templates').then(r => r.data.data)
+
 // ─── Users (Admin) ────────────────────────────────────────────────
 export const userKeys = {
   all: ['admin', 'users'],

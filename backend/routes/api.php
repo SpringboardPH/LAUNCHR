@@ -80,6 +80,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // System clock (virtual time used by attendance) - available to all authenticated users
     Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
+    
+    // Employee Schedules (Self-service)
+    Route::get('/my-schedules', [EmployeeScheduleController::class, 'mySchedules']);
+    Route::post('/my-schedules', [EmployeeScheduleController::class, 'setMySchedule']);
+    Route::get('/schedule-templates', [ScheduleTemplateController::class, 'index']);
 
     // Admin Routes (Admin Only)
     Route::middleware('role:admin')->group(function () {

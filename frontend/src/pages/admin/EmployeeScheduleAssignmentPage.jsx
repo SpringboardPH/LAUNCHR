@@ -272,10 +272,6 @@ const EmployeeScheduleAssignmentPage = () => {
       fallbackSchedulesByEmployee.set(schedule.employee_id, schedule)
     }
   })
-  const sourceSchedulesForDefaults = thisWeekSchedules.length > 0
-    ? thisWeekSchedules
-    : Array.from(fallbackSchedulesByEmployee.values())
-
   const currentWeekEmployeeIdsWithSavedSchedule = new Set(thisWeekSchedules.map(s => s.employee_id))
   const suggestedCurrentWeekSchedules = Array.from(fallbackSchedulesByEmployee.values())
     .filter((s) => !currentWeekEmployeeIdsWithSavedSchedule.has(s.employee_id))
@@ -290,6 +286,9 @@ const EmployeeScheduleAssignmentPage = () => {
     ...thisWeekSchedules,
     ...suggestedCurrentWeekSchedules,
   ]
+
+  const sourceSchedulesForDefaults = currentSchedulesWithDefaults
+
   const savedNextWeekSchedules = allActiveSchedules.filter((s) => {
     const start = parseISO(s.start_date)
     const end = parseISO(s.end_date)

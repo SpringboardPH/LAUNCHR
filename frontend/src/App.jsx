@@ -19,6 +19,7 @@ import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import LeaveRequestFormPage from './pages/employee/LeaveRequestFormPage'
 import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
+import EmployeeSchedulePage from './pages/employee/EmployeeSchedulePage'
 import CalendarPage from './pages/calendar/CalendarPage'
 
 import UserListPage from './pages/admin/UserListPage'
@@ -130,6 +131,7 @@ export default function App() {
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />
             <Route path="attendance" element={<AttendanceClockPage />} />
+            <Route path="schedule" element={<EmployeeSchedulePage />} />
             <Route path="leaves/new" element={<LeaveRequestFormPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
             <Route path="calendar" element={<CalendarPage readOnly={true} />} />
