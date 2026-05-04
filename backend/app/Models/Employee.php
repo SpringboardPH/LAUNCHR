@@ -23,6 +23,7 @@ class Employee extends Model
         'salary',
         'status',
         'notes',
+        'bank_account_number',
     ];
 
     protected $casts = [

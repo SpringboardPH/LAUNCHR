@@ -20,6 +20,9 @@ const schema = z.object({
   salary:       z.coerce.number().min(0, 'Must be ≥ 0'),
   role:         z.enum(['employee', 'hr', 'admin']).optional(),
   password:     z.string().min(8, 'Must be at least 8 characters').optional().or(z.literal('')),
+  bank_account_number: z.string().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
+    message: 'Must be between 10 and 12 digits'
+  }),
 })
 
 export default function EmployeeFormPage() {
@@ -146,6 +149,10 @@ export default function EmployeeFormPage() {
             <input type="number" step="0.01" {...register('salary')} className={`input ${errors.salary ? 'input-error' : ''}`} />
           </FormField>
         </div>
+
+        <FormField label="Bank Account Number" error={errors.bank_account_number?.message}>
+          <input {...register('bank_account_number')} className={`input ${errors.bank_account_number ? 'input-error' : ''}`} placeholder="10-12 digits" />
+        </FormField>
 
         {canManageAccount && (
           <div className="space-y-5 border-t border-gray-100 pt-5">

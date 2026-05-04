@@ -2,7 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getEmployee, getLeaveBalance, employeeKeys, leaveKeys, employeeScheduleKeys, getCurrentScheduleForEmployee, getSystemClock, systemClockKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { ArrowLeft, Pencil, Mail, Phone, Calendar, Briefcase, Clock3, CalendarDays, ClipboardList } from 'lucide-react'
+import { ArrowLeft, Pencil, Mail, Phone, Calendar, Briefcase, Clock3, CalendarDays, ClipboardList, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function EmployeeDetailPage() {
@@ -83,6 +83,7 @@ export default function EmployeeDetailPage() {
               { icon: Briefcase,label: 'Department',      value: emp.department },
               { icon: Calendar, label: 'Hire date',       value: format(new Date(emp.hire_date), 'MMM dd, yyyy') },
               { icon: Briefcase,label: 'Salary',         value: `₱${Number(emp.salary).toLocaleString()}` },
+              { icon: CreditCard,label: 'Bank Account',    value: emp.bank_account_number || '—' },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-start gap-2">
                 <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />

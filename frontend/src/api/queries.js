@@ -26,6 +26,9 @@ export const updateEmployee = (id, data) =>
 export const deactivateEmployee = (id) =>
   api.patch(`/employees/${id}/deactivate`).then(r => r.data)
 
+export const updateProfile = (data) =>
+  api.put('/profile', data).then(r => r.data)
+
 // ─── Departments ─────────────────────────────────────────────
 export const departmentKeys = {
   all: ['departments'],

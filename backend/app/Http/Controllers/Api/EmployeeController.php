@@ -254,7 +254,6 @@ class EmployeeController extends Controller
     public function restore($id)
     {
         $employee = Employee::withTrashed()->findOrFail($id);
-
         DB::transaction(function () use ($employee) {
             $employee->restore();
             $employee->update(['status' => 'active']);
@@ -266,11 +265,31 @@ class EmployeeController extends Controller
                 }
             }
         });
-
         return response()->json([
             'success' => true,
             'data' => new EmployeeResource($employee),
             'message' => 'Employee restored successfully',
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $employee = $request->user()->employee;
+        if (!$employee) {
+            return response()->json(['success' => false, 'message' => 'Employee profile not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'phone' => 'nullable|string|max:20',
+            'bank_account_number' => 'nullable|string|min:10|max:12',
+        ]);
+
+        $employee->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'data' => new EmployeeResource($employee),
+            'message' => 'Profile updated successfully',
         ]);
     }
 }

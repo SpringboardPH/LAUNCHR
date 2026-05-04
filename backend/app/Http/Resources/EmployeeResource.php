@@ -28,6 +28,7 @@ class EmployeeResource extends JsonResource
             'salary' => (float) $this->salary,
             'status' => $this->status,
             'notes' => $this->notes,
+            'bank_account_number' => $this->bank_account_number,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
