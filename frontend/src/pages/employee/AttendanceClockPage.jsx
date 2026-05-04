@@ -10,7 +10,7 @@ import {
 import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
-import { getClockWindow } from '../../utils/attendance'
+import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 
 const calculateHours = (clockInTime, clockOutTime) => {
   if (!clockInTime || !clockOutTime) return '—'
@@ -52,19 +52,14 @@ export default function AttendanceClockPage() {
     staleTime: 0,
   })
 
-  // Derive default month from system clock once it's loaded
-  const defaultMonth = sysClock?.date
-    ? sysClock.date.substring(0, 7)   // "YYYY-MM"
-    : format(new Date(), 'yyyy-MM')
+  const [activeCutoff, setActiveCutoff] = useState(null)
 
-  const [month, setMonth] = useState(null)
-
-  // Set month once sysClock is available (only once)
+  // Set cutoff once sysClock is available (only once)
   useEffect(() => {
-    if (sysClock && month === null) {
-      setMonth(sysClock.date.substring(0, 7))
+    if (sysClock && activeCutoff === null) {
+      setActiveCutoff(getCutoffPeriod(sysClock.date))
     }
-  }, [sysClock, month])
+  }, [sysClock, activeCutoff])
 
   // Live display clock — ticks every second but starts from system clock
   const [displayTime, setDisplayTime] = useState(null)
@@ -103,14 +98,13 @@ export default function AttendanceClockPage() {
     enabled: !!user?.employee?.id,
   })
 
-  const activeMonth = month ?? defaultMonth
-  const activeMonthDate = parseISO(`${activeMonth}-01`)
-  const activeMonthLabel = format(activeMonthDate, 'MMMM yyyy')
+  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date())
+  const activeCutoffLabel = currentCutoff.label
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
-    queryKey: attendanceKeys.monthly(employeeId, activeMonth),
-    queryFn: () => getMonthlyAttendance(employeeId, activeMonth),
-    enabled: Boolean(employeeId) && Boolean(activeMonth),
+    queryKey: attendanceKeys.monthly(employeeId, currentCutoff.startDate, currentCutoff.endDate),
+    queryFn: () => getMonthlyAttendance(employeeId, currentCutoff.startDate, currentCutoff.endDate),
+    enabled: Boolean(employeeId) && Boolean(currentCutoff),
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -173,9 +167,9 @@ export default function AttendanceClockPage() {
 
   const totalVisualDays = visualStatuses.reduce((sum, item) => sum + (statusCounts[item.key] || 0), 0)
 
-  const moveMonth = (delta) => {
-    const next = addMonths(activeMonthDate, delta)
-    setMonth(format(next, 'yyyy-MM'))
+  const moveCutoff = (delta) => {
+    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
+    else setActiveCutoff(getPrevCutoff(currentCutoff))
   }
 
   // Pass sysClock to window check so it uses the virtual time
@@ -361,23 +355,23 @@ export default function AttendanceClockPage() {
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <CalendarDays size={14} className="text-brand-600" /> My Monthly Attendance Log
+                  <CalendarDays size={14} className="text-brand-600" /> Attendance Log
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">Only your own attendance records are shown here.</p>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveMonth(-1)}>
+                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveCutoff(-1)}>
                   Prev
                 </button>
-                <span className="text-sm font-medium text-gray-700 min-w-[110px] text-center">{activeMonthLabel}</span>
-                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveMonth(1)}>
+                <span className="text-sm font-medium text-gray-700 min-w-[110px] text-center">{activeCutoffLabel}</span>
+                <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => moveCutoff(1)}>
                   Next
                 </button>
               </div>
             </div>
 
             <div className="mb-5 rounded-lg border border-gray-200 p-4 bg-gray-50">
-              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Monthly Visualization</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Attendance Visualization</p>
               {totalVisualDays > 0 ? (
                 <div className="space-y-3">
                   {visualStatuses.map((item) => {
@@ -397,7 +391,7 @@ export default function AttendanceClockPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">No logs yet for {activeMonthLabel}.</p>
+                <p className="text-sm text-gray-400">No logs yet for {activeCutoffLabel}.</p>
               )}
             </div>
 
@@ -442,7 +436,7 @@ export default function AttendanceClockPage() {
                     ))}
                     {monthlyLogs.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-6 text-center text-gray-400 text-sm">No records for this month</td>
+                        <td colSpan={6} className="py-6 text-center text-gray-400 text-sm">No records for this cutoff</td>
                       </tr>
                     )}
                   </tbody>

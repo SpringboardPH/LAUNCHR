@@ -1,5 +1,54 @@
 
 /**
+ * Returns the current cutoff period based on a given date (defaults to now).
+ * Cutoffs: 26th of previous month to 10th of current month, 11th to 25th of current month.
+ */
+export const getCutoffPeriod = (date = new Date()) => {
+  const d = new Date(date)
+  const day = d.getDate()
+  const month = d.getMonth()
+  const year = d.getFullYear()
+
+  if (day >= 11 && day <= 25) {
+    const start = new Date(year, month, 11)
+    const end = new Date(year, month, 25)
+    return {
+      startDate: `${year}-${String(month + 1).padStart(2, '0')}-11`,
+      endDate: `${year}-${String(month + 1).padStart(2, '0')}-25`,
+      label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    }
+  } else if (day > 25) {
+    const start = new Date(year, month, 26)
+    const end = new Date(year, month + 1, 10)
+    return {
+      startDate: `${year}-${String(month + 1).padStart(2, '0')}-26`,
+      endDate: `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-10`,
+      label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    }
+  } else {
+    const start = new Date(year, month - 1, 26)
+    const end = new Date(year, month, 10)
+    return {
+      startDate: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-26`,
+      endDate: `${year}-${String(month + 1).padStart(2, '0')}-10`,
+      label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    }
+  }
+}
+
+export const getNextCutoff = (cutoff) => {
+  const end = new Date(cutoff.endDate)
+  end.setDate(end.getDate() + 2) // move past the end date
+  return getCutoffPeriod(end)
+}
+
+export const getPrevCutoff = (cutoff) => {
+  const start = new Date(cutoff.startDate)
+  start.setDate(start.getDate() - 2) // move before the start date
+  return getCutoffPeriod(start)
+}
+
+/**
  * sysClock: optional object from /api/system-clock
  *   { day_of_week: number, minutes_since_midnight: number, time: "HH:MM:SS", date: "YYYY-MM-DD" }
  * Falls back to real browser time if not provided.

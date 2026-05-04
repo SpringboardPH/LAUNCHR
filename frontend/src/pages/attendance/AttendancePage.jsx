@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
 import {
@@ -10,11 +10,11 @@ import {
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX } from 'lucide-react'
-import { getClockWindow } from '../../utils/attendance'
+import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
-  const [month, setMonth] = useState(null)
+  const [activeCutoff, setActiveCutoff] = useState(null)
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
@@ -48,13 +48,18 @@ export default function AttendancePage() {
     }
   })
 
-  const defaultMonth = sysClock?.date
-    ? sysClock.date.substring(0, 7)
-    : format(new Date(), 'yyyy-MM')
-  const activeMonth = month ?? defaultMonth
+  // Set cutoff once sysClock is available
+  useEffect(() => {
+    if (sysClock && activeCutoff === null) {
+      setActiveCutoff(getCutoffPeriod(sysClock.date))
+    }
+  }, [sysClock, activeCutoff])
+
+  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date())
 
   const monthlyParams = {
-    month: activeMonth,
+    start_date: currentCutoff.startDate,
+    end_date: currentCutoff.endDate,
     include_absentees: true,
     personal: false,
     ...(monthlyEmployeeSearch.trim() ? { employee_search: monthlyEmployeeSearch.trim() } : {}),
@@ -265,6 +270,11 @@ export default function AttendancePage() {
     ? format(parseISO(sysClock.date), 'EEEE, MMMM d, yyyy')
     : format(new Date(), 'EEEE, MMMM d, yyyy')
 
+  const moveCutoff = (delta) => {
+    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
+    else setActiveCutoff(getPrevCutoff(currentCutoff))
+  }
+
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
   const getScheduleForEmployee = (empId) => resolvedCurrentSchedules.find(s => s.employee_id === empId)
 
@@ -410,17 +420,32 @@ export default function AttendancePage() {
         )}
       </div>
 
-      {/* Monthly log */}
+      {/* Attendance log */}
       <div className="card p-5">
         <div className="flex flex-col gap-3 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700">Monthly Log</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
-            <input
-              type="month"
-              className="input text-sm"
-                value={activeMonth}
-              onChange={e => setMonth(e.target.value)}
-            />
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Attendance Log</h2>
+            <div className="flex items-center gap-2">
+              <button 
+                type="button" 
+                className="btn-secondary text-xs px-2 py-1" 
+                onClick={() => moveCutoff(-1)}
+              >
+                Prev
+              </button>
+              <span className="text-sm font-medium text-gray-700 min-w-[150px] text-center">
+                {currentCutoff.label}
+              </span>
+              <button 
+                type="button" 
+                className="btn-secondary text-xs px-2 py-1" 
+                onClick={() => moveCutoff(1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <input
               type="text"
               className="input text-sm"
@@ -491,7 +516,7 @@ export default function AttendancePage() {
                   </tr>
                 ))}
                 {logs.length === 0 && (
-                  <tr><td colSpan={8} className="py-6 text-center text-gray-400 text-sm">No records for this month</td></tr>
+                  <tr><td colSpan={8} className="py-6 text-center text-gray-400 text-sm">No records for this cutoff</td></tr>
                 )}
               </tbody>
             </table>

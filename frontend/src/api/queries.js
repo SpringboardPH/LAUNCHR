@@ -40,7 +40,7 @@ export const attendanceKeys = {
   today: (id) => ['attendance', 'today', 'my', id],  // Employee's own attendance
   todayAll: () => ['attendance', 'today', 'all'],  // HR/Admin all employees
   list: (params) => ['attendance', 'list', params],
-  monthly: (employeeId, month) => ['attendance', 'monthly', employeeId, month],
+  monthly: (employeeId, startDate, endDate) => ['attendance', 'monthly', employeeId, startDate, endDate],
 }
 
 export const getAttendanceToday = (params = { personal: true }) =>
@@ -53,8 +53,8 @@ export const getAttendance = (params) =>
     total: r.data.pagination?.total,
   }))
 
-export const getMonthlyAttendance = (employeeId, month) =>
-  api.get(`/attendance/${employeeId}/monthly`, { params: { month } }).then(r => r.data.data)
+export const getMonthlyAttendance = (employeeId, startDate, endDate) =>
+  api.get(`/attendance/${employeeId}/monthly`, { params: { start_date: startDate, end_date: endDate } }).then(r => r.data.data)
 
 export const clockIn = (notes, employeeId = null) =>
   api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)

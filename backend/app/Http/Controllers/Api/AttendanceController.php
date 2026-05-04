@@ -508,8 +508,10 @@ class AttendanceController extends Controller
             }
         }
 
-        // Filter by month if provided (expects format: YYYY-MM)
-        if ($monthStr) {
+        // Filter by date range or month
+        if ($request->has('start_date') && $request->has('end_date')) {
+            $query->whereBetween('date', [$request->query('start_date'), $request->query('end_date')]);
+        } elseif ($monthStr) {
             [$year, $monthNum] = explode('-', $monthStr);
             $query->whereYear('date', (int)$year)
                   ->whereMonth('date', (int)$monthNum);
@@ -536,10 +538,15 @@ class AttendanceController extends Controller
         }
 
         // If HR/Admin wants a full report with absentees
-        if ($user->isAdminOrHr() && !$isPersonal && $monthStr && $includeAbsentees) {
-            [$year, $monthNum] = explode('-', $monthStr);
-            $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
-            $endDate = $startDate->copy()->endOfMonth();
+        if ($user->isAdminOrHr() && !$isPersonal && ($monthStr || ($request->has('start_date') && $request->has('end_date'))) && $includeAbsentees) {
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $startDate = Carbon::parse($request->query('start_date'))->startOfDay();
+                $endDate = Carbon::parse($request->query('end_date'))->endOfDay();
+            } else {
+                [$year, $monthNum] = explode('-', $monthStr);
+                $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
+                $endDate = $startDate->copy()->endOfMonth();
+            }
             $generationEndDate = $endDate->lt(SystemClock::today()) ? $endDate : SystemClock::today();
 
             $employees = Employee::where('status', 'active')->get();
@@ -854,11 +861,15 @@ class AttendanceController extends Controller
 
         $this->performAutoClockOut($employeeId);
 
-        $monthStr = $request->query('month', SystemClock::now()->format('Y-m'));
-        [$year, $monthNum] = explode('-', $monthStr);
-
-        $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
-        $endDate = $startDate->copy()->endOfMonth();
+        if ($request->has('start_date') && $request->has('end_date')) {
+            $startDate = Carbon::parse($request->query('start_date'))->startOfDay();
+            $endDate = Carbon::parse($request->query('end_date'))->endOfDay();
+        } else {
+            $monthStr = $request->query('month', SystemClock::now()->format('Y-m'));
+            [$year, $monthNum] = explode('-', $monthStr);
+            $startDate = Carbon::createFromDate($year, $monthNum, 1)->startOfMonth();
+            $endDate = $startDate->copy()->endOfMonth();
+        }
         
         // Don't generate absent records for future days
         $today = SystemClock::today();
@@ -866,8 +877,7 @@ class AttendanceController extends Controller
 
         // Get actual logs
         $logs = AttendanceLog::where('employee_id', $employeeId)
-            ->whereYear('date', (int)$year)
-            ->whereMonth('date', (int)$monthNum)
+            ->whereBetween('date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get()
             ->keyBy(function($item) {
                 return Carbon::parse($item->date)->format('Y-m-d');
@@ -1002,7 +1012,7 @@ class AttendanceController extends Controller
             'data' => [
                 'data' => $allDays
             ],
-            'message' => 'Monthly attendance records retrieved',
+            'message' => 'Attendance records retrieved',
         ]);
     }
 
