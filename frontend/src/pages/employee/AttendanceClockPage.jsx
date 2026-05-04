@@ -198,6 +198,41 @@ export default function AttendanceClockPage() {
     ? format(displayTime, 'EEEE, MMMM d')
     : (sysClock?.date ?? format(new Date(), 'EEEE, MMMM d'))
 
+  const timerDisplay = (() => {
+    if (!isClockedIn) return '00:00:00'
+    
+    try {
+      const [inH, inM, inS] = todayAttendance.clock_in_time.split(':').map(Number)
+      let endH, endM, endS
+
+      if (isClockedOut) {
+        const parts = todayAttendance.clock_out_time.split(':').map(Number)
+        endH = parts[0]
+        endM = parts[1]
+        endS = parts[2]
+      } else {
+        const parts = displayTimeLabel.split(':').map(Number)
+        if (parts.length !== 3) return '00:00:00'
+        endH = parts[0]
+        endM = parts[1]
+        endS = parts[2]
+      }
+
+      let diffSeconds = (endH * 3600 + endM * 60 + endS) - (inH * 3600 + inM * 60 + inS)
+      if (diffSeconds < 0) {
+        diffSeconds += 24 * 3600
+      }
+
+      const h = Math.floor(diffSeconds / 3600).toString().padStart(2, '0')
+      const m = Math.floor((diffSeconds % 3600) / 60).toString().padStart(2, '0')
+      const s = Math.floor(diffSeconds % 60).toString().padStart(2, '0')
+
+      return `${h}:${m}:${s}`
+    } catch {
+      return '00:00:00'
+    }
+  })()
+
   return (
     <div>
       <ConfirmModal
@@ -226,15 +261,18 @@ export default function AttendanceClockPage() {
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-1">
           <div className="card p-8">
-            {/* Current Time Display */}
+            {/* Timer Display */}
             <div className="text-center mb-8">
               <div className="inline-block bg-gradient-to-br from-brand-100 to-brand-50 p-8 rounded-full mb-4">
                 <Clock size={40} className="text-brand-600" />
               </div>
-              <div className="text-5xl font-bold text-gray-900 mb-2">
-                {displayTimeLabel}
+              <div className="text-5xl font-bold text-gray-900 mb-2 font-mono tracking-tight">
+                {timerDisplay}
               </div>
-              <p className="text-sm text-gray-500">{displayDateShort}</p>
+              <p className="text-sm font-medium text-brand-600 mb-1">
+                {!isClockedIn ? 'Ready to Clock In' : (isClockedOut ? 'Shift Completed' : 'Time Elapsed')}
+              </p>
+              <p className="text-xs text-gray-500">{displayDateShort}</p>
             </div>
 
             {/* Status Display */}
