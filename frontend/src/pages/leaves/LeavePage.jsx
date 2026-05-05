@@ -4,16 +4,19 @@ import { useForm } from 'react-hook-form'
 import { format } from 'date-fns'
 import {
   getLeaves, createLeave, approveLeave, rejectLeave,
-  getEmployees, getLeaveTypes, leaveKeys, employeeKeys, leaveTypeKeys, dashboardKeys,
+  getEmployees, getLeaveTypes, getSystemClock,
+  leaveKeys, employeeKeys, leaveTypeKeys, dashboardKeys, systemClockKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
-import { Plus, Check, X, CalendarOff } from 'lucide-react'
+import { Plus, Check, X, CalendarOff, AlertCircle, Eye } from 'lucide-react'
+import { differenceInDays } from 'date-fns'
 
 export default function LeavePage() {
   const [status, setStatus] = useState('pending')
   const [showModal, setShowModal] = useState(false)
   const [rejectModal, setRejectModal] = useState(null) // leaveId
   const [rejectReason, setRejectReason] = useState('')
+  const [viewLeave, setViewLeave] = useState(null)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
 
@@ -31,6 +34,17 @@ export default function LeavePage() {
     queryKey: leaveTypeKeys.all,
     queryFn: () => getLeaveTypes(),
   })
+
+  const { data: systemClock } = useQuery({
+    queryKey: systemClockKeys.all,
+    queryFn: getSystemClock,
+  })
+
+  const isWithinWindow = (createdAt) => {
+    if (!systemClock?.now) return true
+    const diff = differenceInDays(new Date(systemClock.now), new Date(createdAt))
+    return diff <= 3
+  }
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
     defaultValues: {
@@ -151,21 +165,42 @@ export default function LeavePage() {
                       leave.reason
                     )}
                   </td>
-                  <td className="px-4 py-3"><StatusBadge status={leave.status} /></td>
+                   <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge status={leave.status} />
+                      {leave.status === 'pending' && !isWithinWindow(leave.created_at) && (
+                        <span className="text-[10px] text-amber-600 font-bold uppercase flex items-center gap-1">
+                          <AlertCircle size={10} /> Window Expired
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
-                    {leave.status === 'pending' && (
-                      <div className="flex gap-1">
-                        <button onClick={() => handleApproveClick(leave)}
-                          disabled={approveMutation.isPending}
-                          className="btn-ghost p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50" title="Approve">
-                          <Check size={14} />
-                        </button>
-                        <button onClick={() => setRejectModal(leave.id)}
-                          className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Reject">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex gap-1">
+                      <button onClick={() => setViewLeave(leave)}
+                        className="btn-ghost p-1.5 text-brand-500 hover:text-brand-700 hover:bg-brand-50" title="View Details">
+                        <Eye size={14} />
+                      </button>
+                      {leave.status === 'pending' && (
+                        <>
+                          {isWithinWindow(leave.created_at) ? (
+                            <>
+                              <button onClick={() => handleApproveClick(leave)}
+                                disabled={approveMutation.isPending}
+                                className="btn-ghost p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50" title="Approve">
+                                <Check size={14} />
+                              </button>
+                              <button onClick={() => setRejectModal(leave.id)}
+                                className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Reject">
+                                <X size={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 italic flex items-center">Locked</span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -181,6 +216,61 @@ export default function LeavePage() {
           </table>
         </div>
       )}
+
+      {/* View Details Modal */}
+      <Modal open={Boolean(viewLeave)} onClose={() => setViewLeave(null)} title="Leave Request Details" size="sm">
+        {viewLeave && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Employee</p>
+                <p className="text-sm font-semibold text-gray-900">{viewLeave.employee?.first_name} {viewLeave.employee?.last_name}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
+                <StatusBadge status={viewLeave.status} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Dates</p>
+                <p className="text-sm text-gray-700">{format(new Date(viewLeave.start_date), 'MMM d')} – {format(new Date(viewLeave.end_date), 'MMM d, yyyy')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Days Requested</p>
+                <p className="text-sm text-gray-700">{viewLeave.days_requested} day(s)</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Reason</p>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm text-gray-700 italic">
+                "{viewLeave.reason || 'No reason provided'}"
+              </div>
+            </div>
+
+            {viewLeave.status === 'rejected' && (
+              <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">HR Rejection Reason</p>
+                <p className="text-sm text-red-900 font-medium">
+                  {viewLeave.rejection_reason || 'No reason specified.'}
+                </p>
+              </div>
+            )}
+
+            {viewLeave.status === 'approved' && viewLeave.approver && (
+              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1">Approval Info</p>
+                <p className="text-xs text-emerald-900">
+                  Approved by {viewLeave.approver.name}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setViewLeave(null)} className="btn-primary px-6">Close</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* New leave request modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="New Leave Request">

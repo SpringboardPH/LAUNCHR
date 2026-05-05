@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { createLeave, leaveKeys, getLeaves, getLeaveBalance, getSystemClock, systemClockKeys } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
-import { CalendarOff, AlertCircle, Plus } from 'lucide-react'
+import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal } from '../../components/ui/index.jsx'
+import { CalendarOff, AlertCircle, Plus, Eye } from 'lucide-react'
 import { format } from 'date-fns'
 import { useAuth } from '../../store/AuthContext'
 
@@ -24,6 +24,7 @@ export default function LeaveRequestFormPage() {
   const [submitted, setSubmitted] = useState(false)
   const [localError, setLocalError] = useState('')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [selectedLeave, setSelectedLeave] = useState(null)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user } = useAuth()
@@ -301,7 +302,7 @@ export default function LeaveRequestFormPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Dates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Days</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -319,12 +320,14 @@ export default function LeaveRequestFormPage() {
                       <td className="px-4 py-3">
                         <StatusBadge status={leave.status} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 max-w-[150px] truncate" title={leave.rejection_reason || leave.reason}>
-                        {leave.status === 'rejected' ? (
-                          <span className="text-red-600 font-medium">Rejected: {leave.rejection_reason || 'No reason provided'}</span>
-                        ) : (
-                          leave.reason || '—'
-                        )}
+                      <td className="px-4 py-3 text-center">
+                        <button 
+                          onClick={() => setSelectedLeave(leave)}
+                          className="btn-ghost p-1.5 text-brand-500 hover:text-brand-700 hover:bg-brand-50"
+                          title="View Details"
+                        >
+                          <Eye size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -342,6 +345,69 @@ export default function LeaveRequestFormPage() {
           </div>
         </div>
       </div>
+
+      {/* Leave Details Modal */}
+      <Modal 
+        open={Boolean(selectedLeave)} 
+        onClose={() => setSelectedLeave(null)} 
+        title="Leave Request Details"
+        size="sm"
+      >
+        {selectedLeave && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</p>
+                <p className="text-sm font-semibold text-gray-900 capitalize">
+                  {typeof selectedLeave.leave_type === 'string' 
+                    ? selectedLeave.leave_type.replace(/_/g, ' ') 
+                    : (selectedLeave.leave_type?.name || 'Unknown')}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
+                <StatusBadge status={selectedLeave.status} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Start Date</p>
+                <p className="text-sm text-gray-800">{format(new Date(selectedLeave.start_date), 'MMM dd, yyyy')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">End Date</p>
+                <p className="text-sm text-gray-800">{format(new Date(selectedLeave.end_date), 'MMM dd, yyyy')}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">My Reason</p>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm text-gray-700 italic">
+                "{selectedLeave.reason || 'No reason provided'}"
+              </div>
+            </div>
+
+            {selectedLeave.status === 'rejected' && (
+              <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+                <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Rejection Reason (HR)</p>
+                <p className="text-sm text-red-900 font-medium">
+                  {selectedLeave.rejection_reason || 'No specific reason provided by HR.'}
+                </p>
+              </div>
+            )}
+
+            {selectedLeave.status === 'approved' && selectedLeave.approver && (
+              <p className="text-[10px] text-gray-400 text-right italic">
+                Approved by {selectedLeave.approver.name}
+              </p>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setSelectedLeave(null)} className="btn-primary px-6">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
