@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, StatusBadge, Spinner } from '../../components/ui/index.jsx'
 import { Mail, Phone, Calendar, Briefcase, CreditCard, Pencil, Check, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { useMutation } from '@tanstack/react-query'
@@ -14,7 +14,10 @@ export default function EmployeeProfilePage() {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     defaultValues: {
-      bank_account_number: emp?.bank_account_number || ''
+      bank_account_number: emp?.bank_account_number || '',
+      sss_number: emp?.sss_number || '',
+      philhealth_number: emp?.philhealth_number || '',
+      pagibig_number: emp?.pagibig_number || '',
     }
   })
 
@@ -34,7 +37,12 @@ export default function EmployeeProfilePage() {
   }
 
   const cancelEdit = () => {
-    reset({ bank_account_number: emp?.bank_account_number || '' })
+    reset({ 
+      bank_account_number: emp?.bank_account_number || '',
+      sss_number: emp?.sss_number || '',
+      philhealth_number: emp?.philhealth_number || '',
+      pagibig_number: emp?.pagibig_number || '',
+    })
     setIsEditingBank(false)
   }
 
@@ -95,7 +103,7 @@ export default function EmployeeProfilePage() {
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <CreditCard size={14} className="text-brand-600" /> Payroll Details
+                <CreditCard size={14} className="text-brand-600" /> Payroll & Gov't IDs
               </h2>
               {!isEditingBank && (
                 <button
@@ -108,63 +116,90 @@ export default function EmployeeProfilePage() {
             </div>
 
             {isEditingBank ? (
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Bank Account Number (10-12 digits)</label>
-                  <div className="flex gap-2">
-                    <div className="grow">
-                      <input
-                        type="text"
-                        className={`input text-sm w-full ${errors.bank_account_number ? 'border-red-500' : ''}`}
-                        placeholder="0000000000"
-                        {...register('bank_account_number', {
-                          required: 'Account number is required',
-                          minLength: { value: 10, message: 'Must be between 10 and 12 digits' },
-                          maxLength: { value: 12, message: 'Must be between 10 and 12 digits' },
-                          pattern: { value: /^\d+$/, message: 'Must be numbers only' }
-                        })}
-                      />
-                      {errors.bank_account_number && (
-                        <p className="text-[10px] text-red-500 mt-1">{errors.bank_account_number.message}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        type="submit"
-                        disabled={mutation.isPending}
-                        className="btn-primary p-2 h-10 w-10 flex items-center justify-center"
-                        title="Save"
-                      >
-                        {mutation.isPending ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Check size={16} />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="btn-secondary p-2 h-10 w-10 flex items-center justify-center"
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Bank Account Number</label>
+                    <input
+                      type="text"
+                      className={`input text-sm w-full ${errors.bank_account_number ? 'border-red-500' : ''}`}
+                      placeholder="0000000000"
+                      {...register('bank_account_number', {
+                        required: 'Account number is required',
+                        minLength: { value: 10, message: 'Must be between 10 and 12 digits' },
+                        maxLength: { value: 12, message: 'Must be between 10 and 12 digits' },
+                        pattern: { value: /^\d+$/, message: 'Must be numbers only' }
+                      })}
+                    />
+                    {errors.bank_account_number && (
+                      <p className="text-[10px] text-red-500 mt-1">{errors.bank_account_number.message}</p>
+                    )}
                   </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">SSS Number</label>
+                    <input
+                      type="text"
+                      className="input text-sm w-full"
+                      placeholder="00-0000000-0"
+                      {...register('sss_number')}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">PhilHealth Number</label>
+                    <input
+                      type="text"
+                      className="input text-sm w-full"
+                      placeholder="00-000000000-0"
+                      {...register('philhealth_number')}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Pag-IBIG Number</label>
+                    <input
+                      type="text"
+                      className="input text-sm w-full"
+                      placeholder="0000-0000-0000"
+                      {...register('pagibig_number')}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="btn-secondary px-4 py-2 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={mutation.isPending}
+                    className="btn-primary px-6 py-2 text-sm min-w-[100px]"
+                  >
+                    {mutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
+                  </button>
                 </div>
               </form>
             ) : (
-              <div className="flex items-start gap-2 text-sm">
-                <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 flex-1">
-                  <p className="text-xs text-gray-400">Bank Account Number</p>
-                  <p className="font-mono font-medium text-gray-800 tracking-wider">
-                    {emp.bank_account_number || 'Not set'}
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  { label: 'Bank Account', value: emp.bank_account_number },
+                  { label: 'SSS Number', value: emp.sss_number },
+                  { label: 'PhilHealth', value: emp.philhealth_number },
+                  { label: 'Pag-IBIG', value: emp.pagibig_number },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
+                    <p className="font-mono font-bold text-gray-800 tracking-wider mt-1 truncate">
+                      {value || 'Not set'}
+                    </p>
+                  </div>
+                ))}
               </div>
             )}
-            <p className="text-[10px] text-gray-400 mt-3">
-              This account number will be used for your payroll disbursements. Please ensure it is correct.
+            <p className="text-[10px] text-gray-400 mt-4 italic">
+              These details are used for payroll and government compliance. Please ensure accuracy.
             </p>
           </div>
         </div>

@@ -66,7 +66,7 @@ export function EmptyState({ icon: Icon, title, description, action }) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────
-export function Modal({ open, onClose, title, children, size = 'md' }) {
+export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
   if (!open) return null
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   return (
@@ -80,6 +80,11 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
           </button>
         </div>
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
+        {footer && (
+          <div className="px-5 py-4 border-t border-gray-100 shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

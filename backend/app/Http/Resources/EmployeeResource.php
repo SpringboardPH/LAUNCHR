@@ -31,6 +31,9 @@ class EmployeeResource extends JsonResource
             'status' => $this->status,
             'notes' => $this->notes,
             'bank_account_number' => $this->bank_account_number,
+            'sss_number' => $this->sss_number,
+            'philhealth_number' => $this->philhealth_number,
+            'pagibig_number' => $this->pagibig_number,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

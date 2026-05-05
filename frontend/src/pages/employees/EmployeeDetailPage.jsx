@@ -85,6 +85,9 @@ export default function EmployeeDetailPage() {
               { icon: Briefcase,label: 'Salary',          value: `₱${Number(emp.salary).toLocaleString()} (${emp.rate_type})` },
               { icon: Briefcase,label: 'Undeclared (Info)',value: emp.undeclared_salary ? `₱${Number(emp.undeclared_salary).toLocaleString()}` : '—' },
               { icon: CreditCard,label: 'Bank Account',    value: emp.bank_account_number || '—' },
+              { icon: ClipboardList, label: 'SSS Number',  value: emp.sss_number || '—' },
+              { icon: ClipboardList, label: 'PhilHealth',   value: emp.philhealth_number || '—' },
+              { icon: ClipboardList, label: 'Pag-IBIG',     value: emp.pagibig_number || '—' },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="flex items-start gap-2">
                 <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />

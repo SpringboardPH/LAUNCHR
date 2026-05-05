@@ -282,6 +282,9 @@ class EmployeeController extends Controller
         $validated = $request->validate([
             'phone' => 'nullable|string|max:20',
             'bank_account_number' => 'nullable|string|min:10|max:12',
+            'sss_number' => 'nullable|string|max:20',
+            'philhealth_number' => 'nullable|string|max:20',
+            'pagibig_number' => 'nullable|string|max:20',
         ]);
 
         $employee->update($validated);

@@ -25,6 +25,9 @@ const schema = z.object({
   bank_account_number: z.string().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
     message: 'Must be between 10 and 12 digits'
   }),
+  sss_number:        z.string().optional(),
+  philhealth_number: z.string().optional(),
+  pagibig_number:    z.string().optional(),
 })
 
 export default function EmployeeFormPage() {
@@ -167,6 +170,18 @@ export default function EmployeeFormPage() {
         <FormField label="Bank Account Number" error={errors.bank_account_number?.message}>
           <input {...register('bank_account_number')} className={`input ${errors.bank_account_number ? 'input-error' : ''}`} placeholder="10-12 digits" />
         </FormField>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <FormField label="SSS Number" error={errors.sss_number?.message}>
+            <input {...register('sss_number')} className="input" placeholder="00-0000000-0" />
+          </FormField>
+          <FormField label="PhilHealth Number" error={errors.philhealth_number?.message}>
+            <input {...register('philhealth_number')} className="input" placeholder="00-000000000-0" />
+          </FormField>
+          <FormField label="Pag-IBIG Number" error={errors.pagibig_number?.message}>
+            <input {...register('pagibig_number')} className="input" placeholder="0000-0000-0000" />
+          </FormField>
+        </div>
 
         {canManageAccount && (
           <div className="space-y-5 border-t border-gray-100 pt-5">

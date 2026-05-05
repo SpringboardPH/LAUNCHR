@@ -280,6 +280,42 @@ export default function PayrollPage() {
         onClose={() => { setSelectedPayroll(null); setIsEditing(false) }}
         title={isEditing ? "Edit Payroll" : "Payroll Details"}
         size="lg"
+        footer={selectedPayroll && (
+          <div className="flex gap-2">
+            {isEditing ? (
+              <>
+                <button 
+                  disabled={updateStatusMutation.isPending}
+                  onClick={handleSaveEdit}
+                  className="btn-primary flex-1 py-3"
+                >
+                  {updateStatusMutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
+                </button>
+                <button onClick={() => setIsEditing(false)} className="btn-secondary px-6">Cancel</button>
+              </>
+            ) : (
+              <>
+                {selectedPayroll.status === 'draft' && (
+                  <button 
+                    onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'finalized' })}
+                    className="btn-primary flex-1 py-3"
+                  >
+                    Finalize Payroll
+                  </button>
+                )}
+                {selectedPayroll.status === 'finalized' && (
+                  <button 
+                    onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
+                    className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
+                  >
+                    Mark as Paid
+                  </button>
+                )}
+                <button onClick={() => setSelectedPayroll(null)} className="btn-secondary px-6">Close</button>
+              </>
+            )}
+          </div>
+        )}
       >
         {selectedPayroll && (
           <div className="space-y-6">
@@ -512,41 +548,6 @@ export default function PayrollPage() {
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-2">
-              {isEditing ? (
-                <>
-                  <button 
-                    disabled={updateStatusMutation.isPending}
-                    onClick={handleSaveEdit}
-                    className="btn-primary flex-1 py-3"
-                  >
-                    {updateStatusMutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
-                  </button>
-                  <button onClick={() => setIsEditing(false)} className="btn-secondary px-6">Cancel</button>
-                </>
-              ) : (
-                <>
-                  {selectedPayroll.status === 'draft' && (
-                    <button 
-                      onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'finalized' })}
-                      className="btn-primary flex-1 py-3"
-                    >
-                      Finalize Payroll
-                    </button>
-                  )}
-                  {selectedPayroll.status === 'finalized' && (
-                    <button 
-                      onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
-                      className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
-                    >
-                      Mark as Paid
-                    </button>
-                  )}
-                  <button onClick={() => setSelectedPayroll(null)} className="btn-secondary px-6">Close</button>
-                </>
-              )}
             </div>
           </div>
         )}

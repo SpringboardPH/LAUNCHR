@@ -39,6 +39,9 @@ class UpdateEmployeeRequest extends FormRequest
             'status' => 'nullable|in:active,inactive,on_leave',
             'notes' => 'nullable|string|max:1000',
             'bank_account_number' => 'nullable|string|min:10|max:12',
+            'sss_number' => 'nullable|string|max:20',
+            'philhealth_number' => 'nullable|string|max:20',
+            'pagibig_number' => 'nullable|string|max:20',
             'role' => 'nullable|in:employee,hr,admin',
             'password' => 'nullable|string|min:8',
         ];
