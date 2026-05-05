@@ -23,7 +23,7 @@ class PayrollController extends Controller
 
         if ($request->has('cutoff_start') && $request->has('cutoff_end')) {
             $query->where('cutoff_start', $request->cutoff_start)
-                  ->where('cutoff_end', $request->cutoff_end);
+                ->where('cutoff_end', $request->cutoff_end);
         }
 
         if ($request->has('employee_id')) {
@@ -60,24 +60,53 @@ class PayrollController extends Controller
                 ->whereBetween('date', [$start, $end])
                 ->get();
 
+            // Get latest schedule to determine work days and divisor
+            $latestSchedule = EmployeeSchedule::getCurrentForEmployee($employee->id);
+            $workDays = $latestSchedule?->template?->work_days ?? [1, 2, 3, 4, 5];
+            $daysInWeek = count($workDays);
+
+            // HR Rule: Mon-Fri = 261 working days/year, Mon-Sat = 313 working days/year
+            $divisor = ($daysInWeek <= 5) ? 261 : 313;
+
+            $baseSalary = (float) $employee->salary;
+            $isDaily = $employee->rate_type === 'daily';
+
+            // Daily rate computation:
+            //   Monthly: (base_salary * 12) / divisor
+            //   Daily:   base_salary as-is (fixed per-day rate)
+            $dailyRate = $isDaily ? $baseSalary : ($baseSalary * 12) / $divisor;
+            $hourlyRate = $dailyRate / 8;
+
             $metrics = [
                 'total_hours' => 0,
                 'overtime_hours' => 0,
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'rest_day_hours' => 0,
+                'rest_day_ot_hours' => 0,
+                'absent_days' => 0,
+                'half_days' => 0,
             ];
 
+            $daysWorkedCount = 0;
+
             foreach ($logs as $log) {
-                // Get schedule for this date to determine expected hours/work start
                 $date = Carbon::parse($log->date);
+                $isRestDay = !in_array($date->dayOfWeek, $workDays);
+
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                
-                $expectedHours = 9; // default
-                $workStart = '09:00:00'; // default
-                
-                if ($schedule && $schedule->template) {
-                    $expectedHours = $schedule->template->required_hours_per_day ?? 9;
-                    $workStart = $schedule->template->work_start_time ?? '09:00:00';
+                $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
+                $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
+
+                // Track absences and half days for deduction purposes
+                if ($log->status === 'absent') {
+                    $metrics['absent_days']++;
+                    continue;
+                }
+
+                if ($log->status === 'half_day') {
+                    $metrics['half_days']++;
+                    // Still count partial hours but flag separately
                 }
 
                 $details = AttendanceService::calculateDetails(
@@ -87,33 +116,72 @@ class PayrollController extends Controller
                     $workStart
                 );
 
-                $metrics['total_hours'] += $details['hours_worked'];
-                $metrics['overtime_hours'] += $details['overtime_hours'];
+                if ($isRestDay) {
+                    // Rest day: regular hours and OT hours tracked separately
+                    $restRegularHours = max(0, $details['hours_worked'] - $details['overtime_hours']);
+                    $metrics['rest_day_hours'] += $restRegularHours;
+                    $metrics['rest_day_ot_hours'] += $details['overtime_hours'];
+                } else {
+                    $metrics['total_hours'] += $details['hours_worked'];
+                    $metrics['overtime_hours'] += $details['overtime_hours'];
+                    $daysWorkedCount++;
+                }
+
                 $metrics['late_minutes'] += $details['late_minutes'];
                 $metrics['undertime_minutes'] += $details['undertime_minutes'];
             }
 
-            // Rate Calculation
-            $baseSalary = (float)$employee->salary;
-            $isDaily = $employee->rate_type === 'daily';
-            
-            $dailyRate = $isDaily ? $baseSalary : ($baseSalary / 22);
-            $hourlyRate = $dailyRate / 8;
-            
-            // Base Gross
-            if ($isDaily) {
-                $daysWorked = $logs->pluck('date')->unique()->count();
-                $grossBase = $dailyRate * $daysWorked;
-            } else {
-                $grossBase = $baseSalary / 2;
-            }
-            
-            // Earnings/Deductions
+            // ── Gross Base ───────────────────────────────────────────────
+            // Daily employees: paid per actual day worked
+            // Monthly employees: semi-monthly base (salary / 2)
+            $grossBase = $isDaily
+                ? $dailyRate * $daysWorkedCount
+                : $baseSalary / 2;
+
+            // ── Allowances / Premiums ─────────────────────────────────────
+            // OT Pay:          daily_rate * 1.25 / 8 * OT hours
+            // Rest Day Pay:    daily_rate * 1.30 / 8 * rest day regular hours
+            // Rest Day OT Pay: daily_rate * 1.69 / 8 * rest day OT hours
+            $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8);
+            $restDayPay = $metrics['rest_day_hours'] * ($dailyRate * 1.30 / 8);
+            $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
+
+            // ── Deductions ────────────────────────────────────────────────
             $lateDeduction = ($metrics['late_minutes'] / 60) * $hourlyRate;
             $undertimeDeduction = ($metrics['undertime_minutes'] / 60) * $hourlyRate;
-            $overtimePay = $metrics['overtime_hours'] * $hourlyRate * 1.25;
+            $absentDeduction = $metrics['absent_days'] * $dailyRate;
+            $halfDayDeduction = $metrics['half_days'] * ($dailyRate / 2);
 
-            $finalGross = $grossBase + $overtimePay - ($lateDeduction + $undertimeDeduction);
+            // Gov't mandatory contributions — applied every cutoff
+            // (HR deducts these on every payslip, not just end-of-month)
+            $sss = \App\Services\PayrollService::calculateSSS($baseSalary);
+            $philhealth = \App\Services\PayrollService::calculatePhilHealth($baseSalary);
+            $pagibig = \App\Services\PayrollService::calculatePagIBIG($baseSalary);
+
+            // ── Totals ────────────────────────────────────────────────────
+            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay;
+            $totalDeductions = $lateDeduction + $undertimeDeduction
+                + $absentDeduction + $halfDayDeduction
+                + $sss + $philhealth + $pagibig;
+
+            $finalGross = $grossBase + $totalAllowances;
+            $finalNet = $finalGross - $totalDeductions;
+
+                    $deductions = array_filter([
+                        'Late' => round($lateDeduction, 2),
+                        'Undertime' => round($undertimeDeduction, 2),
+                        'Absent' => round($absentDeduction, 2),
+                        'Half Day' => round($halfDayDeduction, 2),
+                        'SSS EE Contribution' => round($sss, 2),
+                        'PhilHealth EE Contribution' => round($philhealth, 2),
+                        'Pag-IBIG EE Contribution' => round($pagibig, 2),
+                    ], fn($val) => $val > 0);
+
+                    $allowances = array_filter([
+                        ['label' => 'Overtime Pay', 'amount' => round($overtimePay, 2)],
+                        ['label' => 'Rest Day Pay', 'amount' => round($restDayPay, 2)],
+                        ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
+                    ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(
                 [
@@ -123,20 +191,16 @@ class PayrollController extends Controller
                 ],
                 [
                     'base_salary' => $baseSalary,
-                    'total_hours' => $metrics['total_hours'],
-                    'days_worked' => $daysWorked ?? $logs->pluck('date')->unique()->count(),
-                    'overtime_hours' => $metrics['overtime_hours'],
+                    'daily_rate' => round($dailyRate, 2),
+                    'total_hours' => round($metrics['total_hours'] + $metrics['rest_day_hours'], 2),
+                    'days_worked' => $daysWorkedCount,
+                    'overtime_hours' => round($metrics['overtime_hours'] + $metrics['rest_day_ot_hours'], 2),
                     'late_minutes' => $metrics['late_minutes'],
                     'undertime_minutes' => $metrics['undertime_minutes'],
-                    'gross_pay' => round($grossBase + $overtimePay, 2),
-                    'deductions' => [
-                        'late' => round($lateDeduction, 2),
-                        'undertime' => round($undertimeDeduction, 2),
-                    ],
-                    'allowances' => [
-                        ['label' => 'Overtime Pay', 'amount' => round($overtimePay, 2)]
-                    ],
-                    'net_pay' => round($finalGross, 2),
+                    'gross_pay' => round($finalGross, 2),
+                    'deductions' => $deductions,
+                    'allowances' => array_values($allowances), // Reset indices
+                    'net_pay' => round($finalNet, 2),
                     'status' => 'draft',
                     'processed_at' => now(),
                 ]
@@ -148,7 +212,7 @@ class PayrollController extends Controller
         return response()->json([
             'success' => true,
             'data' => $generatedPayrolls,
-            'message' => 'Payroll generated successfully for ' . count($generatedPayrolls) . ' employees.',
+            'message' => 'Payroll generated successfully using HR standard rules.',
         ]);
     }
 
@@ -171,7 +235,7 @@ class PayrollController extends Controller
     public function update(Request $request, $id)
     {
         $payroll = Payroll::findOrFail($id);
-        
+
         $request->validate([
             'status' => 'sometimes|in:draft,finalized,paid',
             'base_salary' => 'sometimes|numeric',
@@ -185,8 +249,23 @@ class PayrollController extends Controller
             'allowances' => 'sometimes|array',
         ]);
 
-        $payroll->fill($request->all());
-        
+        $data = $request->all();
+
+        // Normalize deductions if they come as [{label, amount}] from frontend
+        if (isset($data['deductions']) && is_array($data['deductions'])) {
+            $normalized = [];
+            foreach ($data['deductions'] as $key => $value) {
+                if (is_array($value) && isset($value['label'])) {
+                    $normalized[$value['label']] = $value['amount'];
+                } else {
+                    $normalized[$key] = $value;
+                }
+            }
+            $data['deductions'] = $normalized;
+        }
+
+        $payroll->fill($data);
+
         if ($request->status === 'paid' && !$payroll->paid_at) {
             $payroll->paid_at = now();
         }

@@ -18,6 +18,7 @@ export default function SystemSettingsPage() {
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
   const [absentMarkingTime, setAbsentMarkingTime] = useState('23:59')
   const [autoClockOut, setAutoClockOut] = useState(false)
+  const [sssTable, setSssTable] = useState('')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
   const { data: settings = [], isLoading } = useQuery({
@@ -42,18 +43,33 @@ export default function SystemSettingsPage() {
       if (autoClockOutSetting) {
         setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
       } else {
-        setAutoClockOut(false) // Default if not found
+        setAutoClockOut(false)
+      }
+
+      const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
+      if (sssSetting) {
+        setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
       }
     }
   }, [settings])
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime }) => {
+    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
       await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
       await updateAdminSetting('absent_marking_time', absentMarkingTime, 'Time when the system automatically marks employees as absent', 'string')
+      
+      if (sssTable) {
+        try {
+          // Validate JSON before sending
+          const parsed = JSON.parse(sssTable)
+          await updateAdminSetting('sss_contribution_table', JSON.stringify(parsed), 'SSS Employee Contribution Table', 'json')
+        } catch (e) {
+          console.error("Invalid SSS JSON", e)
+        }
+      }
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -80,7 +96,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable })
     })
   }
 
@@ -104,6 +120,11 @@ export default function SystemSettingsPage() {
 
         const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
         setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
+
+        const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
+        if (sssSetting) {
+          setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
+        }
       }
     })
   }
@@ -183,6 +204,36 @@ export default function SystemSettingsPage() {
                     className="input h-10"
                   />
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <Calendar size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Statutory Contribution Tables</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Update the SSS table annually to comply with new regulations.</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">SSS Employee Contribution Table (JSON)</label>
+                <textarea
+                  value={sssTable}
+                  onChange={(e) => setSssTable(e.target.value)}
+                  className="input font-mono text-xs h-64 p-4 leading-relaxed"
+                  placeholder='[{"min": 0, "max": 5000, "ee": 250}, ...]'
+                />
+                <p className="text-[10px] text-gray-400 italic">
+                  Note: The JSON structure must include "min", "max", "msc", and "ee" fields.
+                </p>
               </div>
             </div>
           </div>

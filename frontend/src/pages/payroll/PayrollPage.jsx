@@ -71,10 +71,10 @@ export default function PayrollPage() {
     setIsEditing(true)
   }
 
-  const handleAddField = (type) => {
+  const handleAddField = (type, label = '') => {
     setEditForm(prev => ({
       ...prev,
-      [type]: [...prev[type], { label: '', amount: 0 }]
+      [type]: [...prev[type], { label, amount: 0 }]
     }))
   }
 
@@ -94,6 +94,23 @@ export default function PayrollPage() {
         next[field] = value
       }
       
+      const dRate = Number(next.daily_rate || 0)
+      const hRate = dRate / 8
+
+      // Auto-sync line items if metrics changed
+      if (field === 'overtime_hours') {
+        const item = next.allowances.find(a => a.label === 'Overtime Pay')
+        if (item) item.amount = Math.round(Number(value) * hRate * 1.25 * 100) / 100
+      }
+      if (field === 'late_minutes') {
+        const item = next.deductions.find(d => d.label === 'Late')
+        if (item) item.amount = Math.round((Number(value) / 60) * hRate * 100) / 100
+      }
+      if (field === 'undertime_minutes') {
+        const item = next.deductions.find(d => d.label === 'Undertime')
+        if (item) item.amount = Math.round((Number(value) / 60) * hRate * 100) / 100
+      }
+
       // Recalculate totals
       const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
       const totalDeductions = next.deductions.reduce((s, d) => s + Number(d.amount || 0), 0)
@@ -281,39 +298,56 @@ export default function PayrollPage() {
         title={isEditing ? "Edit Payroll" : "Payroll Details"}
         size="lg"
         footer={selectedPayroll && (
-          <div className="flex gap-2">
-            {isEditing ? (
-              <>
-                <button 
-                  disabled={updateStatusMutation.isPending}
-                  onClick={handleSaveEdit}
-                  className="btn-primary flex-1 py-3"
-                >
-                  {updateStatusMutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
-                </button>
-                <button onClick={() => setIsEditing(false)} className="btn-secondary px-6">Cancel</button>
-              </>
-            ) : (
-              <>
-                {selectedPayroll.status === 'draft' && (
+          <div className="flex flex-col w-full gap-4">
+            <div className="flex justify-between items-center bg-brand-50 p-4 rounded-xl border border-brand-100">
+              <div>
+                <p className="text-[10px] text-brand-500 uppercase font-bold tracking-widest">Net Disbursement</p>
+                <p className="text-2xl font-black text-brand-700">
+                  ₱{(isEditing ? editForm.net_pay : selectedPayroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-gray-400 uppercase font-bold">Gross Pay</p>
+                <p className="text-sm font-bold text-gray-600">
+                  ₱{(isEditing ? editForm.gross_pay : selectedPayroll.gross_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
                   <button 
-                    onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'finalized' })}
+                    disabled={updateStatusMutation.isPending}
+                    onClick={handleSaveEdit}
                     className="btn-primary flex-1 py-3"
                   >
-                    Finalize Payroll
+                    {updateStatusMutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
                   </button>
-                )}
-                {selectedPayroll.status === 'finalized' && (
-                  <button 
-                    onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
-                    className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
-                  >
-                    Mark as Paid
-                  </button>
-                )}
-                <button onClick={() => setSelectedPayroll(null)} className="btn-secondary px-6">Close</button>
-              </>
-            )}
+                  <button onClick={() => setIsEditing(false)} className="btn-secondary px-6">Cancel</button>
+                </>
+              ) : (
+                <>
+                  {selectedPayroll.status === 'draft' && (
+                    <button 
+                      onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'finalized' })}
+                      className="btn-primary flex-1 py-3"
+                    >
+                      Finalize Payroll
+                    </button>
+                  )}
+                  {selectedPayroll.status === 'finalized' && (
+                    <button 
+                      onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
+                      className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
+                    >
+                      Mark as Paid
+                    </button>
+                  )}
+                  <button onClick={() => setSelectedPayroll(null)} className="btn-secondary px-6">Close</button>
+                </>
+              )}
+            </div>
           </div>
         )}
       >
@@ -339,9 +373,22 @@ export default function PayrollPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Earnings</p>
                   {isEditing && (
-                    <button onClick={() => handleAddField('allowances')} className="text-[10px] text-brand-600 font-bold hover:bg-brand-50 px-2 py-1 rounded">
-                      + Add Item
-                    </button>
+                    <select 
+                      onChange={(e) => {
+                        if (e.target.value === 'custom') handleAddField('allowances')
+                        else if (e.target.value) handleAddField('allowances', e.target.value)
+                        e.target.value = ''
+                      }}
+                      className="text-[10px] text-brand-600 font-bold bg-brand-50 hover:bg-brand-100 px-2 py-1 rounded border-none focus:ring-0"
+                    >
+                      <option value="">+ Add Item</option>
+                      <option value="Overtime Pay">Overtime Pay</option>
+                      <option value="Rest Day Pay">Rest Day Pay</option>
+                      <option value="Rest Day OT Pay">Rest Day OT Pay</option>
+                      <option value="Bonus">Bonus</option>
+                      <option value="Travel Allowance">Travel Allowance</option>
+                      <option value="custom">Other (Custom)</option>
+                    </select>
                   )}
                 </div>
                 
@@ -410,9 +457,25 @@ export default function PayrollPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Deductions</p>
                   {isEditing && (
-                    <button onClick={() => handleAddField('deductions')} className="text-[10px] text-red-600 font-bold hover:bg-red-50 px-2 py-1 rounded">
-                      + Add Item
-                    </button>
+                    <select 
+                      onChange={(e) => {
+                        if (e.target.value === 'custom') handleAddField('deductions')
+                        else if (e.target.value) handleAddField('deductions', e.target.value)
+                        e.target.value = ''
+                      }}
+                      className="text-[10px] text-red-600 font-bold bg-red-50 hover:bg-red-100 px-2 py-1 rounded border-none focus:ring-0"
+                    >
+                      <option value="">+ Add Item</option>
+                      <option value="Late">Late</option>
+                      <option value="Undertime">Undertime</option>
+                      <option value="Absent">Absent</option>
+                      <option value="Half Day">Half Day</option>
+                      <option value="SSS EE Contribution">SSS EE Contribution</option>
+                      <option value="PhilHealth EE Contribution">PhilHealth EE Contribution</option>
+                      <option value="Pag-IBIG EE Contribution">Pag-IBIG EE Contribution</option>
+                      <option value="Cash Advance">Cash Advance</option>
+                      <option value="custom">Other (Custom)</option>
+                    </select>
                   )}
                 </div>
                 
@@ -498,57 +561,122 @@ export default function PayrollPage() {
                   <p className="text-[10px] text-brand-600 uppercase font-bold tracking-widest">Calculation Breakdown</p>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="space-y-1">
-                    <p className="text-gray-500 font-medium">Applied Formulas (Real-time)</p>
-                    <div className="text-[10px] text-gray-700 font-mono italic space-y-2">
-                      <div className="flex flex-col">
-                        <p className="text-gray-400 font-bold uppercase text-[9px]">Base Pay</p>
-                        <p>• { (isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily'
-                          ? `(₱${Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary).toLocaleString()} × ${isEditing ? editForm.days_worked : selectedPayroll.days_worked}d) = ₱${(Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary) * Number(isEditing ? editForm.days_worked : selectedPayroll.days_worked)).toLocaleString()}`
-                          : `(₱${Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary).toLocaleString()} ÷ 2) = ₱${(Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary) / 2).toLocaleString()}`
-                        }</p>
+                <div className="space-y-4">
+                  <div className="bg-white/50 p-3 rounded-lg border border-brand-100/30">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Base Salary Rules</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Rate Type</span>
+                        <span className="font-bold text-gray-700 uppercase">{selectedPayroll.employee.rate_type}</span>
                       </div>
-                      <div className="flex flex-col">
-                        <p className="text-gray-400 font-bold uppercase text-[9px]">Overtime</p>
-                        <p>• ({isEditing ? editForm.overtime_hours : selectedPayroll.overtime_hours}h × ₱{((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8).toFixed(2)} × 1.25) = ₱{(Number(isEditing ? editForm.overtime_hours : selectedPayroll.overtime_hours) * ((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8) * 1.25).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Base Salary</span>
+                        <span className="font-bold text-gray-700">₱{Number(selectedPayroll.base_salary).toLocaleString()}</span>
                       </div>
-                      <div className="flex flex-col">
-                        <p className="text-gray-400 font-bold uppercase text-[9px]">Deductions (Late/Undertime)</p>
-                        <p>• Late: ({isEditing ? editForm.late_minutes : selectedPayroll.late_minutes}m ÷ 60 × ₱{((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8).toFixed(2)}) = ₱{(Number(isEditing ? editForm.late_minutes : selectedPayroll.late_minutes)/60 * ((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        <p>• UT: ({isEditing ? editForm.undertime_minutes : selectedPayroll.undertime_minutes}m ÷ 60 × ₱{((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8).toFixed(2)}) = ₱{(Number(isEditing ? editForm.undertime_minutes : selectedPayroll.undertime_minutes)/60 * ((isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/8 : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary)/22)/8)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                      <div className="flex justify-between text-xs pt-1 border-t border-gray-100">
+                        <span className="text-gray-500">Derived Daily Rate</span>
+                        <span className="font-bold text-brand-600">₱{Number(selectedPayroll.daily_rate).toLocaleString()}</span>
                       </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Hourly Rate</span>
+                        <span className="font-bold text-brand-600">₱{(Number(selectedPayroll.daily_rate) / 8).toFixed(2)}</span>
+                      </div>
+                      <p className="text-[9px] text-gray-400 italic">
+                        Daily Rate / 8 hours
+                      </p>
+                      <p className="text-[9px] text-gray-400 italic">
+                        {selectedPayroll.employee.rate_type === 'monthly' 
+                          ? `Daily Rate Formula: (Base × 12) / ${Number(selectedPayroll.daily_rate) > 0 ? (Math.round((Number(selectedPayroll.base_salary) * 12) / Number(selectedPayroll.daily_rate))) : 'divisor'}` 
+                          : 'Daily Rate Formula: Base salary as daily rate'}
+                      </p>
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-gray-500 font-medium">Standard Hourly Rate</p>
-                    <p className="text-gray-900 font-bold">
-                      ₱{ ( (isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily'
-                           ? Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary) / 8
-                           : (Number(isEditing ? editForm.base_salary : selectedPayroll.base_salary) / 22) / 8
-                         ).toFixed(2) } / hour
-                    </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="bg-white/50 p-3 rounded-lg border border-brand-100/30">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Earnings Logic</p>
+                      <div className="space-y-2 text-xs">
+                        <div className="flex justify-between items-start">
+                          <div className="flex flex-col">
+                            <span className="text-gray-500">Regular Base</span>
+                            <span className="text-[9px] text-gray-400 italic">
+                              {selectedPayroll.employee.rate_type === 'daily' 
+                                ? `₱${Number(selectedPayroll.daily_rate).toLocaleString()} × ${selectedPayroll.days_worked}d`
+                                : `₱${Number(selectedPayroll.base_salary).toLocaleString()} / 2`}
+                            </span>
+                          </div>
+                          <span className="text-gray-700 font-medium">₱{Number(selectedPayroll.gross_pay - (selectedPayroll.allowances?.reduce((acc, a) => acc + a.amount, 0) || 0)).toLocaleString()}</span>
+                        </div>
+
+                        {selectedPayroll.allowances?.map((a, i) => {
+                          let formula = '';
+                          const hRate = Number(selectedPayroll.daily_rate) / 8;
+                          if (a.label === 'Overtime Pay') {
+                            const otHours = a.amount / (hRate * 1.25);
+                            formula = `${otHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 1.25`;
+                          } else if (a.label === 'Rest Day Pay') {
+                            const rdHours = a.amount / (hRate * 1.30);
+                            formula = `${rdHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 1.30`;
+                          } else if (a.label === 'Rest Day OT Pay') {
+                            const rdotHours = a.amount / (hRate * 1.69);
+                            formula = `${rdotHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 1.69`;
+                          }
+
+                          return (
+                            <div key={i} className="flex justify-between items-start pt-1 border-t border-gray-100/50">
+                              <div className="flex flex-col">
+                                <span className="text-gray-500">{a.label}</span>
+                                {formula && <span className="text-[9px] text-gray-400 italic">{formula}</span>}
+                              </div>
+                              <span className="text-brand-600 font-medium">+ ₱{Number(a.amount).toLocaleString()}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="bg-white/50 p-3 rounded-lg border border-brand-100/30">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Deductions Logic</p>
+                      <div className="space-y-2 text-xs">
+                        {Object.entries(selectedPayroll.deductions || {}).map(([rawKey, rawVal]) => {
+                          const val = typeof rawVal === 'object' ? rawVal.amount : rawVal;
+                          const key = typeof rawVal === 'object' ? rawVal.label : rawKey;
+                          
+                          let formula = '';
+                          const hRate = Number(selectedPayroll.daily_rate) / 8;
+                          const dRate = Number(selectedPayroll.daily_rate);
+                          
+                          if (key === 'Late') {
+                            formula = `${selectedPayroll.late_minutes}m / 60 × ₱${hRate.toFixed(2)}`;
+                          } else if (key === 'Undertime') {
+                            formula = `${selectedPayroll.undertime_minutes}m / 60 × ₱${hRate.toFixed(2)}`;
+                          } else if (key === 'Absent') {
+                            const days = dRate > 0 ? Number(val) / dRate : 0;
+                            formula = `${Math.round(days)}d × ₱${dRate.toLocaleString()}`;
+                          } else if (key === 'Half Day') {
+                            const count = dRate > 0 ? Number(val) / (dRate / 2) : 0;
+                            formula = `${Math.round(count)} sessions × (₱${dRate.toLocaleString()} / 2)`;
+                          } else if (key.includes('EE Contribution')) {
+                            formula = 'Statutory Fixed';
+                          }
+
+                          return (
+                            <div key={key} className="flex justify-between items-start pt-1 first:pt-0 border-t first:border-0 border-gray-100/50">
+                              <div className="flex flex-col">
+                                <span className="text-gray-500">{key}</span>
+                                {formula && <span className="text-[9px] text-gray-400 italic">{formula}</span>}
+                              </div>
+                              <span className="text-red-500 font-medium">- ₱{Number(val).toLocaleString()}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="border-t border-dashed border-gray-200 pt-4">
-              <div className="flex justify-between items-center bg-brand-50 p-4 rounded-xl border border-brand-100">
-                <div>
-                  <p className="text-[10px] text-brand-500 uppercase font-bold tracking-widest">Net Disbursement</p>
-                  <p className="text-2xl font-black text-brand-700">
-                    ₱{(isEditing ? editForm.net_pay : selectedPayroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400 uppercase font-bold">Gross Pay</p>
-                  <p className="text-sm font-bold text-gray-600">
-                    ₱{(isEditing ? editForm.gross_pay : selectedPayroll.gross_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         )}
       </Modal>
