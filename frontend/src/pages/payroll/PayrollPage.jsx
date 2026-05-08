@@ -6,8 +6,9 @@ import {
   getSystemClock, systemClockKeys 
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner } from '../../components/ui/index.jsx'
-import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle } from 'lucide-react'
+import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download } from 'lucide-react'
 import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
+import ExcelJS from 'exceljs'
 
 export default function PayrollPage() {
   const [activeCutoff, setActiveCutoff] = useState(null)
@@ -147,6 +148,179 @@ export default function PayrollPage() {
   const moveCutoff = (delta) => {
     if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
     else setActiveCutoff(getPrevCutoff(currentCutoff))
+  }
+
+  const exportPayrollToExcel = async (payroll) => {
+    try {
+      // Fetch the template file
+      const response = await fetch('/synctalents_payrolltemplate.xlsx')
+      const arrayBuffer = await response.arrayBuffer()
+      
+      // Load template into workbook
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(arrayBuffer)
+      
+      // Get the first worksheet
+      const worksheet = workbook.worksheets[0]
+
+      // Build employee details
+      const employeeName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
+      const payPeriod = `${format(parseISO(payroll.cutoff_start), 'MMM dd, yyyy')} - ${format(parseISO(payroll.cutoff_end), 'MMM dd, yyyy')}`
+      const totalDeductions = (payroll.gross_pay || 0) - (payroll.net_pay || 0)
+      
+      // Get schedule from schedule template (e.g., "Monday to Friday (9 AM - 6 PM)")
+      const getScheduleDisplay = () => {
+        if (!payroll.employee?.schedule) return ''
+        const sched = payroll.employee.schedule
+        
+        // If it's an object with properties
+        if (typeof sched === 'object') {
+          const { days, start_time, end_time } = sched
+          if (days && start_time && end_time) {
+            return `${days} (${start_time} - ${end_time})`
+          }
+          return sched.name || ''
+        }
+        // If it's a string, return as-is
+        return sched
+      }
+      
+      const scheduleDisplay = getScheduleDisplay()
+
+      // Extract earnings from allowances array
+      const getEarningsAmount = (label) => {
+        if (!payroll.allowances) return 0
+        const earning = Array.isArray(payroll.allowances) 
+          ? payroll.allowances.find(a => a?.label === label)
+          : null
+        return earning?.amount ? Number(earning.amount) : 0
+      }
+
+      // Extract deductions from deductions object/array
+      const getDeductionAmount = (label) => {
+        if (!payroll.deductions) return 0
+        if (Array.isArray(payroll.deductions)) {
+          const deduction = payroll.deductions.find(d => d?.label === label)
+          return deduction?.amount ? Number(deduction.amount) : 0
+        }
+        // If it's an object
+        return payroll.deductions[label] ? Number(payroll.deductions[label]) : 0
+      }
+
+      const basicIncomeAmount = payroll.gross_pay - (getEarningsAmount('Overtime Pay') + getEarningsAmount('Rest Day Pay') + getEarningsAmount('Rest Day OT Pay'))
+      const overtimeAmount = getEarningsAmount('Overtime Pay')
+      const restDayPayAmount = getEarningsAmount('Rest Day Pay')
+      const restDayOTPayAmount = getEarningsAmount('Rest Day OT Pay')
+
+      const dRate = Number(payroll.daily_rate) || 0
+      const hRate = dRate / 8
+
+      const restDayPayHours = restDayPayAmount > 0 && hRate > 0 ? restDayPayAmount / (hRate * 1.30) : 0
+      const restDayOTPayHours = restDayOTPayAmount > 0 && hRate > 0 ? restDayOTPayAmount / (hRate * 1.69) : 0
+
+      const nightDiffAmount = getEarningsAmount('Night Differential')
+      const nightDiffHours = nightDiffAmount > 0 && hRate > 0 ? nightDiffAmount / (hRate * 0.10) : 0
+
+      const specialHolidayAmount = getEarningsAmount('Special Holiday')
+      const specialHolidayHours = specialHolidayAmount > 0 && hRate > 0 ? specialHolidayAmount / (hRate * 0.30) : 0
+
+      const legalHolidayAmount = getEarningsAmount('Legal Holiday')
+      const legalHolidayHours = legalHolidayAmount > 0 && hRate > 0 ? legalHolidayAmount / (hRate * 1.00) : 0
+
+      const absentAmount = getDeductionAmount('Absent')
+      const absentDays = absentAmount > 0 && dRate > 0 ? absentAmount / dRate : 0
+
+      const halfDayAmount = getDeductionAmount('Half Day')
+      const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
+
+      // Map payroll data to template cells
+      const fieldsMap = {
+        // Employee Details
+        'E13': employeeName,
+        'E15': payroll.employee?.phone || payroll.employee?.contact_info || '', // Phone number
+        'E17': scheduleDisplay, // Schedule from template (e.g., Monday to Friday (9 AM - 6 PM))
+        'E19': payPeriod,
+        'L10': Number(payroll.net_pay) || 0,
+        'L13': payroll.employee?.sss_number || '',
+        'L15': payroll.employee?.philhealth_number || '',
+        'L17': payroll.employee?.pagibig_number || '',
+        'L19': payroll.employee?.bank_account_number || payroll.employee?.tin_number || '', // Bank account number
+        
+        // Earnings - Days/Hrs (F column)
+        'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
+        'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
+        'F29': restDayPayHours ? `${Number(restDayPayHours).toFixed(2)}h` : '0h',
+        'F30': restDayOTPayHours ? `${Number(restDayOTPayHours).toFixed(2)}h` : '0h',
+        'F31': nightDiffHours ? `${Number(nightDiffHours).toFixed(2)}h` : '0h',
+        
+        // Earnings - Amount (G column)
+        'G27': Number(basicIncomeAmount) || 0,
+        'G28': Number(overtimeAmount) || 0,
+        'G29': Number(restDayPayAmount) || 0,
+        'G30': Number(restDayOTPayAmount) || 0,
+        'G31': Number(nightDiffAmount) || 0,
+        'G32': Number(specialHolidayAmount) || 0,
+        'G33': Number(legalHolidayAmount) || 0,
+        'G34': 0, // 13th Month Pay
+        'G35': 0, // Allowances Amount (if any custom allowances)
+        'G36': 0, // Incentives/Others Amount
+        'G39': Number(payroll.gross_pay) || 0,
+        
+        // Deductions - Days/Hrs (N column)
+        'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
+        'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
+        'N29': halfDayDays ? `${Number(halfDayDays).toFixed(2)}d` : '0d',
+        
+        // Deductions - Amount (O column)
+        'O27': Number(getDeductionAmount('Late') + getDeductionAmount('Undertime')) || 0,
+        'O28': Number(getDeductionAmount('Absent')) || 0,
+        'O29': Number(getDeductionAmount('Half Day')) || 0,
+        'O30': Number(getDeductionAmount('SSS EE Contribution')) || 0,
+        'O31': Number(getDeductionAmount('PhilHealth EE Contribution')) || 0,
+        'O32': Number(getDeductionAmount('Pag-IBIG EE Contribution')) || 0,
+        'O33': 0, // Withholding Tax
+        'O34': 0, // SSS Loan
+        'O35': 0, // Pag-IBIG Loan
+        'O36': 0, // Cash Advance/Others
+        'O39': Number(totalDeductions) || 0,
+        'O40': Number(payroll.net_pay) || 0,
+      }
+
+      // Currency cells that need Philippine peso formatting
+      const currencyCells = [
+        'L10', // Net Pay
+        'G27', 'G28', 'G29', 'G30', 'G31', 'G32', 'G33', 'G34', 'G35', 'G36', 'G39', // Earnings amounts
+        'O27', 'O28', 'O29', 'O30', 'O31', 'O32', 'O33', 'O34', 'O35', 'O36', 'O39', 'O40' // Deductions amounts
+      ]
+
+      // Apply data to template cells
+      Object.entries(fieldsMap).forEach(([cell, value]) => {
+        const cellRef = worksheet.getCell(cell)
+        if (cellRef) {
+          cellRef.value = value
+          
+          // Format currency cells as Philippine peso
+          if (currencyCells.includes(cell)) {
+            cellRef.numFmt = '"₱"#,##0.00;-"₱"#,##0.00'
+          }
+        }
+      })
+
+      // Generate file
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `payroll-${payroll.employee?.first_name}-${payroll.employee?.last_name}-${format(parseISO(payroll.cutoff_end), 'MMM-dd-yyyy')}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export error details:', error)
+      alert('Failed to export payroll. Please try again.')
+    }
   }
 
   const totals = useMemo(() => {
@@ -297,6 +471,17 @@ export default function PayrollPage() {
         onClose={() => { setSelectedPayroll(null); setIsEditing(false) }}
         title={isEditing ? "Edit Payroll" : "Payroll Details"}
         size="lg"
+        headerAction={
+          !isEditing && selectedPayroll && (
+            <button 
+              onClick={() => exportPayrollToExcel(selectedPayroll)}
+              className="btn-secondary py-2 px-3 text-xs flex items-center gap-2"
+              title="Export to Excel"
+            >
+              <Download size={14} /> Export
+            </button>
+          )
+        }
         footer={selectedPayroll && (
           <div className="flex flex-col w-full gap-4">
             <div className="flex justify-between items-center bg-brand-50 p-4 rounded-xl border border-brand-100">
@@ -385,6 +570,9 @@ export default function PayrollPage() {
                       <option value="Overtime Pay">Overtime Pay</option>
                       <option value="Rest Day Pay">Rest Day Pay</option>
                       <option value="Rest Day OT Pay">Rest Day OT Pay</option>
+                      <option value="Night Differential">Night Differential</option>
+                      <option value="Special Holiday">Special Holiday</option>
+                      <option value="Legal Holiday">Legal Holiday</option>
                       <option value="Bonus">Bonus</option>
                       <option value="Travel Allowance">Travel Allowance</option>
                       <option value="custom">Other (Custom)</option>
@@ -444,7 +632,12 @@ export default function PayrollPage() {
                         </>
                       ) : (
                         <>
-                          <span className="text-blue-700 capitalize">{item.label.replace('_', ' ')}</span>
+                          <span className="text-blue-700 capitalize">
+                            {item.label.replace('_', ' ')}
+                            {item.label === 'Night Differential' && ` (${(item.amount / ((Number(payroll.daily_rate) / 8) * 0.10) || 0).toFixed(1)}h)`}
+                            {item.label === 'Special Holiday' && ` (${(item.amount / ((Number(payroll.daily_rate) / 8) * 0.30) || 0).toFixed(1)}h)`}
+                            {item.label === 'Legal Holiday' && ` (${(item.amount / ((Number(payroll.daily_rate) / 8) * 1.00) || 0).toFixed(1)}h)`}
+                          </span>
                           <span className="font-semibold text-blue-800">+₱{Number(item.amount).toLocaleString()}</span>
                         </>
                       )}
@@ -620,6 +813,15 @@ export default function PayrollPage() {
                           } else if (a.label === 'Rest Day OT Pay') {
                             const rdotHours = a.amount / (hRate * 1.69);
                             formula = `${rdotHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 1.69`;
+                          } else if (a.label === 'Night Differential') {
+                            const ndHours = a.amount / (hRate * 0.10);
+                            formula = `${ndHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 0.10`;
+                          } else if (a.label === 'Special Holiday') {
+                            const shHours = a.amount / (hRate * 0.30);
+                            formula = `${shHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 0.30`;
+                          } else if (a.label === 'Legal Holiday') {
+                            const lhHours = a.amount / (hRate * 1.00);
+                            formula = `${lhHours.toFixed(2)}h × ₱${hRate.toFixed(2)} × 1.00`;
                           }
 
                           return (

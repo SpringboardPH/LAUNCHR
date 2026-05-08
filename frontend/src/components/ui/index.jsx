@@ -66,7 +66,7 @@ export function EmptyState({ icon: Icon, title, description, action }) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────
-export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+export function Modal({ open, onClose, title, children, footer, headerAction, size = 'md' }) {
   if (!open) return null
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   return (
@@ -75,9 +75,12 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }) {
       <div className={clsx('relative bg-white rounded-xl shadow-xl w-full flex flex-col max-h-[90vh]', sizes[size])}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="btn-ghost p-1.5">
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {headerAction}
+            <button onClick={onClose} className="btn-ghost p-1.5">
+              <X size={16} />
+            </button>
+          </div>
         </div>
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
         {footer && (
