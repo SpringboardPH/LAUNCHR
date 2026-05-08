@@ -323,6 +323,19 @@ export default function PayrollPage() {
     }
   }
 
+  const getEEContrib = (label) => {
+    if (!selectedPayroll) return 0
+    const dList = isEditing && editForm ? editForm.deductions : (Array.isArray(selectedPayroll.deductions) ? selectedPayroll.deductions : Object.entries(selectedPayroll.deductions || {}).map(([k, v]) => ({ label: k, amount: v })))
+    if (!dList) return 0
+    const item = dList.find(d => d.label === label)
+    return item ? Number(item.amount) : 0
+  }
+  
+  const sssER = getEEContrib('SSS EE Contribution')
+  const phicER = getEEContrib('PhilHealth EE Contribution')
+  const hdmfER = getEEContrib('Pag-IBIG EE Contribution')
+  const totalER = sssER + phicER + hdmfER
+
   const totals = useMemo(() => {
     return payrolls.reduce((acc, p) => ({
       gross: acc.gross + Number(p.gross_pay),
@@ -736,6 +749,31 @@ export default function PayrollPage() {
                 ))}
               </div>
             </div>
+
+            {!isEditing && (
+              <div className="bg-orange-50/30 p-4 rounded-xl border border-orange-100/50">
+                <p className="text-[10px] text-orange-500 uppercase font-bold tracking-widest mb-3">Employer Contributions (ER)</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-medium">SSS ER</p>
+                    <p className="text-sm font-bold text-gray-700">₱{sssER.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-medium">PhilHealth ER</p>
+                    <p className="text-sm font-bold text-gray-700">₱{phicER.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-medium">Pag-IBIG ER</p>
+                    <p className="text-sm font-bold text-gray-700">₱{hdmfER.toLocaleString()}</p>
+                  </div>
+                  <div className="border-l border-orange-200 pl-4">
+                    <p className="text-[10px] text-orange-500 font-bold uppercase">Total ER</p>
+                    <p className="text-sm font-black text-orange-600">₱{totalER.toLocaleString()}</p>
+                  </div>
+                </div>
+                <p className="text-[9px] text-gray-400 mt-2 italic">* Employer shares do not affect the employee's net pay and are not included in the payroll slip export.</p>
+              </div>
+            )}
 
             <div className="flex justify-center">
               <button 
