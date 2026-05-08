@@ -207,7 +207,8 @@ export default function PayrollPage() {
         return payroll.deductions[label] ? Number(payroll.deductions[label]) : 0
       }
 
-      const basicIncomeAmount = payroll.gross_pay - (getEarningsAmount('Overtime Pay') + getEarningsAmount('Rest Day Pay') + getEarningsAmount('Rest Day OT Pay'))
+      const totalAllowancesAmount = payroll.allowances?.reduce((sum, a) => sum + Number(a.amount || 0), 0) || 0
+      const basicIncomeAmount = payroll.gross_pay - totalAllowancesAmount
       const overtimeAmount = getEarningsAmount('Overtime Pay')
       const restDayPayAmount = getEarningsAmount('Rest Day Pay')
       const restDayOTPayAmount = getEarningsAmount('Rest Day OT Pay')
@@ -232,6 +233,9 @@ export default function PayrollPage() {
 
       const halfDayAmount = getDeductionAmount('Half Day')
       const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
+
+      const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday'].includes(a.label)) || []
+      const customAllowancesAmount = otherAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
 
       // Map payroll data to template cells
       const fieldsMap = {
@@ -262,7 +266,7 @@ export default function PayrollPage() {
         'G32': Number(specialHolidayAmount) || 0,
         'G33': Number(legalHolidayAmount) || 0,
         'G34': 0, // 13th Month Pay
-        'G35': 0, // Allowances Amount (if any custom allowances)
+        'G35': Number(customAllowancesAmount) || 0, // Allowances Amount
         'G36': 0, // Incentives/Others Amount
         'G39': Number(payroll.gross_pay) || 0,
         

@@ -139,6 +139,13 @@ class PayrollController extends Controller
                 : $baseSalary / 2;
 
             // ── Allowances / Premiums ─────────────────────────────────────
+            $undeclaredSalary = (float) $employee->undeclared_salary;
+            $undeclaredDiff = $undeclaredSalary > $baseSalary ? $undeclaredSalary - $baseSalary : 0;
+            
+            $undeclaredAllowance = $isDaily
+                ? $undeclaredDiff * $daysWorkedCount
+                : $undeclaredDiff / 2;
+
             // OT Pay:          daily_rate * 1.25 / 8 * OT hours
             // Rest Day Pay:    daily_rate * 1.30 / 8 * rest day regular hours
             // Rest Day OT Pay: daily_rate * 1.69 / 8 * rest day OT hours
@@ -159,7 +166,7 @@ class PayrollController extends Controller
             $pagibig = \App\Services\PayrollService::calculatePagIBIG($baseSalary);
 
             // ── Totals ────────────────────────────────────────────────────
-            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay;
+            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
             $totalDeductions = $lateDeduction + $undertimeDeduction
                 + $absentDeduction + $halfDayDeduction
                 + $sss + $philhealth + $pagibig;
@@ -181,6 +188,7 @@ class PayrollController extends Controller
                         ['label' => 'Overtime Pay', 'amount' => round($overtimePay, 2)],
                         ['label' => 'Rest Day Pay', 'amount' => round($restDayPay, 2)],
                         ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
+                        ['label' => 'Allowance', 'amount' => round($undeclaredAllowance, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(
