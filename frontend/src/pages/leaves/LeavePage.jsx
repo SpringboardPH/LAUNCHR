@@ -138,7 +138,7 @@ export default function LeavePage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {['Employee', 'Type', 'Dates', 'Days', 'Reason', 'Status', 'Actions'].map(h => (
+                {['Employee', 'Type', 'Dates', 'Days', 'Filed', 'Reason', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
@@ -158,6 +158,11 @@ export default function LeavePage() {
                     {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{leave.days_requested}d</td>
+                  <td className="px-4 py-3 text-gray-400 text-[10px] leading-tight">
+                    {leave.created_at ? format(new Date(leave.created_at), 'MMM d, yyyy') : '—'}
+                    <br />
+                    <span className="text-[9px] text-gray-300">{leave.created_at ? format(new Date(leave.created_at), 'h:mm a') : ''}</span>
+                  </td>
                   <td className="px-4 py-3 text-gray-500 max-w-xs truncate" title={leave.status === 'rejected' ? leave.rejection_reason : leave.reason}>
                     {leave.status === 'rejected' ? (
                       <span className="text-red-600 font-medium">RJ: {leave.rejection_reason || 'No reason provided'}</span>
@@ -237,6 +242,12 @@ export default function LeavePage() {
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Days Requested</p>
                 <p className="text-sm text-gray-700">{viewLeave.days_requested} day(s)</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Filed At</p>
+                <p className="text-sm text-gray-700">
+                  {viewLeave.created_at ? format(new Date(viewLeave.created_at), 'MMM d, yyyy h:mm a') : '—'}
+                </p>
               </div>
             </div>
 

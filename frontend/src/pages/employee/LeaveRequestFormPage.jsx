@@ -301,6 +301,7 @@ export default function LeaveRequestFormPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Dates</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Days</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Filed</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Notes</th>
                   </tr>
@@ -317,6 +318,11 @@ export default function LeaveRequestFormPage() {
                         {format(new Date(leave.start_date), 'MMM d')} – {format(new Date(leave.end_date), 'MMM d, yyyy')}
                       </td>
                       <td className="px-4 py-3 text-gray-600">{leave.days_requested}d</td>
+                      <td className="px-4 py-3 text-gray-400 text-[10px] leading-tight">
+                        {leave.created_at ? format(new Date(leave.created_at), 'MMM d, yyyy') : '—'}
+                        <br />
+                        <span className="text-[9px] text-gray-300">{leave.created_at ? format(new Date(leave.created_at), 'h:mm a') : ''}</span>
+                      </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={leave.status} />
                       </td>
@@ -375,6 +381,12 @@ export default function LeaveRequestFormPage() {
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">End Date</p>
                 <p className="text-sm text-gray-800">{format(new Date(selectedLeave.end_date), 'MMM dd, yyyy')}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Filed At</p>
+                <p className="text-sm text-gray-800">
+                  {selectedLeave.created_at ? format(new Date(selectedLeave.created_at), 'MMM d, yyyy h:mm a') : '—'}
+                </p>
               </div>
             </div>
 

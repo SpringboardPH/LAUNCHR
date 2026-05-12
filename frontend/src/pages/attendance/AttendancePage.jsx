@@ -7,7 +7,9 @@ import {
   getEmployees, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
-  bulkMarkAbsent
+  bulkMarkAbsent,
+  getCalendarEvents, calendarEventKeys,
+  getCalendarEventTypes, calendarEventTypeKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List } from 'lucide-react'
@@ -194,6 +196,49 @@ export default function AttendancePage() {
     refetchOnWindowFocus: true,
     refetchOnMount: 'always',
   })
+
+  const { data: events = [] } = useQuery({
+    queryKey: calendarEventKeys.list({ 
+      start_date: currentCutoff.startDate, 
+      end_date: currentCutoff.endDate 
+    }),
+    queryFn: () => getCalendarEvents({ 
+      start_date: currentCutoff.startDate, 
+      end_date: currentCutoff.endDate 
+    }),
+  })
+
+  const { data: eventTypes = [] } = useQuery({
+    queryKey: calendarEventTypeKeys.all,
+    queryFn: getCalendarEventTypes,
+  })
+
+  const getEventForDate = (dateStr) => {
+    if (!events) return null
+    return events.find(e => (e.event_date?.substring(0, 10)) === dateStr)
+  }
+
+  const getEventTypeForEvent = (event) => {
+    if (!event) return null
+    return event.type || eventTypes.find(t => t.id === event.calendar_event_type_id)
+  }
+
+  const getEventColor = (event) => {
+    if (!event) return null
+    return event.color || event.type?.color || getEventTypeForEvent(event)?.color
+  }
+
+  const getEventCode = (event) => {
+    const type = getEventTypeForEvent(event)
+    if (!type) return null
+    if (type.code) return type.code
+    return type.name
+      ?.split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2) || 'E'
+  }
 
   const clockInMutation = useMutation({
     mutationFn: (employeeId) => clockIn('', employeeId),
@@ -589,7 +634,39 @@ export default function AttendancePage() {
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{log.clock_out_time ?? '—'}</td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHoursWorked(log.clock_in_time, log.clock_out_time)}</td>
                     <td className="py-2.5">
-                      <StatusBadge status={log.status} />
+                      <div className="flex flex-col items-start gap-1">
+                        {(() => {
+                          const event = getEventForDate(log.date)
+                          const color = getEventColor(event)
+                          const type = getEventTypeForEvent(event)
+                          
+                          if (type) {
+                            return (
+                              <span 
+                                className="px-2 py-1 rounded-md text-[10px] font-bold uppercase border"
+                                style={{ backgroundColor: `${color}15`, color: color, borderColor: `${color}30` }}
+                              >
+                                {type.name || 'Event'}
+                              </span>
+                            )
+                          }
+
+                          return (
+                            <>
+                              <StatusBadge status={log.status} />
+                              {color && (
+                                <span 
+                                  className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase w-fit whitespace-nowrap inline-flex border"
+                                  style={{ backgroundColor: `${color}15`, color: color, borderColor: `${color}30` }}
+                                  title={event.title}
+                                >
+                                  {type?.code || getEventCode(event)}
+                                </span>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </div>
                     </td>
                     <td className="py-2.5">
                       <button onClick={() => openEditModal(log)} className="text-gray-400 hover:text-brand-600">
@@ -663,19 +740,23 @@ export default function AttendancePage() {
                           const log = emp.data[dateStr]
                           const status = log?.status
                           const config = GRID_STATUS_MAP[status]
+                          const event = getEventForDate(dateStr)
+                          const color = getEventColor(event)
+                          const eventType = getEventTypeForEvent(event)
 
                           return (
-                            <td key={dateStr} className="p-1 border-b border-gray-50 text-center">
-                              {status ? (
+                            <td key={dateStr} className="p-1 border-b border-gray-50 text-center relative">
+                              {(status || color) ? (
                                 <button
-                                  onClick={() => openEditModal(log)}
+                                  onClick={() => log ? openEditModal(log) : null}
                                   className={clsx(
                                     "w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold transition-transform hover:scale-110 shadow-sm mx-auto",
-                                    config?.color || 'bg-gray-100 text-gray-400'
+                                    color ? "" : (config?.color || 'bg-gray-100 text-gray-400')
                                   )}
-                                  title={`${emp.name} - ${format(date, 'MMM dd')}: ${status.replace('_', ' ')}`}
+                                  style={color ? { backgroundColor: color, color: 'white' } : {}}
+                                  title={`${emp.name} - ${format(date, 'MMM dd')}: ${status ? status.replace('_', ' ') : (event?.title || 'Event')}`}
                                 >
-                                  {config?.letter || '?'}
+                                  {getEventCode(event) || (config?.letter || '?')}
                                 </button>
                               ) : (
                                 <div className="w-6 h-6 mx-auto rounded-md border border-dashed border-gray-100" />
