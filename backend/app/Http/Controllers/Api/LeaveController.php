@@ -192,6 +192,24 @@ class LeaveController extends Controller
             'status' => 'pending',
         ]);
 
+        // Log audit event for leave request creation
+        \App\Models\AuditLog::log(
+            'LEAVE_REQUEST_CREATED',
+            "Leave request created by {$employee->first_name} {$employee->last_name} for {$daysRequested} day(s) ({$request->leave_type})",
+            $leave,
+            null,
+            [
+                'employee_id' => (int) $employee->id,
+                'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
+                'leave_type' => (string) $request->leave_type,
+                'start_date' => (string) $request->start_date,
+                'end_date' => (string) $request->end_date,
+                'days_requested' => (int) $daysRequested,
+                'reason' => (string) ($request->reason ?? ''),
+                'status' => 'pending',
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'data' => $leave,
@@ -249,7 +267,7 @@ class LeaveController extends Controller
     /**
      * Get single leave request
      */
-    public function show($id)
+    public function show(int $id)
     {
         $leave = LeaveRequest::findOrFail($id);
 
@@ -274,9 +292,9 @@ class LeaveController extends Controller
     /**
      * Approve leave request (HR only)
      */
-    public function approve(Request $request, $id)
+    public function approve(Request $request, int $id)
     {
-        $leave = LeaveRequest::findOrFail($id);
+        $leave = LeaveRequest::with('employee')->findOrFail($id);
 
         if ($leave->status !== 'pending') {
             return response()->json([
@@ -300,6 +318,24 @@ class LeaveController extends Controller
             'approver_id' => $request->user()->id,
         ]);
 
+        // Log audit event for leave request approval
+        $leaveTypeCode = $leave->leave_type ?? 'N/A';
+        \App\Models\AuditLog::log(
+            'LEAVE_REQUEST_APPROVED',
+            "Leave request approved for {$leave->employee->first_name} {$leave->employee->last_name} for {$leave->days_requested} day(s) ({$leaveTypeCode})",
+            $leave,
+            ['status' => 'pending', 'approver_id' => null],
+            [
+                'status' => 'approved',
+                'approver_id' => (int) $request->user()->id,
+                'approver_name' => (string) $request->user()->name,
+                'employee_id' => (int) $leave->employee_id,
+                'employee_name' => $leave->employee->first_name . ' ' . $leave->employee->last_name,
+                'leave_type' => (string) $leaveTypeCode,
+                'days_requested' => (int) $leave->days_requested,
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'data' => $leave,
@@ -310,13 +346,13 @@ class LeaveController extends Controller
     /**
      * Reject leave request (HR only)
      */
-    public function reject(Request $request, $id)
+    public function reject(Request $request, int $id)
     {
         $request->validate([
             'rejection_reason' => 'nullable|string|max:1000',
         ]);
 
-        $leave = LeaveRequest::findOrFail($id);
+        $leave = LeaveRequest::with('employee')->findOrFail($id);
 
         if ($leave->status !== 'pending') {
             return response()->json([
@@ -340,6 +376,25 @@ class LeaveController extends Controller
             'approver_id' => $request->user()->id,
             'rejection_reason' => $request->rejection_reason,
         ]);
+
+        // Log audit event for leave request rejection
+        $leaveTypeCode = $leave->leave_type ?? 'N/A';
+        \App\Models\AuditLog::log(
+            'LEAVE_REQUEST_REJECTED',
+            "Leave request rejected for {$leave->employee->first_name} {$leave->employee->last_name} for {$leave->days_requested} day(s) ({$leaveTypeCode})",
+            $leave,
+            ['status' => 'pending', 'approver_id' => null, 'rejection_reason' => null],
+            [
+                'status' => 'rejected',
+                'approver_id' => (int) $request->user()->id,
+                'approver_name' => (string) $request->user()->name,
+                'rejection_reason' => (string) ($request->rejection_reason ?? ''),
+                'employee_id' => (int) $leave->employee_id,
+                'employee_name' => $leave->employee->first_name . ' ' . $leave->employee->last_name,
+                'leave_type' => (string) $leaveTypeCode,
+                'days_requested' => (int) $leave->days_requested,
+            ]
+        );
 
         return response()->json([
             'success' => true,

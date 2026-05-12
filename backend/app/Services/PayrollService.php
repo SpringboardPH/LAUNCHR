@@ -15,12 +15,14 @@ class PayrollService
         if ($setting && $setting->value) {
             $table = is_array($setting->value) ? $setting->value : json_decode($setting->value, true);
 
-            foreach ($table as $bracket) {
-                $aboveMin = $monthlySalary >= $bracket['min'];
-                $belowMax = $bracket['max'] === null || $monthlySalary <= $bracket['max'];
+            if (is_array($table)) {
+                foreach ($table as $bracket) {
+                    $aboveMin = $monthlySalary >= $bracket['min'];
+                    $belowMax = $bracket['max'] === null || $monthlySalary <= $bracket['max'];
 
-                if ($aboveMin && $belowMax) {
-                    return (float) ($bracket['ee'] / 2);
+                    if ($aboveMin && $belowMax) {
+                        return (float) ($bracket['ee'] / 2);
+                    }
                 }
             }
         }

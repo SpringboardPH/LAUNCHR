@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\LeaveTypeController;
 use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTypeController;
+use App\Http\Controllers\Api\AuditLogController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -134,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/users/trashed', [UserController::class, 'trashed']);
         Route::patch('/admin/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('admin/users', UserController::class);
+        Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
     });
     
     // Employee Schedules & Templates (Admin + HR)

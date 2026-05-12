@@ -26,6 +26,7 @@ import UserListPage from './pages/admin/UserListPage'
 import UserFormPage from './pages/admin/UserFormPage'
 import SystemSettingsPage from './pages/admin/SystemSettingsPage'
 import AdminCalendarEventTypesPage from './pages/admin/AdminCalendarEventTypesPage'
+import AuditLogPage from './pages/admin/AuditLogPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
@@ -119,6 +120,7 @@ export default function App() {
           </Route>
           <Route path="/admin" element={<SystemAdminRoute><AppLayout /></SystemAdminRoute>}>
             <Route index element={<Navigate to="/hr" replace />} />
+            <Route path="audit-logs" element={<AuditLogPage />} />
             <Route path="configure-leave" element={<ConfigureLeavePage />} />
             <Route path="departments" element={<AdminDepartmentsPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />

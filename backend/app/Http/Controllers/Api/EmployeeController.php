@@ -100,6 +100,23 @@ class EmployeeController extends Controller
             $message .= ' Temporary password: password123';
         }
 
+        // Log audit event for employee creation
+        \App\Models\AuditLog::log(
+            'EMPLOYEE_CREATED',
+            "Employee {$employee->first_name} {$employee->last_name} (ID: {$employee->employee_id}) created",
+            $employee,
+            null,
+            [
+                'employee_id' => (string) ($employee->employee_id ?? ''),
+                'first_name' => (string) ($employee->first_name ?? ''),
+                'last_name' => (string) ($employee->last_name ?? ''),
+                'email' => (string) ($employee->email ?? ''),
+                'position' => (string) ($employee->position ?? 'N/A'),
+                'department' => (string) ($employee->department ?? 'N/A'),
+                'status' => (string) ($employee->status ?? 'active'),
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'data' => new EmployeeResource($employee),
@@ -107,7 +124,7 @@ class EmployeeController extends Controller
         ], 201);
     }
 
-    public function show($id)
+    public function show(int $id)
     {
         $employee = Employee::findOrFail($id);
 
@@ -118,9 +135,10 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function update(UpdateEmployeeRequest $request, $id)
+    public function update(UpdateEmployeeRequest $request, int $id)
     {
         $employee = Employee::findOrFail($id);
+        $oldValues = $employee->toArray();
         $data = $request->validated();
 
         // Map basic_salary to salary if provided
@@ -154,6 +172,15 @@ class EmployeeController extends Controller
             $employee->user->update($userUpdateData);
         }
 
+        // Log audit event for employee update
+        \App\Models\AuditLog::log(
+            'EMPLOYEE_UPDATED',
+            "Employee {$employee->first_name} {$employee->last_name} (ID: {$employee->employee_id}) updated",
+            $employee,
+            array_intersect_key($oldValues, array_flip(array_keys($data))),
+            $data
+        );
+
         return response()->json([
             'success' => true,
             'data' => new EmployeeResource($employee),
@@ -161,9 +188,11 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(int $id)
     {
         $employee = Employee::findOrFail($id);
+        $employeeName = $employee->first_name . ' ' . $employee->last_name;
+        $employeeId = $employee->employee_id;
 
         $currentUser = request()->user();
         if ($currentUser && $employee->user_id && $currentUser->id === $employee->user_id) {
@@ -189,13 +218,22 @@ class EmployeeController extends Controller
             }
         });
 
+        // Log audit event for employee deactivation
+        \App\Models\AuditLog::log(
+            'EMPLOYEE_DEACTIVATED',
+            "Employee {$employeeName} (ID: {$employeeId}) deactivated",
+            $employee,
+            ['status' => 'active'],
+            ['status' => 'inactive', 'deleted_at' => (string) now()]
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Employee deactivated successfully',
         ]);
     }
 
-    public function deactivate($id)
+    public function deactivate(int $id)
     {
         $employee = Employee::findOrFail($id);
 
@@ -230,7 +268,7 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function hardDelete($id)
+    public function hardDelete(int $id)
     {
         $employee = Employee::withTrashed()->findOrFail($id);
 
@@ -251,7 +289,7 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function restore($id)
+    public function restore(int $id)
     {
         $employee = Employee::withTrashed()->findOrFail($id);
         DB::transaction(function () use ($employee) {

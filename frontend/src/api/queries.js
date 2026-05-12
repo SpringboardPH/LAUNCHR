@@ -190,6 +190,18 @@ export const getAdminSettings = () =>
 export const updateAdminSetting = (key, value, description, type = 'string') =>
   api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)
 
+// ─── Audit Logs (Admin) ──────────────────────────────────────────
+export const auditLogKeys = {
+  all: ['admin', 'audit-logs'],
+  list: (params) => ['admin', 'audit-logs', 'list', params],
+}
+
+export const getAuditLogs = (params) =>
+  api.get('/admin/audit-logs', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+  }))
+
 // ─── Admin Departments ──────────────────────────────────────────────
 export const adminDepartmentKeys = {
   all: ['admin', 'departments'],

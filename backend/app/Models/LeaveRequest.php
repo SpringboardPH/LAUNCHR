@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 
+use App\Traits\Auditable;
+
 class LeaveRequest extends Model
 {
+    use Auditable;
     protected $fillable = ['employee_id', 'leave_type', 'start_date', 'end_date', 'days_requested', 'reason', 'status', 'approver_id', 'rejection_reason'];
     
     protected $casts = [

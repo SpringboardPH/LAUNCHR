@@ -238,7 +238,7 @@ class PayrollController extends Controller
     /**
      * Display a specific payroll record.
      */
-    public function show($id)
+    public function show(int $id)
     {
         $payroll = Payroll::with('employee')->findOrFail($id);
 
@@ -251,7 +251,7 @@ class PayrollController extends Controller
     /**
      * Update payroll record (edit fields or change status).
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, int $id)
     {
         $payroll = Payroll::findOrFail($id);
 
@@ -301,7 +301,7 @@ class PayrollController extends Controller
     /**
      * Export payroll to JSON/PDF (mock).
      */
-    public function export($id)
+    public function export(int $id)
     {
         $payroll = Payroll::with('employee')->findOrFail($id);
         return response()->json([

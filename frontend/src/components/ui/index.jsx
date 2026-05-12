@@ -244,3 +244,34 @@ export function ScheduleDisplay({ schedule, compact = false, sysClock = null }) 
     </div>
   )
 }
+
+// ─── PagePagination ───────────────────────────────────────────
+export function PagePagination({ pagination, onPageChange }) {
+  if (!pagination || pagination.last_page <= 1) return null
+  
+  const { current_page, last_page } = pagination
+
+  return (
+    <div className="flex items-center justify-between">
+      <p className="text-xs text-gray-500">
+        Page <span className="font-semibold text-gray-900">{current_page}</span> of <span className="font-semibold text-gray-900">{last_page}</span>
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          disabled={current_page === 1}
+          onClick={() => onPageChange(current_page - 1)}
+          className="btn-secondary py-1 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        <button
+          disabled={current_page === last_page}
+          onClick={() => onPageChange(current_page + 1)}
+          className="btn-secondary py-1 px-3 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  )
+}

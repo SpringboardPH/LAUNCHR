@@ -354,6 +354,21 @@ class AttendanceController extends Controller
             ]
         );
 
+        // Log audit event for clock in
+        \App\Models\AuditLog::log(
+            'CLOCK_IN',
+            "Employee {$employee->first_name} {$employee->last_name} clocked in at {$clockInTime}",
+            $log,
+            null,
+            [
+                'employee_id' => (int) $employee->id,
+                'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
+                'clock_in_time' => (string) $clockInTime,
+                'status' => (string) $initialStatus,
+                'date' => (string) $today->toDateString(),
+            ]
+        );
+
         return response()->json([
             'success' => true,
             'data' => $log,
@@ -475,6 +490,22 @@ class AttendanceController extends Controller
                 : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0)
         );
         $log->save();
+
+        // Log audit event for clock out
+        \App\Models\AuditLog::log(
+            'CLOCK_OUT',
+            "Employee {$employee->first_name} {$employee->last_name} clocked out at {$clockOutTime}",
+            $log,
+            ['clock_out_time' => null, 'status' => $log->getOriginal('status')],
+            [
+                'employee_id' => (int) $employee->id,
+                'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
+                'clock_in_time' => (string) $log->clock_in_time,
+                'clock_out_time' => (string) $clockOutTime,
+                'status' => (string) $log->status,
+                'date' => (string) $log->date->toDateString(),
+            ]
+        );
 
         return response()->json([
             'success' => true,
@@ -1020,6 +1051,7 @@ class AttendanceController extends Controller
     {
         Log::info("Attendance update request received for ID: " . $id, $request->all());
         $log = AttendanceLog::findOrFail($id);
+        $oldValues = $log->toArray();
 
         $validated = $request->validate([
             'clock_in_time' => 'nullable|date_format:H:i:s',
@@ -1029,7 +1061,7 @@ class AttendanceController extends Controller
         ]);
 
         $log->update($validated);
-
+        
         return response()->json([
             'success' => true,
             'data' => $log,

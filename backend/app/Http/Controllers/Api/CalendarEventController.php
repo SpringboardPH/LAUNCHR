@@ -148,6 +148,14 @@ class CalendarEventController extends Controller
         // Load the relation for the resource
         $event->load('type');
 
+        \App\Models\AuditLog::log(
+            'calendar_event_created',
+            "Created calendar event: {$event->title} on {$event->event_date}",
+            $event,
+            null,
+            $event->toArray()
+        );
+
         return response()->json([
             'success' => true,
             'data' => new CalendarEventResource($event),

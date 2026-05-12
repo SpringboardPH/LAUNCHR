@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History
 } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
@@ -21,6 +21,7 @@ const COMMON_NAV = [
 
 const ADMIN_ONLY_NAV = [
   { to: '/admin/system-settings', icon: Settings, label: 'System Settings' },
+  { to: '/admin/audit-logs', icon: History, label: 'Audit Logs' },
   { to: '/admin/configure-leave', icon: Sliders, label: 'Configure Leave' },
   { to: '/admin/calendar-event-types', icon: CalendarRange, label: 'Configure Calendar' },
   { to: '/admin/users', icon: UserCog, label: 'User Management' },
