@@ -30,14 +30,15 @@ class MarkAbsentEmployees extends Command
 
             if ($exists) continue;
 
-            // Check for approved leave
-            $onLeave = LeaveRequest::where('employee_id', $employee->id)
-                ->where('status', 'approved')
-                ->whereDate('start_date', '<=', $today->toDateString())
-                ->whereDate('end_date', '>=', $today->toDateString())
-                ->exists();
-            
             if ($onLeave) continue;
+            
+            // Check for holiday/event that doesn't count as absence
+            $isHoliday = \App\Models\CalendarEvent::whereDate('event_date', $today->toDateString())
+                ->whereHas('type', function($q) {
+                    $q->where('counts_as_absence', false);
+                })->exists();
+
+            if ($isHoliday) continue;
 
             // Check if scheduled to work
             $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $today);

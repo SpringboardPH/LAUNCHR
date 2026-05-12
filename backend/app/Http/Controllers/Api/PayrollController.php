@@ -90,9 +90,16 @@ class PayrollController extends Controller
 
             $daysWorkedCount = 0;
 
+            $events = \App\Models\CalendarEvent::whereBetween('event_date', [$start, $end])
+                ->with('type')
+                ->get()
+                ->keyBy(fn($e) => $e->event_date->format('Y-m-d'));
+
             foreach ($logs as $log) {
+                $dateStr = Carbon::parse($log->date)->format('Y-m-d');
                 $date = Carbon::parse($log->date);
                 $isRestDay = !in_array($date->dayOfWeek, $workDays);
+                $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
                 $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
@@ -100,6 +107,10 @@ class PayrollController extends Controller
 
                 // Track absences and half days for deduction purposes
                 if ($log->status === 'absent') {
+                    // Skip deduction if it's a holiday/event that doesn't count as absence
+                    if ($event && $event->type && !$event->type->counts_as_absence) {
+                        continue;
+                    }
                     $metrics['absent_days']++;
                     continue;
                 }

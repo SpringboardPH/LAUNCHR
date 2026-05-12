@@ -6,6 +6,8 @@ import {
   clockIn, clockOut, getAttendanceToday, getMonthlyAttendance,
   attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
+  getCalendarEvents, calendarEventKeys,
+  getCalendarEventTypes, calendarEventTypeKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
@@ -109,6 +111,51 @@ export default function AttendanceClockPage() {
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   })
+
+  // ── Calendar Data ─────────────────────────────────────────────
+  const { data: events = [] } = useQuery({
+    queryKey: calendarEventKeys.list({ 
+      start_date: currentCutoff.startDate, 
+      end_date: currentCutoff.endDate 
+    }),
+    queryFn: () => getCalendarEvents({ 
+      start_date: currentCutoff.startDate, 
+      end_date: currentCutoff.endDate 
+    }),
+    enabled: !!currentCutoff,
+  })
+
+  const { data: eventTypes = [] } = useQuery({
+    queryKey: calendarEventTypeKeys.all,
+    queryFn: () => getCalendarEventTypes(),
+  })
+
+  const getEventForDate = (dateStr) => {
+    if (!events) return null
+    return events.find(e => (e.event_date?.substring(0, 10)) === dateStr)
+  }
+
+  const getEventTypeForEvent = (event) => {
+    if (!event) return null
+    return event.type || eventTypes.find(t => t.id === event.calendar_event_type_id)
+  }
+
+  const getEventColor = (event) => {
+    if (!event) return null
+    return event.color || event.type?.color || getEventTypeForEvent(event)?.color
+  }
+
+  const getEventCode = (event) => {
+    const type = getEventTypeForEvent(event)
+    if (!type) return null
+    if (type.code) return type.code
+    return type.name
+      ?.split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2) || 'E'
+  }
 
   const inMutation = useMutation({
     mutationFn: () => clockIn(notes),
@@ -416,21 +463,31 @@ export default function AttendanceClockPage() {
                         <td className="py-2.5 pr-4 text-gray-600">{log.clock_out_time ?? '—'}</td>
                         <td className="py-2.5 pr-4 text-gray-600">{calculateHours(log.clock_in_time, log.clock_out_time)}</td>
                         <td className="py-2.5">
-                          {log.status === 'completed' ? (
-                            <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
-                          ) : log.status === 'working' ? (
-                            <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
-                          ) : log.status === 'on_leave' ? (
-                            <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
-                          ) : log.status === 'late' ? (
-                            <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
-                          ) : log.status === 'undertime' ? (
-                            <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Undertime</span>
-                          ) : log.status === 'half_day' ? (
-                            <span className="badge-orange text-[10px] px-1.5 py-0.5 rounded">Half Day</span>
-                          ) : (
-                            <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
-                          )}
+                          {(() => {
+                            const event = getEventForDate(log.date)
+                            const color = getEventColor(event)
+                            const type = getEventTypeForEvent(event)
+                            
+                            if (type) {
+                              return (
+                                <span 
+                                  className="px-2 py-1 rounded-md text-[10px] font-bold uppercase border"
+                                  style={{ backgroundColor: `${color}15`, color: color, borderColor: `${color}30` }}
+                                  title={event.title}
+                                >
+                                  {type.name || 'Event'}
+                                </span>
+                              )
+                            }
+
+                            if (log.status === 'completed') return <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
+                            if (log.status === 'working') return <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
+                            if (log.status === 'on_leave') return <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
+                            if (log.status === 'late') return <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
+                            if (log.status === 'undertime') return <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Undertime</span>
+                            if (log.status === 'half_day') return <span className="badge-orange text-[10px] px-1.5 py-0.5 rounded">Half Day</span>
+                            return <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
+                          })()}
                         </td>
                       </tr>
                     ))}
