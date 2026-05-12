@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: ['hris.springboard.com.ph'],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
