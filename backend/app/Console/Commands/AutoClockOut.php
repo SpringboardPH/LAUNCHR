@@ -49,7 +49,7 @@ class AutoClockOut extends Command
         return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart);
     }
 
-    private function performAutoClockOut($employeeId, $forceEndOfDay = false)
+    private function performAutoClockOut(int $employeeId, bool $forceEndOfDay = false)
     {
         // If not the end of the day, we don't do anything because the user 
         // requested ONLY auto clock-out at the end-of-day time.
@@ -61,6 +61,7 @@ class AutoClockOut extends Command
             ->get();
 
         foreach ($openLogs as $log) {
+            /** @var AttendanceLog $log */
             $date = Carbon::parse($log->date);
             $schedule = EmployeeSchedule::getForEmployeeOnDate($employeeId, $date);
             if (!$schedule || !$schedule->template) continue;
