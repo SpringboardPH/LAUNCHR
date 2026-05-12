@@ -23,9 +23,13 @@ class AutoClockOut extends Command
             return;
         }
 
+        // Check if we are at the "absent marking time" (e.g., 23:59) to force clock-out
+        $absentMarkingTime = \App\Models\SystemSettings::get('absent_marking_time', '23:59');
+        $isEndOfDay = SystemClock::now()->format('H:i') === substr($absentMarkingTime, 0, 5);
+
         $employees = Employee::all();
         foreach ($employees as $employee) {
-            $this->performAutoClockOut($employee->id);
+            $this->performAutoClockOut($employee->id, $isEndOfDay);
         }
         $this->info('Auto clock-out completed.');
     }
@@ -45,8 +49,12 @@ class AutoClockOut extends Command
         return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart);
     }
 
-    private function performAutoClockOut($employeeId)
+    private function performAutoClockOut($employeeId, $forceEndOfDay = false)
     {
+        // If not the end of the day, we don't do anything because the user 
+        // requested ONLY auto clock-out at the end-of-day time.
+        if (!$forceEndOfDay) return;
+
         $openLogs = AttendanceLog::where('employee_id', $employeeId)
             ->whereNotNull('clock_in_time')
             ->whereNull('clock_out_time')
@@ -70,53 +78,27 @@ class AutoClockOut extends Command
                 }
             }
 
-            $clockOutEnd = null;
-            $autoClockOutTime = null;
+            // Always use the absent marking time (e.g., 23:59) for the clock-out time
+            $finalClockOutTime = \App\Models\SystemSettings::get('absent_marking_time', '23:59') . ':00';
 
-            if ($dayRule) {
-                $targetOut = Carbon::parse($dayRule['clock_out']);
-                $targetOut = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
+            // Derive work start and expected hours for accurate status
+            $workStartTime = $dayRule['clock_in'] ?? $template->work_start_time ?? '09:00:00';
+            $expectedHours = $dayRule
+                ? $this->calculateExpectedHours($dayRule['clock_in'], $dayRule['clock_out'])
+                : ($template->required_hours_per_day ?? 9);
 
-                $grace = (int) ($dayRule['grace_minutes'] ?? 0);
-                $type = $dayRule['grace_type'] ?? '-/+';
-                $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+            $status = $this->calculateStatus(
+                $log->clock_in_time,
+                $finalClockOutTime,
+                $expectedHours,
+                $workStartTime
+            );
 
-                $clockOutEnd = $targetOut->copy();
-                if ($graceEnabled && ($type === '+' || $type === '-/+')) {
-                    $clockOutEnd->addMinutes($grace);
-                }
-
-                // Clock out at the end of the grace window, not just the base time
-                $autoClockOutTime = $clockOutEnd->format('H:i:s');
-            } else {
-                $clockOutEndStr = $template->clock_out_end ?? $template->end_time;
-                if ($clockOutEndStr) {
-                    $targetOut = Carbon::parse($clockOutEndStr);
-                    $clockOutEnd = $date->copy()->setTime($targetOut->hour, $targetOut->minute, 0);
-                    $autoClockOutTime = $clockOutEnd->format('H:i:s');
-                }
-            }
-
-            if ($clockOutEnd && $autoClockOutTime && SystemClock::now()->isAfter($clockOutEnd)) {
-                // Derive work start and expected hours for accurate status
-                $workStartTime = $dayRule['clock_in'] ?? $template->work_start_time ?? '09:00:00';
-                $expectedHours = $dayRule
-                    ? $this->calculateExpectedHours($dayRule['clock_in'], $dayRule['clock_out'])
-                    : ($template->required_hours_per_day ?? 9);
-
-                $status = $this->calculateStatus(
-                    $log->clock_in_time,
-                    $autoClockOutTime,
-                    $expectedHours,
-                    $workStartTime
-                );
-
-                $log->update([
-                    'clock_out_time' => $autoClockOutTime,
-                    'status'         => $status,
-                    'notes'          => ($log->notes ? $log->notes . "\n" : '') . 'Auto clocked out',
-                ]);
-            }
+            $log->update([
+                'clock_out_time' => $finalClockOutTime,
+                'status'         => $status,
+                'notes'          => ($log->notes ? $log->notes . "\n" : '') . 'Auto clocked out (End of Day)',
+            ]);
         }
     }
 }
