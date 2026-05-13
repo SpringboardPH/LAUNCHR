@@ -23,13 +23,9 @@ class AutoClockOut extends Command
             return;
         }
 
-        // Check if we are at the "absent marking time" (e.g., 23:59) to force clock-out
-        $absentMarkingTime = \App\Models\SystemSettings::get('absent_marking_time', '23:59');
-        $isEndOfDay = SystemClock::now()->format('H:i') === substr($absentMarkingTime, 0, 5);
-
         $employees = Employee::all();
         foreach ($employees as $employee) {
-            $this->performAutoClockOut($employee->id, $isEndOfDay);
+            $this->performAutoClockOut($employee->id);
         }
         $this->info('Auto clock-out completed.');
     }
@@ -49,12 +45,9 @@ class AutoClockOut extends Command
         return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart);
     }
 
-    private function performAutoClockOut(int $employeeId, bool $forceEndOfDay = false)
+    private function performAutoClockOut(int $employeeId)
     {
-        // If not the end of the day, we don't do anything because the user 
-        // requested ONLY auto clock-out at the end-of-day time.
-        if (!$forceEndOfDay) return;
-
+        // This command runs at 23:59 PM daily, so we always clock out any open logs
         $openLogs = AttendanceLog::where('employee_id', $employeeId)
             ->whereNotNull('clock_in_time')
             ->whereNull('clock_out_time')
@@ -79,8 +72,8 @@ class AutoClockOut extends Command
                 }
             }
 
-            // Always use the absent marking time (e.g., 23:59) for the clock-out time
-            $finalClockOutTime = \App\Models\SystemSettings::get('absent_marking_time', '23:59') . ':00';
+            // Always use 23:59:00 (11:59 PM) for the clock-out time
+            $finalClockOutTime = '23:59:00';
 
             // Derive work start and expected hours for accurate status
             $workStartTime = $dayRule['clock_in'] ?? $template->work_start_time ?? '09:00:00';
