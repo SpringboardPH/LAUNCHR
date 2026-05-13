@@ -10,8 +10,8 @@ export default function LoginPage() {
   const navigate = useNavigate()
   
   // Step 1: Credentials
-  const [email, setEmail] = useState('admin@hr.com')
-  const [password, setPassword] = useState('password')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   
@@ -93,10 +93,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center mb-3">
-            <span className="text-white font-bold text-lg">HR</span>
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900">Springboard Philippines</h1>
+          <img src="/springboard-logo.svg" alt="Springboard Philippines" className="h-16 mb-3" />
         </div>
 
         <div className="card p-6">
@@ -107,7 +104,7 @@ export default function LoginPage() {
                 <div>
                   <label className="label">Email address</label>
                   <input
-                    type="email" className="input" placeholder="admin@hr.com"
+                    type="email" className="input" placeholder="user@springboardph.com"
                     value={email} onChange={e => setEmail(e.target.value)} required
                   />
                 </div>

@@ -2,7 +2,7 @@
   <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
     <!-- Header -->
     <div style="text-align: center; margin-bottom: 32px;">
-      <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0;">Springboard Philippines</h1>
+      <img src="{{ url('springboard-logo.svg') }}" alt="Springboard Philippines" style="height: 64px; margin-bottom: 12px;">
     </div>
 
     <!-- Content -->
