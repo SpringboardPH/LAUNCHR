@@ -154,8 +154,12 @@ export default function UserListPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {u.employee && (
+                        {u.employee ? (
                           <Link to={`/hr/employees/${u.employee.id}/edit?manage_account=true`} className="btn-ghost p-1.5" title="Edit Account">
+                            <Pencil size={14} />
+                          </Link>
+                        ) : (
+                          <Link to={`/admin/users/${u.id}/edit`} className="btn-ghost p-1.5" title="Edit User">
                             <Pencil size={14} />
                           </Link>
                         )}

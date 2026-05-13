@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
+use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
 use App\Models\User;
@@ -312,12 +313,13 @@ class EmployeeController extends Controller
 
     public function updateProfile(Request $request)
     {
-        $employee = $request->user()->employee;
-        if (!$employee) {
-            return response()->json(['success' => false, 'message' => 'Employee profile not found.'], 404);
-        }
-
+        $user = $request->user();
         $validated = $request->validate([
+            // User profile fields
+            'name' => 'nullable|string|max:255',
+            'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
+            'password' => 'nullable|string|min:8|confirmed',
+            // Employee profile fields (if user has an employee record)
             'phone' => 'nullable|string|max:20',
             'bank_account_number' => 'nullable|string|min:10|max:12',
             'sss_number' => 'nullable|string|max:20',
@@ -325,13 +327,104 @@ class EmployeeController extends Controller
             'pagibig_number' => 'nullable|string|max:20',
         ]);
 
-        $employee->update($validated);
+        $oldUserValues = [];
+        $newUserValues = [];
 
-        return response()->json([
-            'success' => true,
-            'data' => new EmployeeResource($employee),
-            'message' => 'Profile updated successfully',
-        ]);
+        // Update user profile fields
+        $userUpdates = [];
+        if (isset($validated['name'])) {
+            $oldUserValues['name'] = $user->name;
+            $newUserValues['name'] = (string)$validated['name'];
+            $userUpdates['name'] = $validated['name'];
+        }
+        if (isset($validated['email'])) {
+            $oldUserValues['email'] = $user->email;
+            $newUserValues['email'] = (string)$validated['email'];
+            $userUpdates['email'] = $validated['email'];
+        }
+        if (isset($validated['password'])) {
+            $oldUserValues['password'] = '***';
+            $newUserValues['password'] = '***';
+            $userUpdates['password'] = $validated['password'];
+        }
+
+        if (!empty($userUpdates)) {
+            $user->update($userUpdates);
+            
+            // Log user profile update
+            AuditLog::log(
+                'PROFILE_UPDATED',
+                'User updated their profile',
+                $user,
+                !empty($oldUserValues) ? $oldUserValues : null,
+                !empty($newUserValues) ? $newUserValues : null
+            );
+        }
+
+        // Update employee profile fields if user has an employee record
+        $employee = $user->employee;
+        if ($employee) {
+            $employeeUpdates = [];
+            $oldEmpValues = [];
+            $newEmpValues = [];
+
+            if (isset($validated['phone'])) {
+                $oldEmpValues['phone'] = $employee->phone;
+                $newEmpValues['phone'] = (string)$validated['phone'];
+                $employeeUpdates['phone'] = $validated['phone'];
+            }
+            if (isset($validated['bank_account_number'])) {
+                $oldEmpValues['bank_account_number'] = $employee->bank_account_number;
+                $newEmpValues['bank_account_number'] = (string)$validated['bank_account_number'];
+                $employeeUpdates['bank_account_number'] = $validated['bank_account_number'];
+            }
+            if (isset($validated['sss_number'])) {
+                $oldEmpValues['sss_number'] = $employee->sss_number;
+                $newEmpValues['sss_number'] = (string)$validated['sss_number'];
+                $employeeUpdates['sss_number'] = $validated['sss_number'];
+            }
+            if (isset($validated['philhealth_number'])) {
+                $oldEmpValues['philhealth_number'] = $employee->philhealth_number;
+                $newEmpValues['philhealth_number'] = (string)$validated['philhealth_number'];
+                $employeeUpdates['philhealth_number'] = $validated['philhealth_number'];
+            }
+            if (isset($validated['pagibig_number'])) {
+                $oldEmpValues['pagibig_number'] = $employee->pagibig_number;
+                $newEmpValues['pagibig_number'] = (string)$validated['pagibig_number'];
+                $employeeUpdates['pagibig_number'] = $validated['pagibig_number'];
+            }
+
+            if (!empty($employeeUpdates)) {
+                $employee->update($employeeUpdates);
+                
+                // Log employee profile update
+                AuditLog::log(
+                    'EMPLOYEE_PROFILE_UPDATED',
+                    'Employee updated their profile',
+                    $employee,
+                    !empty($oldEmpValues) ? $oldEmpValues : null,
+                    !empty($newEmpValues) ? $newEmpValues : null
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => new EmployeeResource($employee),
+                'message' => 'Profile updated successfully',
+            ]);
+        } else {
+            // Return user profile if no employee record
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ],
+                'message' => 'Profile updated successfully',
+            ]);
+        }
     }
 }
 
