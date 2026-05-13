@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OtpMail;
+use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -36,7 +39,10 @@ class AuthController extends Controller
         ], 201);
     }
 
-    public function login(Request $request)
+    /**
+     * Step 1: Request OTP - Verify credentials and send OTP to email
+     */
+    public function requestOtp(Request $request)
     {
         $validated = $request->validate([
             'email' => 'required|string|email',
@@ -51,16 +57,68 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Generate OTP and send email
+        $otp = OtpCode::generateForUser($user);
+        Mail::to($user->email)->send(new OtpMail($user, $otp->code));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP sent to your email. Please check your inbox.',
+            'data' => [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ],
+        ]);
+    }
+
+    /**
+     * Step 2: Verify OTP - Complete login with OTP verification
+     */
+    public function verifyOtp(Request $request)
+    {
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'code' => 'required|string|size:6',
+            'remember_me' => 'boolean',
+        ]);
+
+        $user = User::findOrFail($validated['user_id']);
+
+        // Verify OTP
+        if (!OtpCode::verify($user, $validated['code'])) {
+            throw ValidationException::withMessages([
+                'code' => ['The OTP code is invalid or expired.'],
+            ]);
+        }
+
+        // Create token - longer expiry if "remember me" is checked
+        $tokenName = $validated['remember_me'] ?? false ? 'auth_token_remember' : 'auth_token';
+        $token = $user->createToken($tokenName);
+
+        // If remember me, set token to expire in 30 days instead of default 24 hours
+        if ($validated['remember_me'] ?? false) {
+            $token->accessToken->update([
+                'expires_at' => now()->addDays(30),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'data' => [
                 'user' => $user->load('employee'),
-                'token' => $token,
+                'token' => $token->plainTextToken,
             ],
             'message' => 'Login successful',
         ]);
+    }
+
+    /**
+     * Legacy login endpoint - now calls requestOtp for compatibility
+     * Deprecated: Use requestOtp and verifyOtp instead
+     */
+    public function login(Request $request)
+    {
+        return $this->requestOtp($request);
     }
 
     public function logout(Request $request)

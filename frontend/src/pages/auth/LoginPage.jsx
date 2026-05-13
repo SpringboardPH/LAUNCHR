@@ -3,34 +3,78 @@ import { useAuth } from '../../store/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/ui/index.jsx'
 import { Eye, EyeOff } from 'lucide-react'
+import axios from 'axios'
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
+  
+  // Step 1: Credentials
   const [email, setEmail] = useState('admin@hr.com')
   const [password, setPassword] = useState('password')
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
+  
+  // Step 2: OTP
+  const [otp, setOtp] = useState('')
+  const [userId, setUserId] = useState(null)
+  
+  // State
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [step, setStep] = useState('credentials') // 'credentials' or 'otp'
 
   // Redirect if already logged in (only after loading completes)
   useEffect(() => {
     if (!loading && user) {
-      // Navigate to root to let App.jsx handle the specific role-based routing
       navigate('/', { replace: true })
     }
   }, [user, loading, navigate])
 
-  const handleSubmit = async (e) => {
+  const handleSubmitCredentials = async (e) => {
     e.preventDefault()
     setError('')
     setSubmitting(true)
     try {
-      await login(email, password)
-      // Navigate to root to let App.jsx handle the specific role-based routing
-      navigate('/')
+      const response = await axios.post('/api/auth/request-otp', {
+        email,
+        password,
+      })
+      
+      if (response.data.success) {
+        setUserId(response.data.data.user_id)
+        setStep('otp')
+        setError('')
+        setSubmitting(false)
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.')
+      setSubmitting(false)
+    }
+  }
+
+  const handleSubmitOtp = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      const response = await axios.post('/api/auth/verify-otp', {
+        user_id: userId,
+        code: otp,
+        remember_me: rememberMe,
+      })
+      
+      if (response.data.success) {
+        const token = response.data.data.token
+        // Store token in localStorage with the same key as AuthContext expects
+        localStorage.setItem('hr_token', token)
+        // Set the default Authorization header for future requests
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        // Reload page to let auth context pick up the token
+        window.location.href = '/'
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'OTP verification failed. Please try again.')
       setSubmitting(false)
     }
   }
@@ -56,46 +100,112 @@ export default function LoginPage() {
         </div>
 
         <div className="card p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-5">Sign in to your account</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="label">Email address</label>
-              <input
-                type="email" className="input" placeholder="admin@hr.com"
-                value={email} onChange={e => setEmail(e.target.value)} required
-              />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="input pr-10"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          {step === 'credentials' ? (
+            <>
+              <h2 className="text-base font-semibold text-gray-900 mb-5">Sign in to your account</h2>
+              <form onSubmit={handleSubmitCredentials} className="space-y-4">
+                <div>
+                  <label className="label">Email address</label>
+                  <input
+                    type="email" className="input" placeholder="admin@hr.com"
+                    value={email} onChange={e => setEmail(e.target.value)} required
+                  />
+                </div>
+                <div>
+                  <label className="label">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 text-brand-600 bg-gray-100 border-gray-300 rounded cursor-pointer"
+                  />
+                  <label htmlFor="rememberMe" className="ml-2 text-sm text-gray-700 cursor-pointer">
+                    Remember me for 30 days
+                  </label>
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
+                  {submitting ? <Spinner size="sm" /> : 'Continue'}
                 </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="text-base font-semibold text-gray-900 mb-5">Verify your identity</h2>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <p className="text-sm text-blue-900">
+                  We've sent a 6-digit code to <strong>{email}</strong>. Check your inbox and enter it below.
+                </p>
               </div>
-            </div>
+              
+              <form onSubmit={handleSubmitOtp} className="space-y-4">
+                <div>
+                  <label className="label">Enter OTP Code</label>
+                  <input
+                    type="text"
+                    className="input text-center text-2xl tracking-widest font-mono"
+                    placeholder="000000"
+                    value={otp}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength="6"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Code expires in 10 minutes</p>
+                </div>
 
-            {error && (
-              <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                {error}
-              </div>
-            )}
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
 
-            <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
-              {submitting ? <Spinner size="sm" /> : 'Sign in'}
-            </button>
-          </form>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('credentials')
+                      setError('')
+                      setOtp('')
+                    }}
+                    disabled={submitting}
+                    className="btn-secondary w-full justify-center"
+                  >
+                    Back
+                  </button>
+                  <button type="submit" disabled={submitting || otp.length !== 6} className="btn-primary w-full justify-center">
+                    {submitting ? <Spinner size="sm" /> : 'Verify'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
         <p className="text-center text-xs text-gray-400 mt-6">
           LAUNCHR &copy; {new Date().getFullYear()} made by aaron luyun
@@ -104,3 +214,4 @@ export default function LoginPage() {
     </div>
   )
 }
+

@@ -21,6 +21,8 @@ use App\Http\Controllers\Api\AuditLogController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
+Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
 Route::post('/register', [AuthController::class, 'register']);
 
 // Protected routes (require authentication)
