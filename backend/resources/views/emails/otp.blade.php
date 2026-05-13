@@ -2,9 +2,6 @@
   <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
     <!-- Header -->
     <div style="text-align: center; margin-bottom: 32px;">
-      <div style="display: inline-block; width: 48px; height: 48px; background-color: #2563eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
-        <span style="color: white; font-weight: bold; font-size: 20px;">HR</span>
-      </div>
       <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0;">Springboard Philippines</h1>
     </div>
 
@@ -38,7 +35,7 @@
     <!-- Footer -->
     <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; text-align: center;">
       <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-        © {{ date('Y') }} Springboard Philippines. All rights reserved.
+        © 2026 LAUNCHR by Aaron Luyun. All rights reserved.
       </p>
     </div>
   </div>
