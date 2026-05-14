@@ -25,15 +25,21 @@ class MarkAbsentEmployees extends Command
         foreach ($employees as $employee) {
             // Skip if an attendance log already exists for today
             $exists = AttendanceLog::where('employee_id', $employee->id)
-                ->whereDate('date', $today->toDateString())
+                ->where('date', $today->toDateString())
                 ->exists();
 
             if ($exists) continue;
 
+            $onLeave = LeaveRequest::where('employee_id', $employee->id)
+                ->where('status', 'approved')
+                ->where('start_date', '<=', $today->toDateString())
+                ->where('end_date', '>=', $today->toDateString())
+                ->exists();
+
             if ($onLeave) continue;
             
             // Check for holiday/event that doesn't count as absence
-            $isHoliday = \App\Models\CalendarEvent::whereDate('event_date', $today->toDateString())
+            $isHoliday = \App\Models\CalendarEvent::where('event_date', $today->toDateString())
                 ->whereHas('type', function($q) {
                     $q->where('counts_as_absence', false);
                 })->exists();
