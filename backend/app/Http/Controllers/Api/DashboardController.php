@@ -124,6 +124,82 @@ class DashboardController extends Controller
                 'status' => $leave->status,
             ]);
 
+        // Leave status breakdown (all statuses)
+        $leaveStatusBreakdown = LeaveRequest::groupBy('status')
+            ->select('status', DB::raw('count(*) as count'))
+            ->get()
+            ->map(fn($item) => [
+                'status' => ucfirst($item->status),
+                'count' => $item->count,
+            ]);
+
+        // Department-wise attendance rates for this month
+        $departmentAttendance = Employee::where('status', 'active')
+            ->with('attendanceLogs')
+            ->get()
+            ->groupBy('department')
+            ->map(function($employees) use ($monthStart, $monthEnd, $totalEmployees) {
+                $deptCount = $employees->count();
+                $deptBusinessDays = $this->getBusinessDaysInMonth($monthStart->month, $monthStart->year);
+                $expectedDays = $deptCount * $deptBusinessDays;
+                
+                $actualPresent = AttendanceLog::whereBetween('date', [$monthStart, $monthEnd])
+                    ->whereIn('employee_id', $employees->pluck('id'))
+                    ->whereNotNull('clock_in_time')
+                    ->count();
+                
+                $rate = $expectedDays > 0 ? round(($actualPresent / $expectedDays) * 100, 1) : 0;
+                
+                return [
+                    'department' => $employees->first()->department ?? 'Unassigned',
+                    'rate' => $rate,
+                ];
+            })
+            ->sortBy('department')
+            ->values();
+
+        // Weekly attendance trend (last 4 weeks)
+        $weeklyTrend = [];
+        $startOfLastWeek = $now->copy()->subWeeks(3)->startOfWeek();
+        for ($i = 0; $i < 4; $i++) {
+            $weekStart = $startOfLastWeek->copy()->addWeeks($i);
+            $weekEnd = $weekStart->copy()->endOfWeek();
+            $weekLabel = $weekStart->format('M d');
+            
+            $businessDaysInWeek = 0;
+            $presentCount = 0;
+            
+            for ($day = $weekStart->copy(); $day <= $weekEnd; $day->addDay()) {
+                if ($day->dayOfWeekIso >= 1 && $day->dayOfWeekIso <= 5) {
+                    $businessDaysInWeek++;
+                    $presentCount += AttendanceLog::where('date', $day->toDateString())
+                        ->whereNotNull('clock_in_time')
+                        ->distinct('employee_id')
+                        ->count('employee_id');
+                }
+            }
+            
+            $weeklyAttendanceRate = $businessDaysInWeek > 0 && $totalEmployees > 0
+                ? round(($presentCount / ($businessDaysInWeek * $totalEmployees)) * 100, 1)
+                : 0;
+            
+            $weeklyTrend[] = [
+                'week' => $weekLabel,
+                'rate' => $weeklyAttendanceRate,
+                'count' => $presentCount,
+            ];
+        }
+
+        // Monthly status distribution
+        $monthlyStatusDist = AttendanceLog::whereBetween('date', [$monthStart, $monthEnd])
+            ->groupBy('status')
+            ->select('status', DB::raw('count(*) as count'))
+            ->get()
+            ->map(fn($item) => [
+                'status' => ucfirst(str_replace('_', ' ', $item->status)),
+                'count' => $item->count,
+            ]);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -144,7 +220,11 @@ class DashboardController extends Controller
                 ],
                 'by_department' => $byDepartment->toArray(),
                 'leave_by_type' => $leaveByType->toArray(),
+                'leave_status_breakdown' => $leaveStatusBreakdown->toArray(),
                 'recent_leaves' => $recentLeaves->toArray(),
+                'department_attendance_rates' => $departmentAttendance->toArray(),
+                'weekly_attendance_trend' => $weeklyTrend,
+                'monthly_status_distribution' => $monthlyStatusDist->toArray(),
             ],
             'message' => 'Dashboard summary retrieved',
         ]);
