@@ -80,7 +80,7 @@ export default function EmployeeProfilePage() {
           {/* Details */}
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-gray-700">Employment Details</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               {[
                 { icon: Mail, label: 'Email Address', value: emp.email },
                 { icon: Phone, label: 'Phone Number', value: emp.phone || '—' },
@@ -88,11 +88,11 @@ export default function EmployeeProfilePage() {
                 { icon: Calendar, label: 'Hire Date', value: emp.hire_date ? format(new Date(emp.hire_date), 'MMM dd, yyyy') : '—' },
                 { icon: Briefcase, label: 'Salary', value: `₱${Number(emp.salary).toLocaleString()}` },
               ].map(({ icon: Icon, label, value }) => (
-                <div key={label} className="flex items-start gap-2">
+                <div key={label} className="flex items-start gap-2 min-w-0">
                   <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-gray-400">{label}</p>
-                    <p className="font-medium text-gray-800">{value}</p>
+                    <p className="font-medium text-gray-800 break-words">{value}</p>
                   </div>
                 </div>
               ))}
