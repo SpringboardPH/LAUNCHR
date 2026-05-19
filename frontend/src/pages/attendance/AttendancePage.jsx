@@ -28,7 +28,7 @@ export default function AttendancePage() {
     employeeId: null,
   })
   const [editLog, setEditLog] = useState(null)
-  const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', notes: '' })
+  const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', clock_in_notes: '', clock_out_notes: '' })
   const [markAbsentModal, setMarkAbsentModal] = useState({ open: false, date: format(new Date(), 'yyyy-MM-dd') })
   const [statusConfirmModal, setStatusConfirmModal] = useState({
     open: false,
@@ -90,7 +90,8 @@ export default function AttendancePage() {
       clock_in_time: log.clock_in_time || '',
       clock_out_time: log.clock_out_time || '',
       status: log.status || '',
-      notes: log.notes || '',
+      clock_in_notes: log.clock_in_notes || '',
+      clock_out_notes: log.clock_out_notes || '',
     })
   }
 
@@ -827,7 +828,9 @@ export default function AttendancePage() {
               </div>
             </FormField>
             
-            <FormField label="Notes"><textarea className="input text-sm" rows={3} value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} /></FormField>
+            <FormField label="Clock In Notes"><textarea className="input text-sm" rows={2} value={editForm.clock_in_notes} onChange={e => setEditForm({...editForm, clock_in_notes: e.target.value})} placeholder="Notes from clock-in time..." /></FormField>
+            
+            <FormField label="Clock Out Notes"><textarea className="input text-sm" rows={2} value={editForm.clock_out_notes} onChange={e => setEditForm({...editForm, clock_out_notes: e.target.value})} placeholder="Notes from clock-out time..." /></FormField>
             
             <div className="pt-2">
               <button type="submit" disabled={updateLogMutation.isPending} className="btn-primary w-full h-11 text-sm shadow-sm">

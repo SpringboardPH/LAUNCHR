@@ -151,7 +151,7 @@ class AttendanceController extends Controller
             return;
         }
 
-        if (!str_contains($log->notes, self::AUTO_CLOCK_OUT_NOTE)) {
+        if (!str_contains($log->clock_out_notes ?? '', self::AUTO_CLOCK_OUT_NOTE)) {
             return;
         }
 
@@ -164,7 +164,7 @@ class AttendanceController extends Controller
         if (SystemClock::now()->lt($scheduledEnd)) {
             $log->clock_out_time = null;
             $log->status = 'working';
-            $log->notes = trim(str_replace(self::AUTO_CLOCK_OUT_NOTE, '', $log->notes));
+            $log->clock_out_notes = trim(str_replace(self::AUTO_CLOCK_OUT_NOTE, '', $log->clock_out_notes ?? ''));
             $log->save();
         }
     }
@@ -346,7 +346,7 @@ class AttendanceController extends Controller
             ['employee_id' => $employee->id, 'date' => $today->toDateString()],
             [
                 'clock_in_time' => $clockInTime,
-                'notes' => $request->notes,
+                'clock_in_notes' => $request->notes,
                 'status' => $initialStatus,
                 // Snapshot schedule context so historical logs stay stable.
                 'schedule_template_id' => $schedule?->schedule_template_id,
@@ -476,6 +476,7 @@ class AttendanceController extends Controller
 
         // Update with clock out time and calculate status
         $log->clock_out_time = $clockOutTime;
+        $log->clock_out_notes = $request->notes;
         $log->status = $this->calculateStatus(
             $log->clock_in_time,
             $clockOutTime,
@@ -1057,7 +1058,8 @@ class AttendanceController extends Controller
             'clock_in_time' => 'nullable|date_format:H:i:s',
             'clock_out_time' => 'nullable|date_format:H:i:s',
             'status' => 'nullable|string',
-            'notes' => 'nullable|string',
+            'clock_in_notes' => 'nullable|string',
+            'clock_out_notes' => 'nullable|string',
         ]);
 
         $log->update($validated);
@@ -1183,7 +1185,7 @@ class AttendanceController extends Controller
                 $log->update([
                     'clock_out_time' => $autoClockOutTime,
                     'status'         => $status,
-                    'notes'          => ($log->notes ? $log->notes . "\n" : '') . self::AUTO_CLOCK_OUT_NOTE,
+                    'clock_out_notes' => ($log->clock_out_notes ? $log->clock_out_notes . "\n" : '') . self::AUTO_CLOCK_OUT_NOTE,
                 ]);
             }
         }

@@ -74,7 +74,7 @@ class MarkAbsentEmployees extends Command
                     'status' => 'absent',
                     'schedule_template_id' => $template->id,
                     'schedule_template_name' => $template->name,
-                    'notes' => '[System] Automatically marked absent.'
+                    'clock_in_notes' => '[System] Automatically marked absent.'
                 ]);
             }
         }

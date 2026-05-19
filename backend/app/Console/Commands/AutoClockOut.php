@@ -91,7 +91,7 @@ class AutoClockOut extends Command
             $log->update([
                 'clock_out_time' => $finalClockOutTime,
                 'status'         => $status,
-                'notes'          => ($log->notes ? $log->notes . "\n" : '') . 'Auto clocked out (End of Day)',
+                'clock_out_notes' => ($log->clock_out_notes ? $log->clock_out_notes . "\n" : '') . 'Auto clocked out (End of Day)',
             ]);
         }
     }
