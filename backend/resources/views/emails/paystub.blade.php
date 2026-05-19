@@ -2,38 +2,61 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
-        .content { line-height: 1.6; margin-bottom: 20px; }
-        .summary { background-color: #f8f9fa; padding: 15px; border-left: 4px solid #007bff; margin: 20px 0; }
-        .summary div { margin: 10px 0; }
-        .footer { color: #666; font-size: 12px; margin-top: 30px; border-top: 1px solid #ddd; padding-top: 20px; }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h2>Your Paystub</h2>
-        </div>
-        
-        <div class="content">
-            <p>Hello {{ $employee->first_name }},</p>
-            
-            <p>Your paystub for the period <strong>{{ $period }}</strong> is attached to this email.</p>
-            
-            <div class="summary">
-                <strong>Payment Summary</strong>
-                <div><strong>Gross Pay:</strong> ₱{{ number_format($gross, 2) }}</div>
-                <div><strong>Net Pay:</strong> ₱{{ number_format($net, 2) }}</div>
+<body style="margin: 0; padding: 0; background-color: #f9fafb;">
+    <div style="font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
+        <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+
+            <!-- Header -->
+            <div style="text-align: center; margin-bottom: 32px;">
+                <img src="{{ $message->embed(public_path('synctalents.png')) }}" alt="SyncTalents" style="height: 64px; margin-bottom: 12px;">
             </div>
-            
-            <p>Please keep this document for your records. If you have any questions regarding your paystub, please contact anyone in the HR team.</p>
-        </div>
-        
-        <div class="footer">
-            <p>Best regards,<br><strong>HR Team</strong></p>
+
+            <!-- Content -->
+            <div style="margin-bottom: 32px;">
+                <p style="color: #374151; font-size: 16px; margin-bottom: 16px;">
+                    Hi {{ $employee->first_name }},
+                </p>
+                <p style="color: #374151; font-size: 16px; margin-bottom: 24px;">
+                    Your paystub for the period <strong>{{ $period }}</strong> is attached to this email.
+                </p>
+
+                <!-- Payment Summary -->
+                <div style="background-color: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
+                    <p style="color: #374151; font-size: 14px; font-weight: 700; margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 1px;">
+                        Payment Summary
+                    </p>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: #6b7280; font-size: 15px;">Gross Pay</span>
+                        <span style="color: #374151; font-size: 15px; font-weight: 600;">₱{{ number_format($gross, 2) }}</span>
+                    </div>
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; display: flex; justify-content: space-between;">
+                        <span style="color: #6b7280; font-size: 15px;">Net Pay</span>
+                        <span style="color: #2563eb; font-size: 18px; font-weight: 700;">₱{{ number_format($net, 2) }}</span>
+                    </div>
+                </div>
+
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">
+                    Please keep this document for your records. If you have any questions regarding your paystub, please contact anyone in the HR team.
+                </p>
+
+                <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
+                    <p style="color: #78350f; font-size: 14px; margin: 0;">
+                        🔒 <strong>Confidential:</strong> This document contains sensitive payroll information. Please do not share it with unauthorized parties.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; text-align: center;">
+                <p style="color: #374151; font-size: 14px; margin: 0 0 4px 0;">
+                    Best regards,<br><strong>HR Team</strong>
+                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 12px 0 0 0;">
+                    © {{ date('Y') }} SyncTalents. All rights reserved.
+                </p>
+            </div>
+
         </div>
     </div>
 </body>
