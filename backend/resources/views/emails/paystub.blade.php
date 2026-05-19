@@ -58,7 +58,7 @@
                     Best regards,<br><strong>HR Team</strong>
                 </p>
                 <p style="color: #9ca3af; font-size: 12px; margin: 12px 0 0 0;">
-                    © {{ date('Y') }} SyncTalents. All rights reserved.
+                    © 2026 LAUNCHR by Aaron Luyun. All rights reserved.
                 </p>
             </div>
 
