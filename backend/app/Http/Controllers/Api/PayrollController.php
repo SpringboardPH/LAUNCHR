@@ -334,7 +334,7 @@ class PayrollController extends Controller
 
     /**
      * Send paystubs to selected employees and mark as paid.
-     * Expects the paystub file to be sent from frontend.
+     * Expects the paystub file to be sent from frontend with optional CC/BCC emails.
      */
     public function sendPaystubs(Request $request)
     {
@@ -343,6 +343,10 @@ class PayrollController extends Controller
             'payroll_ids.*' => 'integer|exists:payrolls,id',
             'files' => 'required|array',
             'files.*' => 'file|mimes:xlsx,xls',
+            'cc_emails' => 'sometimes|array',
+            'cc_emails.*' => 'email',
+            'bcc_emails' => 'sometimes|array',
+            'bcc_emails.*' => 'email',
         ]);
 
         $payrolls = Payroll::with('employee')
@@ -360,6 +364,8 @@ class PayrollController extends Controller
         $sent = [];
         $failed = [];
         $uploadedFiles = $request->file('files') ?? [];
+        $ccEmails = $request->input('cc_emails', []);
+        $bccEmails = $request->input('bcc_emails', []);
 
         foreach ($payrolls as $index => $payroll) {
             try {
@@ -385,8 +391,17 @@ class PayrollController extends Controller
                 }
 
                 // Send email with attachment
-                Mail::to($payroll->employee->email)
-                    ->send(new \App\Mail\PaystubMail($payroll, $file->getRealPath()));
+                $mail = Mail::to($payroll->employee->email);
+                
+                if (!empty($ccEmails)) {
+                    $mail->cc($ccEmails);
+                }
+                
+                if (!empty($bccEmails)) {
+                    $mail->bcc($bccEmails);
+                }
+                
+                $mail->send(new \App\Mail\PaystubMail($payroll, $file->getRealPath()));
 
                 // Mark as paid
                 $payroll->update([

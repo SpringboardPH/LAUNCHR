@@ -18,6 +18,12 @@ export default function PayrollPage() {
   const [editForm, setEditForm] = useState(null)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [selectedPaystubs, setSelectedPaystubs] = useState(new Set())
+  const [ccEmails, setCcEmails] = useState([])
+  const [bccEmails, setBccEmails] = useState([])
+  const [ccInput, setCcInput] = useState('')
+  const [bccInput, setBccInput] = useState('')
+  const [ccHistory, setCcHistory] = useState(JSON.parse(localStorage.getItem('payroll_cc_history') || '[]'))
+  const [bccHistory, setBccHistory] = useState(JSON.parse(localStorage.getItem('payroll_bcc_history') || '[]'))
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -194,10 +200,44 @@ export default function PayrollPage() {
     }
   }
 
+  const addCcEmail = (email) => {
+    if (email && !ccEmails.includes(email)) {
+      setCcEmails([...ccEmails, email])
+      setCcInput('')
+    }
+  }
+
+  const removeCcEmail = (email) => {
+    setCcEmails(ccEmails.filter(e => e !== email))
+  }
+
+  const addBccEmail = (email) => {
+    if (email && !bccEmails.includes(email)) {
+      setBccEmails([...bccEmails, email])
+      setBccInput('')
+    }
+  }
+
+  const removeBccEmail = (email) => {
+    setBccEmails(bccEmails.filter(e => e !== email))
+  }
+
+  const saveCcBccHistory = () => {
+    const allCc = [...new Set([...ccEmails, ...ccHistory])].slice(0, 10)
+    const allBcc = [...new Set([...bccEmails, ...bccHistory])].slice(0, 10)
+    localStorage.setItem('payroll_cc_history', JSON.stringify(allCc))
+    localStorage.setItem('payroll_bcc_history', JSON.stringify(allBcc))
+  }
+
   const handleSendPaystubs = async () => {
     if (selectedPaystubs.size === 0) {
       alert('Please select at least one paystub to send.')
       return
+    }
+
+    // Save CC/BCC history before sending
+    if (ccEmails.length > 0 || bccEmails.length > 0) {
+      saveCcBccHistory()
     }
 
     const payrollIds = Array.from(selectedPaystubs)
@@ -210,6 +250,14 @@ export default function PayrollPage() {
       // Add payroll IDs
       payrollIds.forEach((id, index) => {
         formData.append(`payroll_ids[${index}]`, id)
+      })
+
+      // Add CC and BCC emails
+      ccEmails.forEach((email, index) => {
+        formData.append(`cc_emails[${index}]`, email)
+      })
+      bccEmails.forEach((email, index) => {
+        formData.append(`bcc_emails[${index}]`, email)
       })
 
       // Generate and add Excel files
@@ -1157,6 +1205,10 @@ export default function PayrollPage() {
         onClose={() => {
           setShowEmailModal(false)
           setSelectedPaystubs(new Set())
+          setCcEmails([])
+          setBccEmails([])
+          setCcInput('')
+          setBccInput('')
         }}
         title="Email Paystubs"
         size="lg"
@@ -1166,6 +1218,10 @@ export default function PayrollPage() {
               onClick={() => {
                 setShowEmailModal(false)
                 setSelectedPaystubs(new Set())
+                setCcEmails([])
+                setBccEmails([])
+                setCcInput('')
+                setBccInput('')
               }}
               className="btn-secondary px-6"
             >
@@ -1193,6 +1249,131 @@ export default function PayrollPage() {
             <p className="text-xs text-blue-600 mt-1">
               Employees will receive their paystub as an attachment. Their status will automatically change to "Paid" after sending.
             </p>
+          </div>
+
+          {/* CC/BCC Section */}
+          <div className="space-y-3">
+            {/* CC Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">CC Emails (Optional)</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="email"
+                  value={ccInput}
+                  onChange={(e) => setCcInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addCcEmail(ccInput)
+                    }
+                  }}
+                  placeholder="Enter email and press Enter"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={() => addCcEmail(ccInput)}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition"
+                >
+                  Add
+                </button>
+              </div>
+              
+              {/* CC Suggestions */}
+              {ccHistory.length > 0 && ccInput === '' && (
+                <div className="mb-2">
+                  <p className="text-xs text-gray-500 mb-1">Previously used:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {ccHistory.filter(email => !ccEmails.includes(email)).map(email => (
+                      <button
+                        key={email}
+                        onClick={() => addCcEmail(email)}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition"
+                      >
+                        {email}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Added CC Emails */}
+              {ccEmails.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {ccEmails.map(email => (
+                    <span key={email} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                      {email}
+                      <button
+                        onClick={() => removeCcEmail(email)}
+                        className="hover:text-blue-900 font-bold"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* BCC Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">BCC Emails (Optional)</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="email"
+                  value={bccInput}
+                  onChange={(e) => setBccInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addBccEmail(bccInput)
+                    }
+                  }}
+                  placeholder="Enter email and press Enter"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <button
+                  onClick={() => addBccEmail(bccInput)}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition"
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* BCC Suggestions */}
+              {bccHistory.length > 0 && bccInput === '' && (
+                <div className="mb-2">
+                  <p className="text-xs text-gray-500 mb-1">Previously used:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {bccHistory.filter(email => !bccEmails.includes(email)).map(email => (
+                      <button
+                        key={email}
+                        onClick={() => addBccEmail(email)}
+                        className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded transition"
+                      >
+                        {email}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Added BCC Emails */}
+              {bccEmails.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {bccEmails.map(email => (
+                    <span key={email} className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                      {email}
+                      <button
+                        onClick={() => removeBccEmail(email)}
+                        className="hover:text-purple-900 font-bold"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {finalizedPaystubs.length === 0 ? (
