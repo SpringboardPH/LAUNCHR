@@ -23,17 +23,22 @@
 
                 <!-- Payment Summary -->
                 <div style="background-color: #f3f4f6; border: 2px solid #e5e7eb; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
-                    <p style="color: #374151; font-size: 14px; font-weight: 700; margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 1px;">
+                    <p style="color: #374151; font-size: 14px; font-weight: 700; margin: 0 0 20px 0; text-transform: uppercase; letter-spacing: 1px;">
                         Payment Summary
                     </p>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                        <span style="color: #6b7280; font-size: 15px;">Gross Pay</span>
-                        <span style="color: #374151; font-size: 15px; font-weight: 600;">₱{{ number_format($gross, 2) }}</span>
-                    </div>
-                    <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; display: flex; justify-content: space-between;">
-                        <span style="color: #6b7280; font-size: 15px;">Net Pay</span>
-                        <span style="color: #2563eb; font-size: 18px; font-weight: 700;">₱{{ number_format($net, 2) }}</span>
-                    </div>
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                            <td style="color: #6b7280; font-size: 15px; padding-bottom: 16px;">Gross Pay</td>
+                            <td align="right" style="color: #374151; font-size: 15px; font-weight: 600; padding-bottom: 16px;">₱{{ number_format($gross, 2) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" style="border-top: 1px solid #e5e7eb; padding: 0; font-size: 0;">&nbsp;</td>
+                        </tr>
+                        <tr>
+                            <td style="color: #6b7280; font-size: 15px; padding-top: 16px;">Net Pay</td>
+                            <td align="right" style="color: #2563eb; font-size: 18px; font-weight: 700; padding-top: 16px;">₱{{ number_format($net, 2) }}</td>
+                        </tr>
+                    </table>
                 </div>
 
                 <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">
