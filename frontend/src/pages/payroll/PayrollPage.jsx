@@ -843,7 +843,7 @@ export default function PayrollPage() {
                       </button>
                       <button 
                         onClick={() => revertToDraftMutation.mutate(selectedPayroll.id)}
-                        className="btn-secondary py-3 bg-yellow-500 hover:bg-yellow-600 border-yellow-500 text-gray-900"
+                        className="btn-secondary py-3 bg-yellow-500 hover:bg-yellow-600 border-yellow-500 text-white"
                         title="Revert to draft status for editing"
                       >
                         Revert to Draft
