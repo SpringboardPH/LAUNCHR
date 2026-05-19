@@ -433,4 +433,46 @@ class PayrollController extends Controller
         ]);
     }
 
+    /**
+     * Revert a finalized payroll back to draft status.
+     * Only allowed if payroll has not been marked as paid.
+     */
+    public function revertToDraft(int $id)
+    {
+        $payroll = Payroll::findOrFail($id);
+
+        // Only allow reverting finalized payrolls, not paid ones
+        if ($payroll->status === 'paid') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot revert a payroll that has already been marked as paid.',
+            ], 422);
+        }
+
+        if ($payroll->status !== 'finalized') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only finalized payrolls can be reverted to draft.',
+            ], 422);
+        }
+
+        try {
+            $payroll->update([
+                'status' => 'draft',
+                'paid_at' => null, // Clear the paid timestamp if any
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => $payroll->load('employee'),
+                'message' => 'Payroll reverted to draft status successfully.',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to revert payroll: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
 }

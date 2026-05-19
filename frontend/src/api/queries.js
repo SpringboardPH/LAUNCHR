@@ -171,6 +171,9 @@ export const sendPaystubs = (formData) => {
   }).then(r => r.data)
 }
 
+export const revertPayrollToDraft = (payrollId) =>
+  api.post(`/payroll/${payrollId}/revert-to-draft`).then(r => r.data)
+
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardKeys = { all: ['dashboard'] }
 

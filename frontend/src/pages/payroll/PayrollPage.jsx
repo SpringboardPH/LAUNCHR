@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { 
   getPayrolls, generatePayroll, updatePayroll, payrollKeys, 
-  getSystemClock, systemClockKeys, sendPaystubs 
+  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft 
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
@@ -67,6 +67,19 @@ export default function PayrollPage() {
     },
     onError: (error) => {
       const message = error?.response?.data?.message || 'Failed to update payroll. Please try again.'
+      alert(message)
+    }
+  })
+
+  const revertToDraftMutation = useMutation({
+    mutationFn: (payrollId) => revertPayrollToDraft(payrollId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: payrollKeys.all })
+      setSelectedPayroll(null)
+      setIsEditing(false)
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || 'Failed to revert payroll. Please try again.'
       alert(message)
     }
   })
@@ -821,12 +834,21 @@ export default function PayrollPage() {
                     </button>
                   )}
                   {selectedPayroll.status === 'finalized' && (
-                    <button 
-                      onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
-                      className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
-                    >
-                      Mark as Paid
-                    </button>
+                    <div className="flex gap-2 flex-1">
+                      <button 
+                        onClick={() => updateStatusMutation.mutate({ id: selectedPayroll.id, status: 'paid' })}
+                        className="btn-primary flex-1 py-3 bg-green-600 hover:bg-green-700 border-green-600"
+                      >
+                        Mark as Paid
+                      </button>
+                      <button 
+                        onClick={() => revertToDraftMutation.mutate(selectedPayroll.id)}
+                        className="btn-secondary py-3 bg-yellow-500 hover:bg-yellow-600 border-yellow-500 text-gray-900"
+                        title="Revert to draft status for editing"
+                      >
+                        Revert to Draft
+                      </button>
+                    </div>
                   )}
                   <button onClick={() => setSelectedPayroll(null)} className="btn-secondary px-6">Close</button>
                 </>
