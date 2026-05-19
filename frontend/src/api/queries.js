@@ -164,6 +164,13 @@ export const exportPayroll = (id, label) => {
   })
 }
 
+export const sendPaystubs = (formData) => {
+  // formData is a FormData object with payroll_ids array and files
+  return api.post('/payroll/send-paystubs', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
+}
+
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardKeys = { all: ['dashboard'] }
 

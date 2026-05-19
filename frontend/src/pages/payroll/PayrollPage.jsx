@@ -3,10 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { 
   getPayrolls, generatePayroll, updatePayroll, payrollKeys, 
-  getSystemClock, systemClockKeys 
+  getSystemClock, systemClockKeys, sendPaystubs 
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner } from '../../components/ui/index.jsx'
-import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download } from 'lucide-react'
+import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
 import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 import ExcelJS from 'exceljs'
 
@@ -16,6 +16,8 @@ export default function PayrollPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [editForm, setEditForm] = useState(null)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [selectedPaystubs, setSelectedPaystubs] = useState(new Set())
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -56,6 +58,30 @@ export default function PayrollPage() {
       qc.invalidateQueries({ queryKey: payrollKeys.all })
       setSelectedPayroll(null)
       setIsEditing(false)
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || 'Failed to update payroll. Please try again.'
+      alert(message)
+    }
+  })
+
+  const sendPaystubsMutation = useMutation({
+    mutationFn: (payrollIds) => sendPaystubs(payrollIds),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: payrollKeys.all })
+      setShowEmailModal(false)
+      setSelectedPaystubs(new Set())
+      
+      const message = data.message || 'Paystubs sent successfully!'
+      alert(message)
+      
+      if (data.data?.failed?.length > 0) {
+        console.error('Failed to send paystubs:', data.data.failed)
+      }
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || 'Failed to send paystubs. Please try again.'
+      alert(message)
     }
   })
 
@@ -149,6 +175,194 @@ export default function PayrollPage() {
     if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
     else setActiveCutoff(getPrevCutoff(currentCutoff))
   }
+
+  const togglePaystubSelection = (payrollId) => {
+    const newSelected = new Set(selectedPaystubs)
+    if (newSelected.has(payrollId)) {
+      newSelected.delete(payrollId)
+    } else {
+      newSelected.add(payrollId)
+    }
+    setSelectedPaystubs(newSelected)
+  }
+
+  const toggleSelectAllPaystubs = (allPaystubIds) => {
+    if (selectedPaystubs.size === allPaystubIds.length) {
+      setSelectedPaystubs(new Set())
+    } else {
+      setSelectedPaystubs(new Set(allPaystubIds))
+    }
+  }
+
+  const handleSendPaystubs = async () => {
+    if (selectedPaystubs.size === 0) {
+      alert('Please select at least one paystub to send.')
+      return
+    }
+
+    const payrollIds = Array.from(selectedPaystubs)
+    const selectedPayrollObjs = payrolls.filter(p => payrollIds.includes(p.id))
+
+    try {
+      // Generate Excel files for each selected payroll
+      const formData = new FormData()
+      
+      // Add payroll IDs
+      payrollIds.forEach((id, index) => {
+        formData.append(`payroll_ids[${index}]`, id)
+      })
+
+      // Generate and add Excel files
+      for (let i = 0; i < selectedPayrollObjs.length; i++) {
+        const payroll = selectedPayrollObjs[i]
+        const response = await fetch('/synctalents_payrolltemplate.xlsx')
+        const arrayBuffer = await response.arrayBuffer()
+        
+        const workbook = new ExcelJS.Workbook()
+        await workbook.xlsx.load(arrayBuffer)
+        const worksheet = workbook.worksheets[0]
+
+        // Build employee details (same as export)
+        const employeeName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
+        const payPeriod = `${format(parseISO(payroll.cutoff_start), 'MMM dd, yyyy')} - ${format(parseISO(payroll.cutoff_end), 'MMM dd, yyyy')}`
+        const totalDeductions = (payroll.gross_pay || 0) - (payroll.net_pay || 0)
+        
+        const getScheduleDisplay = () => {
+          if (!payroll.employee?.schedule) return ''
+          const sched = payroll.employee.schedule
+          if (typeof sched === 'object') {
+            const { days, start_time, end_time } = sched
+            if (days && start_time && end_time) {
+              return `${days} (${start_time} - ${end_time})`
+            }
+            return sched.name || ''
+          }
+          return sched
+        }
+        
+        const scheduleDisplay = getScheduleDisplay()
+
+        const getEarningsAmount = (label) => {
+          if (!payroll.allowances) return 0
+          const earning = Array.isArray(payroll.allowances) 
+            ? payroll.allowances.find(a => a?.label === label)
+            : null
+          return earning?.amount ? Number(earning.amount) : 0
+        }
+
+        const getDeductionAmount = (label) => {
+          if (!payroll.deductions) return 0
+          if (Array.isArray(payroll.deductions)) {
+            const deduction = payroll.deductions.find(d => d?.label === label)
+            return deduction?.amount ? Number(deduction.amount) : 0
+          }
+          return payroll.deductions[label] ? Number(payroll.deductions[label]) : 0
+        }
+
+        const totalAllowancesAmount = payroll.allowances?.reduce((sum, a) => sum + Number(a.amount || 0), 0) || 0
+        const basicIncomeAmount = payroll.gross_pay - totalAllowancesAmount
+        const overtimeAmount = getEarningsAmount('Overtime Pay')
+        const restDayPayAmount = getEarningsAmount('Rest Day Pay')
+        const restDayOTPayAmount = getEarningsAmount('Rest Day OT Pay')
+
+        const dRate = Number(payroll.daily_rate) || 0
+        const hRate = dRate / 8
+
+        const restDayPayHours = restDayPayAmount > 0 && hRate > 0 ? restDayPayAmount / (hRate * 1.30) : 0
+        const restDayOTPayHours = restDayOTPayAmount > 0 && hRate > 0 ? restDayOTPayAmount / (hRate * 1.69) : 0
+
+        const nightDiffAmount = getEarningsAmount('Night Differential')
+        const nightDiffHours = nightDiffAmount > 0 && hRate > 0 ? nightDiffAmount / (hRate * 0.10) : 0
+
+        const specialHolidayAmount = getEarningsAmount('Special Holiday')
+        const specialHolidayHours = specialHolidayAmount > 0 && hRate > 0 ? specialHolidayAmount / (hRate * 0.30) : 0
+
+        const legalHolidayAmount = getEarningsAmount('Legal Holiday')
+        const legalHolidayHours = legalHolidayAmount > 0 && hRate > 0 ? legalHolidayAmount / (hRate * 1.00) : 0
+
+        const absentAmount = getDeductionAmount('Absent')
+        const absentDays = absentAmount > 0 && dRate > 0 ? absentAmount / dRate : 0
+
+        const halfDayAmount = getDeductionAmount('Half Day')
+        const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
+
+        const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday'].includes(a.label)) || []
+        const customAllowancesAmount = otherAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
+
+        const fieldsMap = {
+          'E13': employeeName,
+          'E15': payroll.employee?.phone || payroll.employee?.contact_info || '',
+          'E17': scheduleDisplay,
+          'E19': payPeriod,
+          'L10': Number(payroll.net_pay) || 0,
+          'L13': payroll.employee?.sss_number || '',
+          'L15': payroll.employee?.philhealth_number || '',
+          'L17': payroll.employee?.pagibig_number || '',
+          'L19': payroll.employee?.bank_account_number || payroll.employee?.tin_number || '',
+          'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
+          'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
+          'F29': restDayPayHours ? `${Number(restDayPayHours).toFixed(2)}h` : '0h',
+          'F30': restDayOTPayHours ? `${Number(restDayOTPayHours).toFixed(2)}h` : '0h',
+          'F31': nightDiffHours ? `${Number(nightDiffHours).toFixed(2)}h` : '0h',
+          'G27': Number(basicIncomeAmount) || 0,
+          'G28': Number(overtimeAmount) || 0,
+          'G29': Number(restDayPayAmount) || 0,
+          'G30': Number(restDayOTPayAmount) || 0,
+          'G31': Number(nightDiffAmount) || 0,
+          'G32': Number(specialHolidayAmount) || 0,
+          'G33': Number(legalHolidayAmount) || 0,
+          'G34': 0,
+          'G35': Number(customAllowancesAmount) || 0,
+          'G36': 0,
+          'G39': Number(payroll.gross_pay) || 0,
+          'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
+          'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
+          'N29': halfDayDays ? `${Number(halfDayDays).toFixed(2)}d` : '0d',
+          'O27': Number(getDeductionAmount('Late') + getDeductionAmount('Undertime')) || 0,
+          'O28': Number(getDeductionAmount('Absent')) || 0,
+          'O29': Number(getDeductionAmount('Half Day')) || 0,
+          'O30': Number(getDeductionAmount('SSS EE Contribution')) || 0,
+          'O31': Number(getDeductionAmount('PhilHealth EE Contribution')) || 0,
+          'O32': Number(getDeductionAmount('Pag-IBIG EE Contribution')) || 0,
+          'O33': 0,
+          'O34': 0,
+          'O35': 0,
+          'O36': 0,
+          'O39': Number(totalDeductions) || 0,
+          'O40': Number(payroll.net_pay) || 0,
+        }
+
+        const currencyCells = [
+          'L10', 'G27', 'G28', 'G29', 'G30', 'G31', 'G32', 'G33', 'G34', 'G35', 'G36', 'G39',
+          'O27', 'O28', 'O29', 'O30', 'O31', 'O32', 'O33', 'O34', 'O35', 'O36', 'O39', 'O40'
+        ]
+
+        Object.entries(fieldsMap).forEach(([cell, value]) => {
+          const cellRef = worksheet.getCell(cell)
+          if (cellRef) {
+            cellRef.value = value
+            if (currencyCells.includes(cell)) {
+              cellRef.numFmt = '"₱"#,##0.00;-"₱"#,##0.00'
+            }
+          }
+        })
+
+        // Generate blob and add to FormData
+        const buffer = await workbook.xlsx.writeBuffer()
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const filename = `payroll-${payroll.employee?.first_name}-${payroll.employee?.last_name}-${format(parseISO(payroll.cutoff_end), 'MMM-dd-yyyy')}.xlsx`
+        formData.append(`files[${i}]`, blob, filename)
+      }
+
+      // Send to backend
+      sendPaystubsMutation.mutate(formData)
+    } catch (error) {
+      console.error('Error generating paystubs:', error)
+      alert('Failed to generate paystubs. Please try again.')
+    }
+  }
+
+  const finalizedPaystubs = payrolls.filter(p => p.status === 'finalized')
 
   const exportPayrollToExcel = async (payroll) => {
     try {
@@ -393,18 +607,28 @@ export default function PayrollPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 bg-gray-50/50">
           <h3 className="text-sm font-semibold text-gray-700">Cutoff Details</h3>
-          <button 
-            disabled={generateMutation.isPending}
-            onClick={() => generateMutation.mutate({ 
-              cutoff_start: currentCutoff.startDate, 
-              cutoff_end: currentCutoff.endDate 
-            })}
-            className="btn-primary py-2 text-xs"
-          >
-            {generateMutation.isPending ? <Spinner size="sm" /> : <><Plus size={14} /> Generate for Period</>}
-          </button>
+          <div className="flex gap-2">
+            <button 
+              disabled={generateMutation.isPending}
+              onClick={() => generateMutation.mutate({ 
+                cutoff_start: currentCutoff.startDate, 
+                cutoff_end: currentCutoff.endDate 
+              })}
+              className="btn-primary py-2 text-xs"
+            >
+              {generateMutation.isPending ? <Spinner size="sm" /> : <><Plus size={14} /> Generate for Period</>}
+            </button>
+            <button 
+              disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
+              onClick={() => setShowEmailModal(true)}
+              className="btn-primary py-2 text-xs bg-purple-600 hover:bg-purple-700 border-purple-600"
+              title={finalizedPaystubs.length === 0 ? 'No finalized paystubs to send' : ''}
+            >
+              {sendPaystubsMutation.isPending ? <Spinner size="sm" /> : <><Mail size={14} /> Email Paystub</>}
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -566,6 +790,9 @@ export default function PayrollPage() {
                   <button onClick={handleEditInit} className="text-brand-600 text-xs font-bold hover:underline flex items-center gap-1">
                     <Plus size={12} /> Edit Fields
                   </button>
+                )}
+                {!isEditing && (selectedPayroll.status === 'finalized' || selectedPayroll.status === 'paid') && (
+                  <p className="text-xs text-gray-400 italic">This payroll is locked</p>
                 )}
               </div>
             </div>
@@ -923,6 +1150,99 @@ export default function PayrollPage() {
 
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={showEmailModal}
+        onClose={() => {
+          setShowEmailModal(false)
+          setSelectedPaystubs(new Set())
+        }}
+        title="Email Paystubs"
+        size="lg"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button 
+              onClick={() => {
+                setShowEmailModal(false)
+                setSelectedPaystubs(new Set())
+              }}
+              className="btn-secondary px-6"
+            >
+              Cancel
+            </button>
+            <button 
+              disabled={selectedPaystubs.size === 0 || sendPaystubsMutation.isPending}
+              onClick={handleSendPaystubs}
+              className="btn-primary px-6"
+            >
+              {sendPaystubsMutation.isPending ? (
+                <><Spinner size="sm" /> Sending...</>
+              ) : (
+                <><Mail size={14} /> Send {selectedPaystubs.size > 0 ? `(${selectedPaystubs.size})` : ''}</>
+              )}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-sm text-blue-800 font-medium">
+              ℹ️ Only paystubs with "Finalized" status can be sent
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              Employees will receive their paystub as an attachment. Their status will automatically change to "Paid" after sending.
+            </p>
+          </div>
+
+          {finalizedPaystubs.length === 0 ? (
+            <div className="py-8 flex flex-col items-center justify-center text-center">
+              <Mail size={48} className="text-gray-200 mb-4" />
+              <p className="text-sm font-medium text-gray-500">No finalized paystubs available</p>
+              <p className="text-xs text-gray-400 mt-1">Finalize paystubs from the payroll list first</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPaystubs.size === finalizedPaystubs.length}
+                    onChange={() => toggleSelectAllPaystubs(finalizedPaystubs.map(p => p.id))}
+                    className="w-4 h-4 rounded border-gray-300 accent-brand-600"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">
+                    Select All ({finalizedPaystubs.length})
+                  </span>
+                </label>
+              </div>
+
+              <div className="space-y-2 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                {finalizedPaystubs.map((payroll) => (
+                  <label key={payroll.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedPaystubs.has(payroll.id)}
+                      onChange={() => togglePaystubSelection(payroll.id)}
+                      className="w-4 h-4 rounded border-gray-300 accent-brand-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {payroll.employee?.first_name} {payroll.employee?.last_name}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {payroll.employee?.email}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        ₱{Number(payroll.net_pay).toLocaleString()} net pay
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </Modal>
     </div>
   )

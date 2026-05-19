@@ -69,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('payroll')->group(function () {
         Route::get('/', [PayrollController::class, 'index']);
         Route::post('/generate', [PayrollController::class, 'generate'])->middleware('role:admin,hr');
+        Route::post('/send-paystubs', [PayrollController::class, 'sendPaystubs'])->middleware('role:admin,hr');
         Route::get('/{id}', [PayrollController::class, 'show']);
         Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr');
         Route::get('/{id}/export', [PayrollController::class, 'export']);

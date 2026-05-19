@@ -11,6 +11,7 @@ use App\Services\AttendanceService;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 class PayrollController extends Controller
 {
@@ -56,6 +57,19 @@ class PayrollController extends Controller
         $generatedPayrolls = [];
 
         foreach ($employees as $employee) {
+            // Skip if payroll already finalized or paid for this cutoff
+            $existingPayroll = Payroll::where('employee_id', $employee->id)
+                ->where('cutoff_start', $start)
+                ->where('cutoff_end', $end)
+                ->whereIn('status', ['finalized', 'paid'])
+                ->first();
+            
+            if ($existingPayroll) {
+                // Add to generated list but don't regenerate
+                $generatedPayrolls[] = $existingPayroll->load('employee');
+                continue;
+            }
+
             $logs = AttendanceLog::where('employee_id', $employee->id)
                 ->whereBetween('date', [$start, $end])
                 ->get();
@@ -250,10 +264,19 @@ class PayrollController extends Controller
 
     /**
      * Update payroll record (edit fields or change status).
+     * Note: Finalized and paid payrolls cannot be edited.
      */
     public function update(Request $request, int $id)
     {
         $payroll = Payroll::findOrFail($id);
+
+        // Prevent any updates to finalized or paid payrolls
+        if (in_array($payroll->status, ['finalized', 'paid'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot update finalized or paid payrolls. They are locked for audit purposes.',
+            ], 422);
+        }
 
         $request->validate([
             'status' => 'sometimes|in:draft,finalized,paid',
@@ -299,15 +322,100 @@ class PayrollController extends Controller
     }
 
     /**
-     * Export payroll to JSON/PDF (mock).
+     * Export payroll to Excel file (use frontend export button instead).
      */
     public function export(int $id)
     {
-        $payroll = Payroll::with('employee')->findOrFail($id);
         return response()->json([
-            'success' => true,
-            'data' => $payroll,
-            'message' => 'Export data ready',
+            'success' => false,
+            'message' => 'Please use the export button on the frontend to download paystubs.',
+        ], 400);
+    }
+
+    /**
+     * Send paystubs to selected employees and mark as paid.
+     * Expects the paystub file to be sent from frontend.
+     */
+    public function sendPaystubs(Request $request)
+    {
+        $request->validate([
+            'payroll_ids' => 'required|array|min:1',
+            'payroll_ids.*' => 'integer|exists:payrolls,id',
+            'files' => 'required|array',
+            'files.*' => 'file|mimes:xlsx,xls',
+        ]);
+
+        $payrolls = Payroll::with('employee')
+            ->whereIn('id', $request->payroll_ids)
+            ->where('status', 'finalized')
+            ->get();
+
+        if ($payrolls->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No finalized payrolls found to send.',
+            ], 422);
+        }
+
+        $sent = [];
+        $failed = [];
+        $uploadedFiles = $request->file('files') ?? [];
+
+        foreach ($payrolls as $index => $payroll) {
+            try {
+                // Validate employee has email
+                if (!$payroll->employee?->email) {
+                    $failed[] = [
+                        'payroll_id' => $payroll->id,
+                        'employee' => $payroll->employee?->full_name,
+                        'error' => 'No email address on file',
+                    ];
+                    continue;
+                }
+
+                // Get the corresponding file from the uploaded files
+                $file = $uploadedFiles[$index] ?? null;
+                if (!$file) {
+                    $failed[] = [
+                        'payroll_id' => $payroll->id,
+                        'employee' => $payroll->employee?->full_name,
+                        'error' => 'Paystub file not provided',
+                    ];
+                    continue;
+                }
+
+                // Send email with attachment
+                Mail::to($payroll->employee->email)
+                    ->send(new \App\Mail\PaystubMail($payroll, $file->getRealPath()));
+
+                // Mark as paid
+                $payroll->update([
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                ]);
+
+                $sent[] = [
+                    'payroll_id' => $payroll->id,
+                    'employee' => $payroll->employee->full_name,
+                    'email' => $payroll->employee->email,
+                ];
+            } catch (\Exception $e) {
+                $failed[] = [
+                    'payroll_id' => $payroll->id,
+                    'employee' => $payroll->employee?->full_name,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => count($failed) === 0,
+            'data' => [
+                'sent' => $sent,
+                'failed' => $failed,
+            ],
+            'message' => count($sent) . ' paystub(s) sent successfully. ' . (count($failed) > 0 ? count($failed) . ' failed.' : ''),
         ]);
     }
+
 }
