@@ -77,6 +77,10 @@ export default function PayrollPage() {
       qc.invalidateQueries({ queryKey: payrollKeys.all })
       setShowEmailModal(false)
       setSelectedPaystubs(new Set())
+      setCcEmails([])
+      setBccEmails([])
+      setCcInput('')
+      setBccInput('')
       
       const message = data.message || 'Paystubs sent successfully!'
       alert(message)
@@ -670,7 +674,13 @@ export default function PayrollPage() {
             </button>
             <button 
               disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
-              onClick={() => setShowEmailModal(true)}
+              onClick={() => {
+                setShowEmailModal(true)
+                setCcEmails([])
+                setBccEmails([])
+                setCcInput('')
+                setBccInput('')
+              }}
               className="btn-primary py-2 text-xs bg-purple-600 hover:bg-purple-700 border-purple-600"
               title={finalizedPaystubs.length === 0 ? 'No finalized paystubs to send' : ''}
             >
