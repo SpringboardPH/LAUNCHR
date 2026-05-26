@@ -12,7 +12,7 @@ import {
   getCalendarEventTypes, calendarEventTypeKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
-import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List } from 'lucide-react'
+import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List, ChevronDown } from 'lucide-react'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
@@ -20,6 +20,7 @@ export default function AttendancePage() {
   const [activeCutoff, setActiveCutoff] = useState(null)
   const [viewMode, setViewMode] = useState('list') // 'list' or 'grid'
   const [includeWeekends, setIncludeWeekends] = useState(true)
+  const [todayAttendanceExpanded, setTodayAttendanceExpanded] = useState(true)
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
@@ -406,11 +407,21 @@ export default function AttendancePage() {
 
       {/* Today's quick clock-in panel */}
       <div className="card p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-          <Clock size={14} className="text-brand-600" /> Today's Attendance
-        </h2>
-        {todayLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setTodayAttendanceExpanded(!todayAttendanceExpanded)}
+          className="w-full flex items-center justify-between py-2 px-3 -mx-3 -my-2 rounded-lg transition-colors cursor-pointer"
+        >
+          <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Clock size={14} className="text-brand-600" /> Today's Attendance
+          </h2>
+          <ChevronDown 
+            size={20} 
+            className={clsx("text-gray-600 transition-transform duration-200 flex-shrink-0", todayAttendanceExpanded ? "rotate-180" : "")} 
+          />
+        </button>
+        {todayAttendanceExpanded && (todayLoading ? <PageSpinner /> : (
+          <div className="overflow-x-auto animate-in fade-in duration-200 mt-4">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
@@ -511,7 +522,7 @@ export default function AttendancePage() {
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
 
       {/* Attendance log */}
