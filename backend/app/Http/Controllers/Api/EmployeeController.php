@@ -9,6 +9,7 @@ use App\Http\Resources\EmployeeResource;
 use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\EmployeeSchedule;
+use App\Models\Payroll;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -251,6 +252,9 @@ class EmployeeController extends Controller
                 ->where('status', 'active')
                 ->update(['status' => 'archived']);
 
+            // Delete any payrolls for this employee
+            Payroll::where('employee_id', $employee->id)->delete();
+
             $employee->update(['status' => 'inactive']);
             $employee->delete(); // soft delete employee
 
@@ -274,6 +278,9 @@ class EmployeeController extends Controller
         $employee = Employee::withTrashed()->findOrFail($id);
 
         DB::transaction(function () use ($employee) {
+            // Hard delete any payrolls for this employee
+            Payroll::withTrashed()->where('employee_id', $employee->id)->forceDelete();
+
             if ($employee->user_id) {
                 $user = User::withTrashed()->find($employee->user_id);
                 if ($user) {
