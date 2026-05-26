@@ -16,6 +16,15 @@ use Illuminate\Support\Facades\Mail;
 class PayrollController extends Controller
 {
     /**
+     * Parse time string to minutes for duration calculations
+     */
+    private function parseTimeToMinutes(string $time): int
+    {
+        [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
+        return $hour * 60 + $minute;
+    }
+
+    /**
      * Display a listing of payroll records.
      */
     public function index(Request $request)
@@ -117,8 +126,16 @@ class PayrollController extends Controller
                 $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
                 $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
+                $workEnd = $schedule?->template?->work_end_time ?? '18:00:00';
+                
+                // Calculate expected hours dynamically from work times
+                $workStartMin = $this->parseTimeToMinutes($workStart);
+                $workEndMin = $this->parseTimeToMinutes($workEnd);
+                if ($workEndMin < $workStartMin) {
+                    $workEndMin += 1440; // Handle overnight shifts
+                }
+                $expectedHours = ($workEndMin - $workStartMin) / 60;
 
                 // Track absences and half days for deduction purposes
                 if ($log->status === 'absent') {
@@ -142,14 +159,17 @@ class PayrollController extends Controller
                     $workStart
                 );
 
+                // Only count overtime hours if status is actually 'overtime' (not covered by grace period)
+                $overtimeHours = $log->status === 'overtime' ? $details['overtime_hours'] : 0;
+
                 if ($isRestDay) {
                     // Rest day: regular hours and OT hours tracked separately
-                    $restRegularHours = max(0, $details['hours_worked'] - $details['overtime_hours']);
+                    $restRegularHours = max(0, $details['hours_worked'] - $overtimeHours);
                     $metrics['rest_day_hours'] += $restRegularHours;
-                    $metrics['rest_day_ot_hours'] += $details['overtime_hours'];
+                    $metrics['rest_day_ot_hours'] += $overtimeHours;
                 } else {
                     $metrics['total_hours'] += $details['hours_worked'];
-                    $metrics['overtime_hours'] += $details['overtime_hours'];
+                    $metrics['overtime_hours'] += $overtimeHours;
                     $daysWorkedCount++;
                 }
 
