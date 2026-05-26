@@ -72,6 +72,12 @@ export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false)
 export const updateAttendanceLog = (id, data) =>
   api.put(`/attendance/${id}`, data).then(r => r.data)
 
+export const deleteAttendanceLog = (id) =>
+  api.delete(`/attendance/${id}`).then(r => r.data)
+
+export const createAttendanceLog = (data) =>
+  api.post('/attendance', data).then(r => r.data)
+
 export const bulkMarkAbsent = (date) =>
   api.post('/attendance/bulk-mark-absent', { date }).then(r => r.data)
 
@@ -173,6 +179,9 @@ export const sendPaystubs = (formData) => {
 
 export const revertPayrollToDraft = (payrollId) =>
   api.post(`/payroll/${payrollId}/revert-to-draft`).then(r => r.data)
+
+export const togglePayrollUndertimeCalculation = (payrollId) =>
+  api.post(`/payroll/${payrollId}/toggle-undertime-calc`).then(r => r.data)
 
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardKeys = { all: ['dashboard'] }

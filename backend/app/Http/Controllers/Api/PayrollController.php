@@ -224,6 +224,7 @@ class PayrollController extends Controller
                 ],
                 [
                     'base_salary' => $baseSalary,
+                    'undeclared_salary' => $undeclaredSalary > $baseSalary ? $undeclaredSalary : null,
                     'daily_rate' => round($dailyRate, 2),
                     'total_hours' => round($metrics['total_hours'] + $metrics['rest_day_hours'], 2),
                     'days_worked' => $daysWorkedCount,
@@ -235,6 +236,7 @@ class PayrollController extends Controller
                     'allowances' => array_values($allowances), // Reset indices
                     'net_pay' => round($finalNet, 2),
                     'status' => 'draft',
+                    'use_undeclared' => false,
                     'processed_at' => now(),
                 ]
             );
@@ -473,6 +475,101 @@ class PayrollController extends Controller
                 'message' => 'Failed to revert payroll: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Toggle undertime calculation between base salary and undeclared salary.
+     * Recalculates deductions and net pay accordingly.
+     */
+    public function toggleUndertimeCalculation(Request $request, int $id)
+    {
+        $payroll = Payroll::with('employee')->findOrFail($id);
+
+        // Only allowed for draft payrolls
+        if ($payroll->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only draft payrolls can have their calculation method changed.',
+            ], 422);
+        }
+
+        // Check if undeclared salary exists
+        if (!$payroll->undeclared_salary) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This employee does not have an undeclared salary configured.',
+            ], 422);
+        }
+
+        // Calculate the appropriate salary to use for deductions
+        $salaryForDeductions = $payroll->use_undeclared 
+            ? $payroll->base_salary 
+            : $payroll->undeclared_salary;
+
+        // Recalculate daily and hourly rates
+        $workDays = $payroll->employee->schedule?->template?->work_days ?? [1, 2, 3, 4, 5];
+        $daysInWeek = count($workDays);
+        $divisor = ($daysInWeek <= 5) ? 261 : 313;
+
+        $isDaily = $payroll->employee->rate_type === 'daily';
+        $dailyRate = $isDaily ? $salaryForDeductions : ($salaryForDeductions * 12) / $divisor;
+        $hourlyRate = $dailyRate / 8;
+
+        // Recalculate deductions based on new daily/hourly rate
+        $newUndertimeDeduction = ($payroll->undertime_minutes / 60) * $hourlyRate;
+        $newLateDeduction = ($payroll->late_minutes / 60) * $hourlyRate;
+        
+        // Calculate absent days from deductions (if present)
+        $deductions = is_array($payroll->deductions) ? $payroll->deductions : [];
+        $oldAbsentDeduction = (float)($deductions['Absent'] ?? 0);
+        $absentDays = $oldAbsentDeduction > 0 ? $oldAbsentDeduction / ($payroll->daily_rate / ($isDaily ? 1 : 1)) : 0;
+        $newAbsentDeduction = $absentDays * $dailyRate;
+
+        // Calculate half day deduction
+        $oldHalfDayDeduction = (float)($deductions['Half Day'] ?? 0);
+        $halfDays = $oldHalfDayDeduction > 0 ? $oldHalfDayDeduction / (($payroll->daily_rate ?? 1) / 2) : 0;
+        $newHalfDayDeduction = $halfDays * ($dailyRate / 2);
+
+        // Update all affected deductions
+        $deductions['Undertime'] = round($newUndertimeDeduction, 2);
+        $deductions['Late'] = round($newLateDeduction, 2);
+        
+        if ($newAbsentDeduction > 0) {
+            $deductions['Absent'] = round($newAbsentDeduction, 2);
+        } else {
+            unset($deductions['Absent']);
+        }
+
+        if ($newHalfDayDeduction > 0) {
+            $deductions['Half Day'] = round($newHalfDayDeduction, 2);
+        } else {
+            unset($deductions['Half Day']);
+        }
+
+        // Remove zero deductions
+        foreach ($deductions as $key => $value) {
+            if ($value <= 0) {
+                unset($deductions[$key]);
+            }
+        }
+
+        // Recalculate totals
+        $totalDeductions = array_sum($deductions);
+        $newNetPay = $payroll->gross_pay - $totalDeductions;
+
+        // Toggle the flag and save
+        $payroll->update([
+            'use_undeclared' => !$payroll->use_undeclared,
+            'deductions' => $deductions,
+            'net_pay' => round($newNetPay, 2),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $payroll->load('employee'),
+            'message' => 'Deduction calculations toggled successfully. Now using ' . 
+                        (!$payroll->use_undeclared ? 'undeclared' : 'base') . ' salary for late, undertime, and absent deductions',
+        ]);
     }
 
 }

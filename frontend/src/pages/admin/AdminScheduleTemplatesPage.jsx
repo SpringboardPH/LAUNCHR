@@ -7,7 +7,7 @@ import {
   updateScheduleTemplate,
   deleteScheduleTemplate,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
 import { CalendarRange, Plus, Edit2, Trash2 } from 'lucide-react'
 
 const WEEK_DAYS = [
@@ -122,6 +122,7 @@ const AdminScheduleTemplatesPage = () => {
     day_rules: createDefaultDayRules(),
   })
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [alert, setAlert] = useState(null)
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: scheduleTemplateKeys.all,
@@ -173,7 +174,7 @@ const AdminScheduleTemplatesPage = () => {
     e.preventDefault()
     const enabledRules = formData.day_rules.filter(rule => rule.enabled)
     if (!formData.name.trim() || enabledRules.length === 0) {
-      alert('Name and at least one active day are required')
+      setAlert({ type: 'warning', message: 'Name and at least one active day are required' })
       return
     }
 
@@ -181,7 +182,7 @@ const AdminScheduleTemplatesPage = () => {
       rule => !rule.clock_in || !rule.clock_out
     )
     if (hasIncompleteRules) {
-      alert('Every active day must include both clock in and clock out time')
+      setAlert({ type: 'warning', message: 'Every active day must include both clock in and clock out time' })
       return
     }
 
@@ -495,6 +496,18 @@ const AdminScheduleTemplatesPage = () => {
           </table>
         )}
       </div>
+
+      <AlertModal
+        open={!!alert}
+        onClose={() => setAlert(null)}
+        title={
+          alert?.type === 'success' ? 'Success' :
+          alert?.type === 'error' ? 'Error' :
+          alert?.type === 'warning' ? 'Warning' : 'Information'
+        }
+        message={alert?.message}
+        type={alert?.type}
+      />
     </div>
   )
 }

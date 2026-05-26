@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader, StatusBadge, Spinner } from '../../components/ui/index.jsx'
+import { PageHeader, StatusBadge, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Mail, Phone, Calendar, Briefcase, CreditCard, Pencil, Check, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { useMutation } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ export default function EmployeeProfilePage() {
   const { user, refreshUser } = useAuth()
   const emp = user?.employee
   const [isEditingBank, setIsEditingBank] = useState(false)
+  const [alert, setAlert] = useState(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     defaultValues: {
@@ -28,7 +29,7 @@ export default function EmployeeProfilePage() {
       setIsEditingBank(false)
     },
     onError: (err) => {
-      alert(err?.response?.data?.message || 'Failed to update profile')
+      setAlert({ type: 'error', message: err?.response?.data?.message || 'Failed to update profile' })
     }
   })
 
@@ -204,6 +205,18 @@ export default function EmployeeProfilePage() {
           </div>
         </div>
       </div>
+
+      <AlertModal
+        open={!!alert}
+        onClose={() => setAlert(null)}
+        title={
+          alert?.type === 'success' ? 'Success' :
+          alert?.type === 'error' ? 'Error' :
+          alert?.type === 'warning' ? 'Warning' : 'Information'
+        }
+        message={alert?.message}
+        type={alert?.type}
+      />
     </div>
   )
 }

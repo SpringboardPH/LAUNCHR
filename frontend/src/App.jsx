@@ -8,6 +8,7 @@ import ConfigureLeavePage from './pages/admin/ConfigureLeavePage'
 import AdminDepartmentsPage from './pages/admin/AdminDepartmentsPage'
 import AdminScheduleTemplatesPage from './pages/admin/AdminScheduleTemplatesPage'
 import EmployeeScheduleAssignmentPage from './pages/admin/EmployeeScheduleAssignmentPage'
+import AdminAttendanceLogsPage from './pages/admin/AdminAttendanceLogsPage'
 import EmployeeListPage from './pages/employees/EmployeeListPage'
 import EmployeeFormPage from './pages/employees/EmployeeFormPage'
 import EmployeeDetailPage from './pages/employees/EmployeeDetailPage'
@@ -121,6 +122,7 @@ export default function App() {
           <Route path="/admin" element={<SystemAdminRoute><AppLayout /></SystemAdminRoute>}>
             <Route index element={<Navigate to="/hr" replace />} />
             <Route path="audit-logs" element={<AuditLogPage />} />
+            <Route path="attendance-logs" element={<AdminAttendanceLogsPage />} />
             <Route path="configure-leave" element={<ConfigureLeavePage />} />
             <Route path="departments" element={<AdminDepartmentsPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />

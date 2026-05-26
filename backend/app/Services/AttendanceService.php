@@ -5,15 +5,16 @@ namespace App\Services;
 class AttendanceService
 {
     /**
-     * Calculate attendance status based on clocked times.
+     * Calculate attendance status based on clocked times and grace period.
      *
      * @param string|null $clockIn
      * @param string|null $clockOut
      * @param int $expectedHours
      * @param string $workStart
+     * @param array|null $dayRule - Optional day rule with grace period info
      * @return string
      */
-    public static function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): string
+    public static function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart, ?array $dayRule = null): string
     {
         if (!$clockIn) {
             return 'absent';
@@ -28,9 +29,30 @@ class AttendanceService
         }
 
         $startMinutes = self::parseTimeToMinutes($workStart);
-        $isLate = $inMinutes > $startMinutes;
+        $lateMinutes = max(0, $inMinutes - $startMinutes);
         $hoursWorked = max(0, ($outMinutes - $inMinutes) / 60);
         $halfExpected = $expectedHours / 2;
+        $expectedMinutes = $expectedHours * 60;
+        $undertimeMinutes = max(0, $expectedMinutes - ($outMinutes - $inMinutes));
+
+        // Check if grace period covers the deviation
+        $graceCovered = false;
+        if ($dayRule && isset($dayRule['grace_enabled']) && $dayRule['grace_enabled']) {
+            $graceMinutes = (int)($dayRule['grace_minutes'] ?? 0);
+            $graceType = $dayRule['grace_type'] ?? '-/+';
+            
+            // Check if this deviation is covered by grace
+            if ($lateMinutes <= $graceMinutes && ($graceType === '+' || $graceType === '-/+')) {
+                $graceCovered = true;
+            } elseif ($undertimeMinutes <= $graceMinutes && ($graceType === '-' || $graceType === '-/+')) {
+                $graceCovered = true;
+            }
+        }
+
+        // If grace covers the deviation, return completed
+        if ($graceCovered) {
+            return 'completed';
+        }
 
         // Worked more than expected → overtime
         if ($hoursWorked > $expectedHours) {
@@ -47,7 +69,7 @@ class AttendanceService
             return 'undertime';
         }
 
-        return $isLate ? 'late' : 'completed';
+        return $lateMinutes > 0 ? 'late' : 'completed';
     }
 
     /**

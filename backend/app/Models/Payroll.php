@@ -17,6 +17,7 @@ class Payroll extends Model
         'cutoff_start',
         'cutoff_end',
         'base_salary',
+        'undeclared_salary',
         'daily_rate',
         'total_hours',
         'days_worked',
@@ -28,6 +29,7 @@ class Payroll extends Model
         'allowances',
         'net_pay',
         'status',
+        'use_undeclared',
         'processed_at',
         'paid_at',
     ];
@@ -36,6 +38,7 @@ class Payroll extends Model
         'cutoff_start' => 'date',
         'cutoff_end' => 'date',
         'base_salary' => 'decimal:2',
+        'undeclared_salary' => 'decimal:2',
         'daily_rate' => 'decimal:2',
         'total_hours' => 'decimal:2',
         'overtime_hours' => 'decimal:2',
@@ -43,6 +46,7 @@ class Payroll extends Model
         'net_pay' => 'decimal:2',
         'deductions' => 'array',
         'allowances' => 'array',
+        'use_undeclared' => 'boolean',
         'processed_at' => 'datetime',
         'paid_at' => 'datetime',
     ];

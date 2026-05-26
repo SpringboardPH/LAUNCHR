@@ -42,9 +42,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
         Route::get('/today', [AttendanceController::class, 'today']);
         Route::get('/{employeeId}/monthly', [AttendanceController::class, 'monthly']);
+        Route::post('/', [AttendanceController::class, 'store'])->middleware('role:admin');
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
         Route::put('/{id}', [AttendanceController::class, 'update'])->middleware('role:admin,hr');
+        Route::delete('/{id}', [AttendanceController::class, 'destroy'])->middleware('role:admin');
         Route::post('/bulk-mark-absent', [AttendanceController::class, 'bulkMarkAbsent'])->middleware('role:admin,hr');
     });
     
@@ -71,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/generate', [PayrollController::class, 'generate'])->middleware('role:admin,hr');
         Route::post('/send-paystubs', [PayrollController::class, 'sendPaystubs'])->middleware('role:admin,hr');
         Route::post('/{id}/revert-to-draft', [PayrollController::class, 'revertToDraft'])->middleware('role:admin,hr');
+        Route::post('/{id}/toggle-undertime-calc', [PayrollController::class, 'toggleUndertimeCalculation'])->middleware('role:admin,hr');
         Route::get('/{id}', [PayrollController::class, 'show']);
         Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr');
         Route::get('/{id}/export', [PayrollController::class, 'export']);

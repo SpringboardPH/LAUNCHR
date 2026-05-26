@@ -11,7 +11,7 @@ import {
   getCalendarEvents, calendarEventKeys,
   getCalendarEventTypes, calendarEventTypeKeys
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List } from 'lucide-react'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
@@ -36,6 +36,7 @@ export default function AttendancePage() {
     onConfirm: () => {},
   })
   
+  const [alert, setAlert] = useState(null)
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -50,12 +51,12 @@ export default function AttendancePage() {
   const bulkMarkAbsentMutation = useMutation({
     mutationFn: (date) => bulkMarkAbsent(date),
     onSuccess: (data) => {
-      alert(data.message || 'Absentees marked successfully')
+      setAlert({ type: 'success', message: data.message || 'Absentees marked successfully' })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       setMarkAbsentModal({ ...markAbsentModal, open: false })
     },
     onError: (error) => {
-      alert(error?.response?.data?.message || 'Failed to mark absentees')
+      setAlert({ type: 'error', message: error?.response?.data?.message || 'Failed to mark absentees' })
     }
   })
 
@@ -267,7 +268,7 @@ export default function AttendancePage() {
         return
       }
 
-      alert(error?.response?.data?.message || 'Failed to clock out')
+      setAlert({ type: 'error', message: error?.response?.data?.message || 'Failed to clock out' })
     },
   })
 
@@ -294,7 +295,8 @@ export default function AttendancePage() {
       editForm.clock_in_time,
       editForm.clock_out_time,
       expectedHours,
-      workStart
+      workStart,
+      logSchedule
     )
 
     const specialStatuses = ['undertime', 'half_day', 'overtime']
@@ -804,7 +806,7 @@ export default function AttendancePage() {
                   const template = logSchedule?.template
                   const expectedHours = template?.required_hours_per_day || 9
                   const workStart = template?.work_start_time || '09:00:00'
-                  const detected = calculateAttendanceStatus(editForm.clock_in_time, editForm.clock_out_time, expectedHours, workStart)
+                  const detected = calculateAttendanceStatus(editForm.clock_in_time, editForm.clock_out_time, expectedHours, workStart, logSchedule)
                   
                   if (detected !== editForm.status) {
                     return (
@@ -930,6 +932,18 @@ export default function AttendancePage() {
           </div>
         </div>
       </Modal>
+
+      <AlertModal
+        open={!!alert}
+        onClose={() => setAlert(null)}
+        title={
+          alert?.type === 'success' ? 'Success' :
+          alert?.type === 'error' ? 'Error' :
+          alert?.type === 'warning' ? 'Warning' : 'Information'
+        }
+        message={alert?.message}
+        type={alert?.type}
+      />
     </div>
   )
 }

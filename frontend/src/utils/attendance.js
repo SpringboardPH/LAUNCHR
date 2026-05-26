@@ -132,7 +132,7 @@ export const getClockWindow = (schedule, sysClock = null) => {
     formatTime
   }
 }
-export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, workStart) => {
+export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, workStart, schedule = null) => {
   if (!clockIn) return 'absent'
   
   const parse = (t) => {
@@ -150,11 +150,35 @@ export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, work
   
   const hoursWorked = Math.max(0, (effectiveOut - inMin) / 60)
   const halfExpected = expectedHours / 2
-  const isLate = inMin > startMin
+  const lateMinutes = Math.max(0, inMin - startMin)
+  const expectedMinutes = expectedHours * 60
+  const undertimeMinutes = Math.max(0, expectedMinutes - (effectiveOut - inMin))
+  
+  // Check if grace period applies
+  let graceCovered = false
+  if (schedule?.template?.day_rules) {
+    const dayOfWeek = new Date().getDay()
+    const dayRule = schedule.template.day_rules.find(r => r.day === dayOfWeek)
+    
+    if (dayRule && dayRule.grace_enabled) {
+      const graceMinutes = parseInt(dayRule.grace_minutes || 0)
+      const graceType = dayRule.grace_type || '-/+'
+      
+      // Check if this deviation is covered by grace
+      if (lateMinutes <= graceMinutes && (graceType === '+' || graceType === '-/+')) {
+        graceCovered = true
+      } else if (undertimeMinutes <= graceMinutes && (graceType === '-' || graceType === '-/+')) {
+        graceCovered = true
+      }
+    }
+  }
+
+  // If grace covers the deviation, return completed
+  if (graceCovered) return 'completed'
 
   if (hoursWorked > expectedHours) return 'overtime'
   if (hoursWorked >= halfExpected && hoursWorked < expectedHours) return 'half_day'
   if (hoursWorked < halfExpected) return 'undertime'
   
-  return isLate ? 'late' : 'completed'
+  return lateMinutes > 0 ? 'late' : 'completed'
 }

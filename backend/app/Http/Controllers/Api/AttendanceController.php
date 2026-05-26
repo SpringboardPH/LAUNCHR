@@ -182,7 +182,7 @@ class AttendanceController extends Controller
     /**
      * Calculate work status based on clock times and template rules
      */
-    private function calculateStatus(?string $clockInTime, ?string $clockOutTime, int|float|null $expectedHours = null, ?string $workStartTime = null, int $lateThreshold = 0)
+    private function calculateStatus(?string $clockInTime, ?string $clockOutTime, int|float|null $expectedHours = null, ?string $workStartTime = null, int $lateThreshold = 0, ?array $dayRule = null)
     {
         // Special case: Currently working
         if ($clockInTime && !$clockOutTime) {
@@ -193,7 +193,8 @@ class AttendanceController extends Controller
             $clockInTime,
             $clockOutTime,
             $expectedHours ?? self::REQUIRED_HOURS,
-            $workStartTime ?? self::WORK_START_TIME
+            $workStartTime ?? self::WORK_START_TIME,
+            $dayRule
         );
     }
 
@@ -488,7 +489,8 @@ class AttendanceController extends Controller
                 : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null),
             $dayRule && isset($dayRule['late_threshold_minutes']) 
                 ? $dayRule['late_threshold_minutes'] 
-                : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0)
+                : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0),
+            $dayRule
         );
         $log->save();
 
@@ -754,6 +756,12 @@ class AttendanceController extends Controller
         }
 
         $records = $query->orderBy('date', 'desc')->paginate(15);
+
+        // Populate template_name for each record
+        foreach ($records->items() as $log) {
+            $schedule = EmployeeSchedule::getForEmployeeOnDate($log->employee_id, $log->date);
+            $log->template_name = $this->resolveTemplateName($log, $schedule);
+        }
 
         return response()->json([
             'success' => true,
@@ -1072,6 +1080,69 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Create a new attendance log (admin only)
+     */
+    public function store(Request $request)
+    {
+        $user = $request->user();
+        if (!$user->isAdminOrHr()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Only HR/Admin can create attendance logs.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+            'date' => 'required|date',
+            'clock_in_time' => 'nullable|date_format:H:i:s',
+            'clock_out_time' => 'nullable|date_format:H:i:s',
+            'status' => 'nullable|string',
+            'clock_in_notes' => 'nullable|string',
+            'clock_out_notes' => 'nullable|string',
+        ]);
+
+        // Check if log already exists for this employee on this date
+        $existing = AttendanceLog::where('employee_id', $validated['employee_id'])
+            ->whereDate('date', $validated['date'])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An attendance log already exists for this employee on this date.',
+            ], 422);
+        }
+
+        $log = AttendanceLog::create($validated);
+
+        // Populate template_name
+        $schedule = EmployeeSchedule::getForEmployeeOnDate($log->employee_id, $log->date);
+        $log->template_name = $this->resolveTemplateName($log, $schedule);
+
+        return response()->json([
+            'success' => true,
+            'data' => $log,
+            'message' => 'Attendance log created successfully',
+        ]);
+    }
+
+    /**
+     * Delete an attendance log
+     */
+    public function destroy(Request $request, int|string $id)
+    {
+        $log = AttendanceLog::findOrFail($id);
+        
+        $log->delete();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Attendance log deleted successfully',
+        ]);
+    }
+
+    /**
      * Manually trigger the mark-absent command for a specific date
      */
     public function bulkMarkAbsent(Request $request)
@@ -1179,7 +1250,8 @@ class AttendanceController extends Controller
                     $autoClockOutTime,
                     $expectedHours,
                     $workStartTime,
-                    $template->late_threshold_minutes ?? 0
+                    $template->late_threshold_minutes ?? 0,
+                    $dayRule
                 );
 
                 $log->update([

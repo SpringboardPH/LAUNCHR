@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { 
   getPayrolls, generatePayroll, updatePayroll, payrollKeys, 
-  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft 
+  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
 import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 import ExcelJS from 'exceljs'
@@ -24,6 +24,9 @@ export default function PayrollPage() {
   const [bccInput, setBccInput] = useState('')
   const [ccHistory, setCcHistory] = useState(JSON.parse(localStorage.getItem('payroll_cc_history') || '[]'))
   const [bccHistory, setBccHistory] = useState(JSON.parse(localStorage.getItem('payroll_bcc_history') || '[]'))
+  const [showToggleConfirm, setShowToggleConfirm] = useState(false)
+  const [toggleSuccess, setToggleSuccess] = useState(null)
+  const [alert, setAlert] = useState(null)
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -67,7 +70,7 @@ export default function PayrollPage() {
     },
     onError: (error) => {
       const message = error?.response?.data?.message || 'Failed to update payroll. Please try again.'
-      alert(message)
+      setAlert({ type: 'error', message })
     }
   })
 
@@ -80,7 +83,21 @@ export default function PayrollPage() {
     },
     onError: (error) => {
       const message = error?.response?.data?.message || 'Failed to revert payroll. Please try again.'
-      alert(message)
+      setAlert({ type: 'error', message })
+    }
+  })
+
+  const toggleUndertimeMutation = useMutation({
+    mutationFn: (payrollId) => togglePayrollUndertimeCalculation(payrollId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: payrollKeys.all })
+      setSelectedPayroll(data.data)
+      setShowToggleConfirm(false)
+      setToggleSuccess(data)
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.message || 'Failed to toggle undertime calculation. Please try again.'
+      setAlert({ type: 'error', message })
     }
   })
 
@@ -96,7 +113,7 @@ export default function PayrollPage() {
       setBccInput('')
       
       const message = data.message || 'Paystubs sent successfully!'
-      alert(message)
+      setAlert({ type: 'success', message })
       
       if (data.data?.failed?.length > 0) {
         console.error('Failed to send paystubs:', data.data.failed)
@@ -104,7 +121,7 @@ export default function PayrollPage() {
     },
     onError: (error) => {
       const message = error?.response?.data?.message || 'Failed to send paystubs. Please try again.'
-      alert(message)
+      setAlert({ type: 'error', message })
     }
   })
 
@@ -248,7 +265,7 @@ export default function PayrollPage() {
 
   const handleSendPaystubs = async () => {
     if (selectedPaystubs.size === 0) {
-      alert('Please select at least one paystub to send.')
+      setAlert({ type: 'warning', message: 'Please select at least one paystub to send.' })
       return
     }
 
@@ -423,7 +440,7 @@ export default function PayrollPage() {
       sendPaystubsMutation.mutate(formData)
     } catch (error) {
       console.error('Error generating paystubs:', error)
-      alert('Failed to generate paystubs. Please try again.')
+      setAlert({ type: 'error', message: 'Failed to generate paystubs. Please try again.' })
     }
   }
 
@@ -602,7 +619,7 @@ export default function PayrollPage() {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Export error details:', error)
-      alert('Failed to export payroll. Please try again.')
+      setAlert({ type: 'error', message: 'Failed to export payroll. Please try again.' })
     }
   }
 
@@ -871,6 +888,15 @@ export default function PayrollPage() {
                     <Plus size={12} /> Edit Fields
                   </button>
                 )}
+                {!isEditing && selectedPayroll.undeclared_salary && selectedPayroll.status === 'draft' && (
+                  <button 
+                    onClick={() => setShowToggleConfirm(true)}
+                    className="text-blue-600 text-xs font-bold hover:underline"
+                    title="Toggle undertime deduction salary"
+                  >
+                    Switch Salary
+                  </button>
+                )}
                 {!isEditing && (selectedPayroll.status === 'finalized' || selectedPayroll.status === 'paid') && (
                   <p className="text-xs text-gray-400 italic">This payroll is locked</p>
                 )}
@@ -1105,7 +1131,7 @@ export default function PayrollPage() {
                 
                 <div className="space-y-4">
                   <div className="bg-white/50 p-3 rounded-lg border border-brand-100/30">
-                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Base Salary Rules</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-3">Base Salary Rules</p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-gray-500">Rate Type</span>
@@ -1115,6 +1141,12 @@ export default function PayrollPage() {
                         <span className="text-gray-500">Base Salary</span>
                         <span className="font-bold text-gray-700">₱{Number(selectedPayroll.base_salary).toLocaleString()}</span>
                       </div>
+                      {selectedPayroll.undeclared_salary && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Undeclared Salary</span>
+                          <span className="font-bold text-blue-700">₱{Number(selectedPayroll.undeclared_salary).toLocaleString()}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-xs pt-1 border-t border-gray-100">
                         <span className="text-gray-500">Derived Daily Rate</span>
                         <span className="font-bold text-brand-600">₱{Number(selectedPayroll.daily_rate).toLocaleString()}</span>
@@ -1457,6 +1489,144 @@ export default function PayrollPage() {
           )}
         </div>
       </Modal>
+
+      {/* Toggle Salary Basis Confirmation Modal */}
+      <Modal
+        open={showToggleConfirm}
+        onClose={() => setShowToggleConfirm(false)}
+        title="Switch Deduction Salary Basis"
+        size="sm"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button 
+              onClick={() => setShowToggleConfirm(false)}
+              className="btn-secondary px-6"
+            >
+              Cancel
+            </button>
+            <button 
+              disabled={toggleUndertimeMutation.isPending}
+              onClick={() => toggleUndertimeMutation.mutate(selectedPayroll.id)}
+              className="btn-primary px-6 bg-blue-600 hover:bg-blue-700 border-blue-600"
+            >
+              {toggleUndertimeMutation.isPending ? (
+                <><Spinner size="sm" /> Switching...</>
+              ) : (
+                'Confirm Switch'
+              )}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-sm text-blue-800 font-medium">
+              Switch Salary Basis for Deductions
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Current Setting</p>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-sm font-bold text-gray-900">
+                  Using: <span className="text-brand-600">{selectedPayroll?.use_undeclared ? 'Undeclared Salary' : 'Base Salary'}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Daily rate: ₱{Number(selectedPayroll?.daily_rate).toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Hourly rate: ₱{(Number(selectedPayroll?.daily_rate) / 8).toFixed(2)}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">After Switch</p>
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm font-bold text-blue-900">
+                  Will use: <span className="text-blue-600">{selectedPayroll?.use_undeclared ? 'Base Salary' : 'Undeclared Salary'}</span>
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Daily and hourly rates will be recalculated
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-amber-800 font-medium mb-1">
+                ⚠️ The following deductions will be recalculated:
+              </p>
+              <ul className="text-xs text-amber-700 space-y-1 ml-4">
+                <li>• <strong>Late</strong> - based on new hourly rate</li>
+                <li>• <strong>Undertime</strong> - based on new hourly rate</li>
+                <li>• <strong>Absent</strong> - based on new daily rate</li>
+                <li>• <strong>Half Day</strong> - based on new daily rate</li>
+              </ul>
+              <p className="text-xs text-amber-700 mt-2">
+                Net pay will be automatically updated.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toggle Success Confirmation Modal */}
+      <Modal
+        open={!!toggleSuccess}
+        onClose={() => setToggleSuccess(null)}
+        title="Success"
+        size="sm"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button 
+              onClick={() => setToggleSuccess(null)}
+              className="btn-primary px-6"
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <div className="text-4xl mb-2">✓</div>
+            <p className="text-sm text-green-800 font-bold">
+              {toggleSuccess?.message}
+            </p>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Updated Payroll Details</p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Gross Pay:</span>
+                <span className="font-bold text-gray-900">₱{Number(toggleSuccess?.data?.gross_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Deductions:</span>
+                <span className="font-bold text-red-600">₱{(Number(toggleSuccess?.data?.gross_pay) - Number(toggleSuccess?.data?.net_pay)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between border-t pt-2">
+                <span className="font-bold text-gray-900">Net Pay:</span>
+                <span className="text-lg font-black text-green-600">₱{Number(toggleSuccess?.data?.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <AlertModal
+        open={!!alert}
+        onClose={() => setAlert(null)}
+        title={
+          alert?.type === 'success' ? 'Success' :
+          alert?.type === 'error' ? 'Error' :
+          alert?.type === 'warning' ? 'Warning' : 'Information'
+        }
+        message={alert?.message}
+        type={alert?.type}
+      />
     </div>
   )
 }

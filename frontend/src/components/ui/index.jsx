@@ -1,5 +1,8 @@
 import { X, CalendarDays, Clock, LogOut } from 'lucide-react'
 import clsx from 'clsx'
+import AlertModal from './AlertModal'
+
+export { AlertModal }
 
 // ─── PageHeader ───────────────────────────────────────────────
 export function PageHeader({ title, description, action }) {
