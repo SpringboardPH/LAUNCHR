@@ -206,12 +206,10 @@ class PayrollController extends Controller
             $halfDayDeduction = $metrics['half_days'] * ($dailyRate / 2);
 
             // Gov't mandatory contributions — applied every cutoff
-            // For daily rate employees, use undeclared_salary as the basis for SSS/PhilHealth/PagIBIG
-            // For monthly employees, use base salary
-            $contributionBasis = $isDaily ? $undeclaredSalary : $baseSalary;
-            $sss = \App\Services\PayrollService::calculateSSS($contributionBasis);
-            $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis);
-            $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis);
+            // (HR deducts these on every payslip, not just end-of-month)
+            $sss = \App\Services\PayrollService::calculateSSS($baseSalary);
+            $philhealth = \App\Services\PayrollService::calculatePhilHealth($baseSalary);
+            $pagibig = \App\Services\PayrollService::calculatePagIBIG($baseSalary);
 
             // ── Totals ────────────────────────────────────────────────────
             $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
