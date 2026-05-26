@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { 
   getPayrolls, generatePayroll, updatePayroll, payrollKeys, 
-  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation
+  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
@@ -32,6 +32,11 @@ export default function PayrollPage() {
   const { data: sysClock } = useQuery({
     queryKey: systemClockKeys.all,
     queryFn: getSystemClock,
+  })
+
+  const { data: adminSettings = {} } = useQuery({
+    queryKey: ['adminSettings'],
+    queryFn: getAdminSettings,
   })
 
   useEffect(() => {
@@ -631,10 +636,68 @@ export default function PayrollPage() {
     return item ? Number(item.amount) : 0
   }
   
-  const sssER = getEEContrib('SSS EE Contribution')
-  const phicER = getEEContrib('PhilHealth EE Contribution')
-  const hdmfER = getEEContrib('Pag-IBIG EE Contribution')
-  const totalER = sssER + phicER + hdmfER
+  const calculateERContributions = () => {
+    if (!selectedPayroll) return { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
+    
+    // Get contribution basis: undeclared for daily rate, base_salary for monthly
+    const isDaily = selectedPayroll.employee?.rate_type === 'daily'
+    const contributionBasis = isDaily 
+      ? Number(selectedPayroll.undeclared_salary || selectedPayroll.base_salary) 
+      : Number(selectedPayroll.base_salary)
+    
+    // Calculate SSS ER from contribution table
+    let sssER = 0
+    if (adminSettings && Array.isArray(adminSettings)) {
+      const sssSetting = adminSettings.find(s => s.key === 'sss_contribution_table')
+      
+      if (sssSetting && sssSetting.value) {
+        let sssTable = sssSetting.value
+        
+        // Handle double-encoded JSON (parse multiple times if needed)
+        let parseAttempts = 0
+        while (typeof sssTable === 'string' && parseAttempts < 3) {
+          try {
+            sssTable = JSON.parse(sssTable)
+            parseAttempts++
+          } catch (e) {
+            console.error('Failed to parse SSS table:', e)
+            break
+          }
+        }
+        
+        // Ensure it's an array
+        if (Array.isArray(sssTable) && sssTable.length > 0) {
+          const bracket = sssTable.find(b => 
+            contributionBasis >= b.min && (b.max === null || contributionBasis <= b.max)
+          )
+          sssER = bracket ? (bracket.er || 0) / 2 : 0
+        }
+      }
+    }
+    
+    // Calculate PhilHealth ER: 5% total, 2.5% ER share
+    let phicER = 0
+    if (contributionBasis < 10000) {
+      phicER = (500 * 0.5) / 2
+    } else if (contributionBasis > 100000) {
+      phicER = (5000 * 0.5) / 2
+    } else {
+      phicER = ((contributionBasis * 0.05) * 0.5) / 2
+    }
+    
+    // Calculate Pag-IBIG ER: 2% capped at 10k salary
+    const pagibigBase = Math.min(contributionBasis, 10000)
+    const hdmfER = (pagibigBase * 0.02) / 2
+    
+    return {
+      sssER: Number(sssER.toFixed(2)),
+      phicER: Number(phicER.toFixed(2)),
+      hdmfER: Number(hdmfER.toFixed(2)),
+      totalER: Number((sssER + phicER + hdmfER).toFixed(2))
+    }
+  }
+  
+  const { sssER, phicER, hdmfER, totalER } = calculateERContributions()
 
   const totals = useMemo(() => {
     return payrolls.reduce((acc, p) => ({
@@ -888,7 +951,7 @@ export default function PayrollPage() {
                     <Plus size={12} /> Edit Fields
                   </button>
                 )}
-                {!isEditing && selectedPayroll.undeclared_salary && selectedPayroll.status === 'draft' && (
+                {!isEditing && selectedPayroll.undeclared_salary && selectedPayroll.status === 'draft' && selectedPayroll.employee?.rate_type !== 'daily' && (
                   <button 
                     onClick={() => setShowToggleConfirm(true)}
                     className="text-blue-600 text-xs font-bold hover:underline"
