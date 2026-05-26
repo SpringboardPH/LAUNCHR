@@ -186,10 +186,13 @@ class PayrollController extends Controller
 
             // ── Allowances / Premiums ─────────────────────────────────────
             $undeclaredSalary = (float) $employee->undeclared_salary;
+            
+            // For daily rate: undeclared_salary is THE compensation, no allowance
+            // For monthly rate: undeclared_salary creates an allowance on top
             $undeclaredDiff = $undeclaredSalary > $baseSalary ? $undeclaredSalary - $baseSalary : 0;
             
             $undeclaredAllowance = $isDaily
-                ? $undeclaredDiff * $daysWorkedCount
+                ? 0  // Daily rate: undeclared is not an allowance, it's the base rate
                 : $undeclaredDiff / 2;
 
             // OT Pay:          daily_rate * 1.25 / 8 * OT hours
@@ -207,9 +210,11 @@ class PayrollController extends Controller
 
             // Gov't mandatory contributions — applied every cutoff
             // (HR deducts these on every payslip, not just end-of-month)
-            $sss = \App\Services\PayrollService::calculateSSS($baseSalary);
-            $philhealth = \App\Services\PayrollService::calculatePhilHealth($baseSalary);
-            $pagibig = \App\Services\PayrollService::calculatePagIBIG($baseSalary);
+            // Daily rate: contributions based on undeclared_salary; Monthly: based on base_salary
+            $contributionBasis = $isDaily ? $undeclaredSalary : $baseSalary;
+            $sss = \App\Services\PayrollService::calculateSSS($contributionBasis);
+            $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis);
+            $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis);
 
             // ── Totals ────────────────────────────────────────────────────
             $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
