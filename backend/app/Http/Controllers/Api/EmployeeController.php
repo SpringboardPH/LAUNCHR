@@ -252,8 +252,10 @@ class EmployeeController extends Controller
                 ->where('status', 'active')
                 ->update(['status' => 'archived']);
 
-            // Delete any payrolls for this employee
-            Payroll::where('employee_id', $employee->id)->delete();
+            // Archive payrolls instead of deleting for audit trail
+            Payroll::where('employee_id', $employee->id)
+                ->whereNotIn('status', ['archived', 'paid'])
+                ->update(['status' => 'archived']);
 
             $employee->update(['status' => 'inactive']);
             $employee->delete(); // soft delete employee
@@ -278,8 +280,10 @@ class EmployeeController extends Controller
         $employee = Employee::withTrashed()->findOrFail($id);
 
         DB::transaction(function () use ($employee) {
-            // Hard delete any payrolls for this employee
-            Payroll::withTrashed()->where('employee_id', $employee->id)->forceDelete();
+            // Archive all payrolls when employee is permanently deleted (keep for audit)
+            Payroll::withTrashed()->where('employee_id', $employee->id)
+                ->where('status', '!=', 'paid')
+                ->update(['status' => 'archived']);
 
             if ($employee->user_id) {
                 $user = User::withTrashed()->find($employee->user_id);
@@ -303,6 +307,12 @@ class EmployeeController extends Controller
         DB::transaction(function () use ($employee) {
             $employee->restore();
             $employee->update(['status' => 'active']);
+
+            // Restore archived payrolls (except paid ones stay archived)
+            Payroll::where('employee_id', $employee->id)
+                ->where('status', 'archived')
+                ->where('paid_at', null)
+                ->update(['status' => 'draft']);
 
             if ($employee->user_id) {
                 $user = User::withTrashed()->find($employee->user_id);

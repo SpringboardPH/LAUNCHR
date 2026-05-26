@@ -20,7 +20,8 @@ class PayrollController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Payroll::with('employee');
+        $query = Payroll::with('employee')
+            ->where('status', '!=', 'archived');
 
         if ($request->has('cutoff_start') && $request->has('cutoff_end')) {
             $query->where('cutoff_start', $request->cutoff_start)
