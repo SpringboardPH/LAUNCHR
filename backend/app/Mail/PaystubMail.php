@@ -25,7 +25,7 @@ class PaystubMail extends Mailable
         $period = $this->payroll->cutoff_start->format('M d') . ' - ' . $this->payroll->cutoff_end->format('M d, Y');
         
         return new Envelope(
-            subject: "Your Paystub - {$period} - Springboard HR",
+            subject: "Your Paystub - {$period} - Synctalents HR",
         );
     }
 

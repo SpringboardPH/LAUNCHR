@@ -72,10 +72,7 @@ export default function AppLayout() {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200">
-          <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
-            <span className="text-white text-xs font-bold">HR</span>
-          </div>
-          <span className="font-semibold text-gray-900 text-sm">Springboard Philippines</span>
+          <span className="font-semibold text-gray-900 text-sm">Synctalents International</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
           </button>
@@ -202,7 +199,7 @@ export default function AppLayout() {
           <button onClick={() => setOpen(true)}>
             <Menu size={20} className="text-gray-600" />
           </button>
-          <span className="font-semibold text-sm text-gray-900">Springboard Philippines</span>
+          <span className="font-semibold text-sm text-gray-900">Synctalents International</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">

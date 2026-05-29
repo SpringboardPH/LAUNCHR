@@ -2,7 +2,7 @@
   <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
     <!-- Header -->
     <div style="text-align: center; margin-bottom: 32px;">
-      <img src="{{ $message->embed(public_path('springboard-logo.svg')) }}" alt="Springboard Philippines" style="height: 64px; margin-bottom: 12px;">
+      <img src="{{ $message->embed(public_path('synctalents.png')) }}" alt="Synctalents International" style="height: 64px; margin-bottom: 12px;">
     </div>
 
     <!-- Content -->

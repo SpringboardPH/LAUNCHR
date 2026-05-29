@@ -20,7 +20,7 @@ class OtpMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your OTP Code - Springboard HR',
+            subject: 'Your OTP Code - Synctalents HR',
         );
     }
 

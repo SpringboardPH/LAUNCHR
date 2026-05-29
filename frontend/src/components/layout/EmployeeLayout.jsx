@@ -40,7 +40,7 @@ export default function EmployeeLayout() {
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
             <span className="text-white text-xs font-bold">HR</span>
           </div>
-          <span className="font-semibold text-gray-900 text-sm">Springboard Philippines</span>
+          <span className="font-semibold text-gray-900 text-sm">Synctalents International</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
           </button>
