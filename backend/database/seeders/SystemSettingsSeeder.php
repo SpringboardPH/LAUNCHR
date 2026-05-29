@@ -76,6 +76,12 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Time when the system automatically marks employees as absent (HH:MM)',
                 'type' => 'string',
             ],
+            [
+                'key' => 'theme_color',
+                'value' => 'green',
+                'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
+                'type' => 'string',
+            ],
         ];
 
         foreach ($settings as $setting) {

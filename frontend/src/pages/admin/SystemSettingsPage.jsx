@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap } from 'lucide-react'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys } from '../../api/queries'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -13,12 +13,21 @@ const normalizeTimeValue = (timeValue) => {
   return timeValue.length === 5 ? `${timeValue}:00` : timeValue
 }
 
+const themePresets = [
+  { id: 'green', name: 'Emerald Green', colorClass: 'bg-emerald-600' },
+  { id: 'blue', name: 'Ocean Blue', colorClass: 'bg-blue-600' },
+  { id: 'purple', name: 'Royal Purple', colorClass: 'bg-purple-600' },
+  { id: 'indigo', name: 'Indigo Dream', colorClass: 'bg-indigo-600' },
+  { id: 'rose', name: 'Rose Petal', colorClass: 'bg-rose-600' },
+]
+
 export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
   const [absentMarkingTime, setAbsentMarkingTime] = useState('23:59')
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [sssTable, setSssTable] = useState('')
+  const [themeColor, setThemeColor] = useState('green')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
   const { data: settings = [], isLoading } = useQuery({
@@ -50,16 +59,20 @@ export default function SystemSettingsPage() {
       if (sssSetting) {
         setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
       }
+
+      const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'green'
+      setThemeColor(themeSetting)
     }
   }, [settings])
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable }) => {
+    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
       await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
       await updateAdminSetting('absent_marking_time', absentMarkingTime, 'Time when the system automatically marks employees as absent', 'string')
+      await updateAdminSetting('theme_color', themeColor, 'System theme color preset', 'string')
       
       if (sssTable) {
         try {
@@ -80,12 +93,14 @@ export default function SystemSettingsPage() {
         qc.invalidateQueries({ queryKey: attendanceKeys.all }),
         qc.invalidateQueries({ queryKey: leaveKeys.all }),
         qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.all }),
+        qc.invalidateQueries({ queryKey: themeColorKeys.all }),
       ])
       await Promise.all([
         qc.refetchQueries({ queryKey: systemClockKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: attendanceKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: leaveKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: employeeLeaveBalanceKeys.all, type: 'active' }),
+        qc.refetchQueries({ queryKey: themeColorKeys.all, type: 'active' }),
       ])
     }
   })
@@ -96,7 +111,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor })
     })
   }
 
@@ -125,6 +140,9 @@ export default function SystemSettingsPage() {
         if (sssSetting) {
           setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
         }
+
+        const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'green'
+        setThemeColor(themeSetting)
       }
     })
   }
@@ -143,7 +161,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime })
+        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor })
       }
     })
   }
@@ -205,6 +223,46 @@ export default function SystemSettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <Palette size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Visual Theme Configuration</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Customize the main system color theme across the application.</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {themePresets.map((preset) => {
+                const isSelected = themeColor === preset.id
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setThemeColor(preset.id)}
+                    className={`flex flex-col items-center gap-3 p-4 rounded-xl border transition-all ${
+                      isSelected
+                        ? 'border-brand-500 bg-brand-50/20 ring-2 ring-brand-500/20'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-full ${preset.colorClass} shadow-inner flex items-center justify-center`}>
+                      {isSelected && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-gray-700">{preset.name}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>

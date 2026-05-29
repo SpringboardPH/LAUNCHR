@@ -176,6 +176,12 @@ class AdminSettingsController extends Controller
                 'description' => 'Whether leave date ranges count Saturdays and Sundays',
                 'type' => 'boolean',
             ],
+            [
+                'key' => 'theme_color',
+                'value' => 'green',
+                'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
+                'type' => 'string',
+            ],
         ];
 
         foreach ($defaults as $default) {
@@ -190,6 +196,19 @@ class AdminSettingsController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Default settings initialized',
+        ]);
+    }
+
+    public function getThemeColor()
+    {
+        $themeColor = SystemSettings::get('theme_color', 'green');
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'theme_color' => $themeColor,
+            ],
+            'message' => 'System theme color retrieved',
         ]);
     }
 }

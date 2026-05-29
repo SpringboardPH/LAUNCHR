@@ -741,9 +741,9 @@ export default function PayrollPage() {
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Employees</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{totals.count}</p>
         </div>
-        <div className="card p-4 flex flex-col justify-between border-l-4 border-brand-500">
+        <div className="card p-4 flex flex-col justify-between border-l-4 border-green-500">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Gross Pay</p>
-          <p className="text-2xl font-bold text-brand-600 mt-1">₱{totals.gross.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-green-600 mt-1">₱{totals.gross.toLocaleString()}</p>
         </div>
         <div className="card p-4 flex flex-col justify-between border-l-4 border-green-500">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Net Pay</p>
@@ -826,7 +826,7 @@ export default function PayrollPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3 font-semibold text-gray-900">₱{Number(p.gross_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                    <td className="px-5 py-3 font-bold text-brand-600">₱{Number(p.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                    <td className="px-5 py-3 font-bold text-green-600">₱{Number(p.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td className="px-5 py-3">
                       <StatusBadge status={p.status} />
                     </td>
@@ -834,7 +834,7 @@ export default function PayrollPage() {
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => setSelectedPayroll(p)}
-                          className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors"
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
                           title="View Details"
                         >
                           <FileDown size={16} />
@@ -876,10 +876,10 @@ export default function PayrollPage() {
         }
         footer={selectedPayroll && (
           <div className="flex flex-col w-full gap-4">
-            <div className="flex justify-between items-center bg-brand-50 p-4 rounded-xl border border-brand-100">
+            <div className="flex justify-between items-center bg-green-50 p-4 rounded-xl border border-green-100">
               <div>
-                <p className="text-[10px] text-brand-500 uppercase font-bold tracking-widest">Net Disbursement</p>
-                <p className="text-2xl font-black text-brand-700">
+                <p className="text-[10px] text-green-500 uppercase font-bold tracking-widest">Net Disbursement</p>
+                <p className="text-2xl font-black text-green-700">
                   ₱{(isEditing ? editForm.net_pay : selectedPayroll.net_pay).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </p>
               </div>
