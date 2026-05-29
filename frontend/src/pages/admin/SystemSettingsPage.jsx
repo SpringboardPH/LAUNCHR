@@ -78,7 +78,7 @@ export default function SystemSettingsPage() {
         try {
           // Validate JSON before sending
           const parsed = JSON.parse(sssTable)
-          await updateAdminSetting('sss_contribution_table', JSON.stringify(parsed), 'SSS Employee Contribution Table', 'json')
+          await updateAdminSetting('sss_contribution_table', parsed, 'SSS Employee Contribution Table', 'json')
         } catch (e) {
           console.error("Invalid SSS JSON", e)
         }

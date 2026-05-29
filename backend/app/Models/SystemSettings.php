@@ -17,12 +17,17 @@ class SystemSettings extends Model
             return $default;
         }
         
-        return match ($setting->type) {
-            'boolean' => $setting->value === 'true' || $setting->value === '1',
-            'integer' => (int) $setting->value,
-            'decimal' => (float) $setting->value,
-            'array', 'json' => json_decode($setting->value, true),
-            default => $setting->value,
+        return $setting->value;
+    }
+
+    public function getValueAttribute($value)
+    {
+        return match ($this->type) {
+            'boolean' => $value === 'true' || $value === '1' || $value === true,
+            'integer' => (int) $value,
+            'decimal' => (float) $value,
+            'array', 'json' => is_string($value) ? json_decode($value, true) : $value,
+            default => $value,
         };
     }
 
@@ -33,7 +38,9 @@ class SystemSettings extends Model
         if ($type === 'boolean') {
             $value = $value ? 'true' : 'false';
         } elseif ($type === 'array' || $type === 'json') {
-            $value = json_encode($value);
+            if (!is_string($value)) {
+                $value = json_encode($value);
+            }
         }
 
         if ($setting) {
