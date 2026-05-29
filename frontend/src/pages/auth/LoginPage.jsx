@@ -93,7 +93,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/synctalents.png" alt="Synctalents International" className="h-16 mb-3" />
+          <img src="/synctalents.png" alt="Synctalents International" className="h-20 mb-3" />
         </div>
 
         <div className="card p-6">
