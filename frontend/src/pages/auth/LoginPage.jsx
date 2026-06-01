@@ -24,9 +24,39 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [step, setStep] = useState('credentials') // 'credentials' or 'otp'
 
+  // Initialize state from sessionStorage on mount
+  useEffect(() => {
+    const savedStep = sessionStorage.getItem('login_step')
+    const savedUserId = sessionStorage.getItem('login_user_id')
+    const savedEmail = sessionStorage.getItem('login_email')
+    
+    if (savedStep === 'otp' && savedUserId && savedEmail) {
+      setStep('otp')
+      setUserId(savedUserId)
+      setEmail(savedEmail)
+    }
+  }, [])
+
+  // Persist step and userId to sessionStorage when they change
+  useEffect(() => {
+    if (step === 'otp' && userId && email) {
+      sessionStorage.setItem('login_step', 'otp')
+      sessionStorage.setItem('login_user_id', userId)
+      sessionStorage.setItem('login_email', email)
+    } else {
+      sessionStorage.removeItem('login_step')
+      sessionStorage.removeItem('login_user_id')
+      sessionStorage.removeItem('login_email')
+    }
+  }, [step, userId, email])
+
   // Redirect if already logged in (only after loading completes)
   useEffect(() => {
     if (!loading && user) {
+      // Clear login session storage on successful redirect
+      sessionStorage.removeItem('login_step')
+      sessionStorage.removeItem('login_user_id')
+      sessionStorage.removeItem('login_email')
       navigate('/', { replace: true })
     }
   }, [user, loading, navigate])
@@ -65,6 +95,11 @@ export default function LoginPage() {
       })
       
       if (response.data.success) {
+        // Clear login session storage on successful OTP verification
+        sessionStorage.removeItem('login_step')
+        sessionStorage.removeItem('login_user_id')
+        sessionStorage.removeItem('login_email')
+        
         const token = response.data.data.token
         // Store token in localStorage with the same key as AuthContext expects
         localStorage.setItem('hr_token', token)
@@ -190,6 +225,9 @@ export default function LoginPage() {
                       setStep('credentials')
                       setError('')
                       setOtp('')
+                      sessionStorage.removeItem('login_step')
+                      sessionStorage.removeItem('login_user_id')
+                      sessionStorage.removeItem('login_email')
                     }}
                     disabled={submitting}
                     className="btn-secondary w-full justify-center"
