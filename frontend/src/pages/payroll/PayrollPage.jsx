@@ -450,6 +450,30 @@ export default function PayrollPage() {
   }
 
   const finalizedPaystubs = payrolls.filter(p => p.status === 'finalized')
+  const exportablePayrolls = payrolls.filter(p => p.status === 'finalized' || p.status === 'paid')
+
+  const handleBatchExportCsv = () => {
+    if (exportablePayrolls.length === 0) return
+
+    const headers = ['Account Name', 'Bank Account Number', 'Amount', 'Remarks']
+    const rows = exportablePayrolls.map(p => [
+      `"${((p.employee?.first_name || '') + ' ' + (p.employee?.last_name || '')).trim()}"`,
+      `"${p.employee?.bank_account_number || ''}"`,
+      p.net_pay,
+      `"Payroll"`
+    ])
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", `${currentCutoff.label.replace(/ /g, '_')}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const exportPayrollToExcel = async (payroll) => {
     try {
@@ -764,6 +788,14 @@ export default function PayrollPage() {
               className="btn-primary py-2 text-xs"
             >
               {generateMutation.isPending ? <Spinner size="sm" /> : <><Plus size={14} /> Generate for Period</>}
+            </button>
+            <button 
+              disabled={exportablePayrolls.length === 0}
+              onClick={handleBatchExportCsv}
+              className="btn-primary py-2 text-xs bg-green-600 hover:bg-green-700 border-green-600"
+              title={exportablePayrolls.length === 0 ? 'No finalized or paid payrolls to export' : ''}
+            >
+              <Download size={14} /> Batch Export CSV
             </button>
             <button 
               disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
