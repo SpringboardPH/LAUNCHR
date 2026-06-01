@@ -1,5 +1,7 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
+import { useQuery } from '@tanstack/react-query'
+import { getSystemConfig, systemConfigKeys } from '../../api/queries'
 import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff, User, CalendarRange } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
@@ -17,6 +19,12 @@ export default function EmployeeLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+
+  const { data: systemConfig } = useQuery({
+    queryKey: systemConfigKeys.all,
+    queryFn: getSystemConfig,
+    staleTime: Infinity,
+  })
 
   const handleLogout = async () => {
     await logout()
@@ -40,7 +48,7 @@ export default function EmployeeLayout() {
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
             <span className="text-white text-xs font-bold">HR</span>
           </div>
-          <span className="font-semibold text-gray-900 text-sm">Synctalents International</span>
+          <span className="font-semibold text-gray-900 text-sm">{systemConfig?.system_name || 'HR System'}</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
           </button>
@@ -95,7 +103,7 @@ export default function EmployeeLayout() {
           <button onClick={() => setOpen(true)}>
             <Menu size={20} className="text-gray-600" />
           </button>
-          <span className="font-semibold text-sm text-gray-900">HR System</span>
+          <span className="font-semibold text-sm text-gray-900">{systemConfig?.system_name || 'HR System'}</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">

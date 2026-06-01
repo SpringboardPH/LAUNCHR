@@ -204,6 +204,10 @@ export const themeColorKeys = {
   all: ['theme-color'],
 }
 
+export const systemConfigKeys = {
+  all: ['system-config'],
+}
+
 export const getSystemClock = () =>
   api.get('/system-clock').then(r => r.data.data)
 
@@ -212,6 +216,9 @@ export const getAdminSettings = () =>
 
 export const getThemeColor = () =>
   api.get('/theme-color').then(r => r.data.data)
+
+export const getSystemConfig = () =>
+  api.get('/system-config').then(r => r.data.data)
 
 export const updateAdminSetting = (key, value, description, type = 'string') =>
   api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)

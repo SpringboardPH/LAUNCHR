@@ -82,6 +82,12 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
                 'type' => 'string',
             ],
+            [
+                'key' => 'system_name',
+                'value' => 'Synctalents International',
+                'description' => 'The name of the system displayed in the sidebar',
+                'type' => 'string',
+            ],
         ];
 
         foreach ($settings as $setting) {

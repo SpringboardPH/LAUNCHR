@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
-import { getDashboard, dashboardKeys } from '../../api/queries'
+import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
   Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText
@@ -44,6 +44,12 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
 
+  const { data: systemConfig } = useQuery({
+    queryKey: systemConfigKeys.all,
+    queryFn: getSystemConfig,
+    staleTime: Infinity,
+  })
+
   const { data: dashboardData } = useQuery({
     queryKey: dashboardKeys.all,
     queryFn: () => getDashboard(),
@@ -72,7 +78,7 @@ export default function AppLayout() {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200">
-          <span className="font-semibold text-gray-900 text-sm">Synctalents International</span>
+          <span className="font-semibold text-gray-900 text-sm">{systemConfig?.system_name || 'HR System'}</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
           </button>
@@ -199,7 +205,7 @@ export default function AppLayout() {
           <button onClick={() => setOpen(true)}>
             <Menu size={20} className="text-gray-600" />
           </button>
-          <span className="font-semibold text-sm text-gray-900">Synctalents International</span>
+          <span className="font-semibold text-sm text-gray-900">{systemConfig?.system_name || 'HR System'}</span>
         </header>
 
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">

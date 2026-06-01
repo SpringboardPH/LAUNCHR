@@ -182,6 +182,12 @@ class AdminSettingsController extends Controller
                 'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
                 'type' => 'string',
             ],
+            [
+                'key' => 'system_name',
+                'value' => 'Synctalents International',
+                'description' => 'The name of the system displayed in the sidebar',
+                'type' => 'string',
+            ],
         ];
 
         foreach ($defaults as $default) {
@@ -196,6 +202,18 @@ class AdminSettingsController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Default settings initialized',
+        ]);
+    }
+
+    public function getSystemConfig()
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'theme_color' => SystemSettings::get('theme_color', 'green'),
+                'system_name' => SystemSettings::get('system_name', 'Synctalents International'),
+            ],
+            'message' => 'System configuration retrieved',
         ]);
     }
 

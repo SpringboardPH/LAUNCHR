@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap, Palette } from 'lucide-react'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -25,6 +25,7 @@ export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
   const [absentMarkingTime, setAbsentMarkingTime] = useState('23:59')
+  const [systemName, setSystemName] = useState('Synctalents International')
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [sssTable, setSssTable] = useState('')
   const [themeColor, setThemeColor] = useState('green')
@@ -48,6 +49,9 @@ export default function SystemSettingsPage() {
       const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
       setAbsentMarkingTime(markingTime.substring(0, 5))
 
+      const nameSetting = settings.find(s => s.key === 'system_name')?.value || 'Synctalents International'
+      setSystemName(nameSetting)
+
       const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')
       if (autoClockOutSetting) {
         setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
@@ -66,13 +70,14 @@ export default function SystemSettingsPage() {
   }, [settings])
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor }) => {
+    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
       await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
       await updateAdminSetting('absent_marking_time', absentMarkingTime, 'Time when the system automatically marks employees as absent', 'string')
       await updateAdminSetting('theme_color', themeColor, 'System theme color preset', 'string')
+      await updateAdminSetting('system_name', systemName, 'The name of the system displayed in the sidebar', 'string')
       
       if (sssTable) {
         try {
@@ -94,6 +99,7 @@ export default function SystemSettingsPage() {
         qc.invalidateQueries({ queryKey: leaveKeys.all }),
         qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.all }),
         qc.invalidateQueries({ queryKey: themeColorKeys.all }),
+        qc.invalidateQueries({ queryKey: systemConfigKeys.all }),
       ])
       await Promise.all([
         qc.refetchQueries({ queryKey: systemClockKeys.all, type: 'active' }),
@@ -101,6 +107,7 @@ export default function SystemSettingsPage() {
         qc.refetchQueries({ queryKey: leaveKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: employeeLeaveBalanceKeys.all, type: 'active' }),
         qc.refetchQueries({ queryKey: themeColorKeys.all, type: 'active' }),
+        qc.refetchQueries({ queryKey: systemConfigKeys.all, type: 'active' }),
       ])
     }
   })
@@ -111,7 +118,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName })
     })
   }
 
@@ -132,6 +139,9 @@ export default function SystemSettingsPage() {
         
         const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
         setAbsentMarkingTime(markingTime.substring(0, 5))
+
+        const nameSetting = settings.find(s => s.key === 'system_name')?.value || 'Synctalents International'
+        setSystemName(nameSetting)
 
         const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
         setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
@@ -161,7 +171,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor })
+        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName })
       }
     })
   }
@@ -191,6 +201,32 @@ export default function SystemSettingsPage() {
       />
 
       <div className="space-y-6">
+        <div className="card overflow-hidden">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <Monitor size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">General Configuration</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Customize the basic identity and appearance of your system.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <FormField label="System Display Name" required description="This name appears in the sidebar and top navigation bar for all users.">
+              <input
+                type="text"
+                value={systemName}
+                onChange={(e) => setSystemName(e.target.value)}
+                className="input h-11"
+                placeholder="Enter system name (e.g., Synctalents International)"
+              />
+            </FormField>
+          </div>
+        </div>
+
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Attendance Automation</h2>
           <div className="space-y-4">

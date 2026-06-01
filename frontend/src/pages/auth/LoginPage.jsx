@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { getSystemConfig, systemConfigKeys } from '../../api/queries'
 import { Spinner } from '../../components/ui/index.jsx'
 import { Eye, EyeOff } from 'lucide-react'
 import axios from 'axios'
@@ -8,6 +10,12 @@ import axios from 'axios'
 export default function LoginPage() {
   const { login, user, loading } = useAuth()
   const navigate = useNavigate()
+
+  const { data: systemConfig } = useQuery({
+    queryKey: systemConfigKeys.all,
+    queryFn: getSystemConfig,
+    staleTime: Infinity,
+  })
   
   // Step 1: Credentials
   const [email, setEmail] = useState('')
@@ -128,7 +136,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/synctalents.png" alt="Synctalents International" className="h-20 mb-3" />
+          <img src="/synctalents.png" alt={systemConfig?.system_name || 'System Logo'} className="h-20 mb-3" />
         </div>
 
         <div className="card p-6">
@@ -139,7 +147,7 @@ export default function LoginPage() {
                 <div>
                   <label className="label">Email address</label>
                   <input
-                    type="email" className="input" placeholder="user@synctalents.com"
+                    type="email" className="input" placeholder="user@example.com"
                     value={email} onChange={e => setEmail(e.target.value)} required
                   />
                 </div>

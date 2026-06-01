@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './store/AuthContext'
-import { themeColorKeys, getThemeColor } from './api/queries'
+import { systemConfigKeys, getSystemConfig } from './api/queries'
 import { applyTheme } from './utils/theme'
 import AppLayout from './components/layout/AppLayout'
 import EmployeeLayout from './components/layout/EmployeeLayout'
@@ -105,8 +105,8 @@ function LayoutSelector() {
 
 export default function App() {
   const { data } = useQuery({
-    queryKey: themeColorKeys.all,
-    queryFn: getThemeColor,
+    queryKey: systemConfigKeys.all,
+    queryFn: getSystemConfig,
     staleTime: Infinity,
   })
 
