@@ -458,10 +458,12 @@ export default function PayrollPage() {
     const headers = ['Account Name', 'Bank Account Number', 'Amount', 'Remarks']
     const rows = exportablePayrolls.map(p => [
       `"${((p.employee?.first_name || '') + ' ' + (p.employee?.last_name || '')).trim()}"`,
-      `"${p.employee?.bank_account_number || ''}"`,
+      p.employee?.bank_account_number ? `\t${p.employee.bank_account_number.toString().split('.')[0]}` : '',
       p.net_pay,
       `"Payroll"`
     ])
+
+
 
     const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
