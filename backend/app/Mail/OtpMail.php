@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use App\Models\SystemSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -20,7 +21,7 @@ class OtpMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your OTP Code - Synctalents HR',
+            subject: 'Your OTP Code - ' . SystemSettings::get('system_name', 'LAUNCHR'),
         );
     }
 
@@ -31,6 +32,7 @@ class OtpMail extends Mailable
             with: [
                 'user' => $this->user,
                 'code' => $this->code,
+                'logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
             ],
         );
     }

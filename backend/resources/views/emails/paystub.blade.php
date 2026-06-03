@@ -9,7 +9,7 @@
 
             <!-- Header -->
             <div style="text-align: center; margin-bottom: 32px;">
-                <img src="{{ $message->embed(public_path('synctalents.png')) }}" alt="SyncTalents" style="height: 64px; margin-bottom: 12px;">
+                <img src="{{ $message->embed(public_path($logo)) }}" alt="{{ App\Models\SystemSettings::get('system_name', 'LAUNCHR') }}" style="height: 64px; margin-bottom: 12px;">
             </div>
 
             <!-- Content -->

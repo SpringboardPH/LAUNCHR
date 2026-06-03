@@ -110,11 +110,16 @@ export default function App() {
     staleTime: Infinity,
   })
 
-  const themeColor = data?.theme_color || 'green'
+  const themeColor = data?.theme_color || 'sienna'
+  const systemName = data?.system_name || 'LAUNCHR'
 
   useEffect(() => {
     applyTheme(themeColor)
   }, [themeColor])
+
+  useEffect(() => {
+    document.title = `LAUNCHR - ${systemName}`
+  }, [systemName])
 
   return (
     <AuthProvider>

@@ -46,7 +46,7 @@ class AdminSettingsController extends Controller
         ]);
     }
 
-    public function show($key)
+    public function show(string $key)
     {
         $setting = SystemSettings::where('key', $key)->first();
         
@@ -63,7 +63,7 @@ class AdminSettingsController extends Controller
         ]);
     }
 
-    public function update(Request $request, $key)
+    public function update(Request $request, string $key)
     {
         $request->validate([
             'value' => 'required',
@@ -171,6 +171,12 @@ class AdminSettingsController extends Controller
                 'type' => 'integer',
             ],
             [
+                'key' => 'absent_marking_time',
+                'value' => '00:00',
+                'description' => 'Time when the system automatically marks employees as absent (HH:MM)',
+                'type' => 'string',
+            ],
+            [
                 'key' => 'leave_include_weekends',
                 'value' => 'false',
                 'description' => 'Whether leave date ranges count Saturdays and Sundays',
@@ -178,14 +184,20 @@ class AdminSettingsController extends Controller
             ],
             [
                 'key' => 'theme_color',
-                'value' => 'green',
-                'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
+                'value' => 'sienna',
+                'description' => 'System theme color preset (green, blue, purple, sienna, rose)',
                 'type' => 'string',
             ],
             [
                 'key' => 'system_name',
-                'value' => 'Synctalents International',
+                'value' => 'LAUNCHR',
                 'description' => 'The name of the system displayed in the sidebar',
+                'type' => 'string',
+            ],
+            [
+                'key' => 'system_logo',
+                'value' => 'launchr_black.svg',
+                'description' => 'The logo used by the system',
                 'type' => 'string',
             ],
         ];
@@ -205,13 +217,58 @@ class AdminSettingsController extends Controller
         ]);
     }
 
+    public function uploadLogo(Request $request)
+    {
+        $request->validate([
+            'logo' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+        ]);
+
+        if ($request->hasFile('logo')) {
+            $image = $request->file('logo');
+            $name = 'system_logo_' . time() . '.' . $image->getClientOriginalExtension();
+            $destinationPath = public_path('/');
+            $image->move($destinationPath, $name);
+
+            SystemSettings::set('system_logo', $name, 'The logo used by the system', 'string');
+
+            return response()->json([
+                'success' => true,
+                'data' => $name,
+                'message' => 'Logo uploaded successfully',
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'No logo file provided',
+        ], 400);
+    }
+
+    public function listLogos()
+    {
+        $directory = public_path('/');
+        $files = scandir($directory);
+        
+        $logos = array_filter($files, function($file) {
+            return str_starts_with($file, 'system_logo_') || 
+                   in_array($file, ['launchr_black.svg', 'launchr_logo.svg', 'launchr_white.svg', 'synctalents.png', 'sblogo.svg', 'stlogo.svg', 'springboard-logo.svg']);
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => array_values($logos),
+            'message' => 'Available logos retrieved',
+        ]);
+    }
+
     public function getSystemConfig()
     {
         return response()->json([
             'success' => true,
             'data' => [
-                'theme_color' => SystemSettings::get('theme_color', 'green'),
-                'system_name' => SystemSettings::get('system_name', 'Synctalents International'),
+                'theme_color' => SystemSettings::get('theme_color', 'sienna'),
+                'system_name' => SystemSettings::get('system_name', 'LAUNCHR'),
+                'system_logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
             ],
             'message' => 'System configuration retrieved',
         ]);
@@ -219,7 +276,7 @@ class AdminSettingsController extends Controller
 
     public function getThemeColor()
     {
-        $themeColor = SystemSettings::get('theme_color', 'green');
+        $themeColor = SystemSettings::get('theme_color', 'sienna');
         
         return response()->json([
             'success' => true,

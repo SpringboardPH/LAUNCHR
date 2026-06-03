@@ -223,6 +223,17 @@ export const getSystemConfig = () =>
 export const updateAdminSetting = (key, value, description, type = 'string') =>
   api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)
 
+export const uploadLogo = (file) => {
+  const formData = new FormData()
+  formData.append('logo', file)
+  return api.post('/admin/settings/logo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+export const getLogos = () =>
+  api.get('/admin/settings/logos').then(r => r.data.data)
+
 // ─── Audit Logs (Admin) ──────────────────────────────────────────
 export const auditLogKeys = {
   all: ['admin', 'audit-logs'],

@@ -104,6 +104,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/', [AdminSettingsController::class, 'index']);
             Route::get('/defaults', [AdminSettingsController::class, 'getDefaults']);
             Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
+            Route::post('/logo', [AdminSettingsController::class, 'uploadLogo']);
+            Route::get('/logos', [AdminSettingsController::class, 'listLogos']);
             Route::get('/{key}', [AdminSettingsController::class, 'show']);
             Route::put('/{key}', [AdminSettingsController::class, 'update']);
         });

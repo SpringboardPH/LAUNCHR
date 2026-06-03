@@ -18,28 +18,43 @@ class MarkAbsentEmployees extends Command
     public function handle()
     {
         $dateInput = $this->argument('date');
-        $today = $dateInput ? Carbon::parse($dateInput) : SystemClock::today();
+        
+        // If no date is provided, determine the target date.
+        // If it's very early in the morning (e.g., 00:00), we usually want to mark absences for "yesterday".
+        if ($dateInput) {
+            $targetDate = Carbon::parse($dateInput);
+        } else {
+            $now = SystemClock::now();
+            // If running before 4 AM, assume we are marking for the day that just ended.
+            if ($now->hour < 4) {
+                $targetDate = $now->copy()->subDay()->startOfDay();
+            } else {
+                $targetDate = $now->copy()->startOfDay();
+            }
+        }
+        
+        $this->info("Scanning for absences on: " . $targetDate->toDateString());
         
         $employees = Employee::where('status', 'active')->get();
 
         foreach ($employees as $employee) {
-            // Skip if an attendance log already exists for today
+            // Skip if an attendance log already exists for this date
             $exists = AttendanceLog::where('employee_id', $employee->id)
-                ->where('date', $today->toDateString())
+                ->where('date', $targetDate->toDateString())
                 ->exists();
 
             if ($exists) continue;
 
             $onLeave = LeaveRequest::where('employee_id', $employee->id)
                 ->where('status', 'approved')
-                ->where('start_date', '<=', $today->toDateString())
-                ->where('end_date', '>=', $today->toDateString())
+                ->where('start_date', '<=', $targetDate->toDateString())
+                ->where('end_date', '>=', $targetDate->toDateString())
                 ->exists();
 
             if ($onLeave) continue;
             
             // Check for holiday/event that doesn't count as absence
-            $isHoliday = \App\Models\CalendarEvent::where('event_date', $today->toDateString())
+            $isHoliday = \App\Models\CalendarEvent::where('event_date', $targetDate->toDateString())
                 ->whereHas('type', function($q) {
                     $q->where('counts_as_absence', false);
                 })->exists();
@@ -47,11 +62,11 @@ class MarkAbsentEmployees extends Command
             if ($isHoliday) continue;
 
             // Check if scheduled to work
-            $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $today);
+            $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $targetDate);
             if (!$schedule || !$schedule->template) continue;
 
             $template = $schedule->template;
-            $dayOfWeek = $today->dayOfWeek;
+            $dayOfWeek = $targetDate->dayOfWeek;
             
             $isWorkingDay = false;
             if ($template->day_rules) {
@@ -70,7 +85,7 @@ class MarkAbsentEmployees extends Command
             if ($isWorkingDay) {
                 AttendanceLog::create([
                     'employee_id' => $employee->id,
-                    'date' => $today->toDateString(),
+                    'date' => $targetDate->toDateString(),
                     'status' => 'absent',
                     'schedule_template_id' => $template->id,
                     'schedule_template_name' => $template->name,

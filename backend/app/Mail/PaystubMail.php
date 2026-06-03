@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Payroll;
+use App\Models\SystemSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
@@ -23,9 +24,10 @@ class PaystubMail extends Mailable
     {
         $employee = $this->payroll->employee;
         $period = $this->payroll->cutoff_start->format('M d') . ' - ' . $this->payroll->cutoff_end->format('M d, Y');
+        $systemName = SystemSettings::get('system_name', 'LAUNCHR');
         
         return new Envelope(
-            subject: "Your Paystub - {$period} - Synctalents HR",
+            subject: "Your Paystub - {$period} - {$systemName}",
         );
     }
 
@@ -42,6 +44,7 @@ class PaystubMail extends Mailable
                 'period' => $period,
                 'gross' => $this->payroll->gross_pay,
                 'net' => $this->payroll->net_pay,
+                'logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
             ],
         );
     }

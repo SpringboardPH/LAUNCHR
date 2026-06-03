@@ -77,21 +77,33 @@ class SystemSettingsSeeder extends Seeder
                 'type' => 'string',
             ],
             [
+                'key' => 'leave_include_weekends',
+                'value' => 'false',
+                'description' => 'Whether leave date ranges count Saturdays and Sundays',
+                'type' => 'boolean',
+            ],
+            [
                 'key' => 'theme_color',
-                'value' => 'green',
-                'description' => 'System theme color preset (green, blue, purple, indigo, rose)',
+                'value' => 'sienna',
+                'description' => 'System theme color preset (green, blue, purple, sienna, rose)',
                 'type' => 'string',
             ],
             [
                 'key' => 'system_name',
-                'value' => 'Synctalents International',
+                'value' => 'LAUNCHR',
                 'description' => 'The name of the system displayed in the sidebar',
+                'type' => 'string',
+            ],
+            [
+                'key' => 'system_logo',
+                'value' => 'launchr_black.svg',
+                'description' => 'The logo used by the system',
                 'type' => 'string',
             ],
         ];
 
         foreach ($settings as $setting) {
-            SystemSettings::firstOrCreate(
+            SystemSettings::updateOrCreate(
                 ['key' => $setting['key']],
                 [
                     'value' => $setting['value'],

@@ -131,12 +131,15 @@ export default function LoginPage() {
     )
   }
 
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+  const logoUrl = systemConfig?.system_logo ? `${apiBaseUrl}/${systemConfig.system_logo}` : `${apiBaseUrl}/launchr_black.svg`
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <img src="/synctalents.png" alt={systemConfig?.system_name || 'System Logo'} className="h-20 mb-3" />
+          <img src={logoUrl} alt={systemConfig?.system_name || 'System Logo'} className="h-20 mb-3" />
         </div>
 
         <div className="card p-6">
