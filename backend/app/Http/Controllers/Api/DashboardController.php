@@ -138,7 +138,7 @@ class DashboardController extends Controller
         
         $weeklyData = AttendanceLog::where('date', '>=', $startOfTrend->toDateString())
             ->whereNotNull('clock_in_time')
-            ->selectRaw("strftime('%Y-%W', date) as week_key, COUNT(DISTINCT employee_id) as present_count, MIN(date) as week_start")
+            ->selectRaw("DATE_FORMAT(date, '%Y-%u') as week_key, COUNT(DISTINCT employee_id) as present_count, MIN(date) as week_start")
             ->groupBy('week_key')
             ->orderBy('week_key')
             ->get()
@@ -146,7 +146,9 @@ class DashboardController extends Controller
 
         for ($i = 0; $i < 4; $i++) {
             $weekStart = $startOfTrend->copy()->addWeeks($i);
-            $weekKey = $weekStart->format('Y-W');
+            // %u in MySQL: week number (00-53) with Monday as first day of week
+            // PHP W: 01-53
+            $weekKey = $weekStart->format('Y') . '-' . str_pad($weekStart->format('W'), 2, '0', STR_PAD_LEFT);
             $weekLabel = $weekStart->format('M d');
             
             // Still need to count business days for the specific week accurately
