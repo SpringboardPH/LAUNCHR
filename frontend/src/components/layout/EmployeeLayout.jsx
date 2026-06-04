@@ -45,9 +45,6 @@ export default function EmployeeLayout() {
       )}>
         {/* Logo */}
         <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200">
-          <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
-            <span className="text-white text-xs font-bold">HR</span>
-          </div>
           <span className="font-semibold text-gray-900 text-sm">{systemConfig?.system_name || 'LAUNCHR'}</span>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={16} className="text-gray-400" />
