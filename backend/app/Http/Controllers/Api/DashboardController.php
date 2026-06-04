@@ -206,7 +206,7 @@ class DashboardController extends Controller
     /**
      * Get number of business days in a month
      */
-    private function getBusinessDaysInMonth($month, $year)
+    private function getBusinessDaysInMonth(int $month, int $year): int
     {
         $count = 0;
         $date = mktime(0, 0, 0, $month, 1, $year);
