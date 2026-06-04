@@ -12,13 +12,23 @@ use Carbon\Carbon;
  */
 class SystemClock
 {
+    private static $settingsCache = null;
+
     /**
      * Return the virtual "now" as a Carbon instance.
      */
     public static function now(): Carbon
     {
-        $dateSetting = SystemSettings::where('key', 'system_date')->first();
-        $timeSetting = SystemSettings::where('key', 'system_time')->first();
+        if (self::$settingsCache === null) {
+            $settings = SystemSettings::whereIn('key', ['system_date', 'system_time'])->get();
+            self::$settingsCache = [
+                'date' => $settings->where('key', 'system_date')->first(),
+                'time' => $settings->where('key', 'system_time')->first(),
+            ];
+        }
+
+        $dateSetting = self::$settingsCache['date'];
+        $timeSetting = self::$settingsCache['time'];
 
         $date = $dateSetting?->value;
         $time = $timeSetting?->value;
