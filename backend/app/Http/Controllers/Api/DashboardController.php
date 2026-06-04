@@ -102,14 +102,6 @@ class DashboardController extends Controller
                 'status' => $leave->status,
             ]);
 
-        $leaveStatusBreakdown = LeaveRequest::groupBy('status')
-            ->select('status', DB::raw('count(*) as count'))
-            ->get()
-            ->map(fn($item) => [
-                'status' => ucfirst($item->status),
-                'count' => $item->count,
-            ]);
-
         // Optimized Department Attendance Rates (using JOIN)
         $departmentAttendance = DB::table('employees')
             ->leftJoin('attendance_logs', function($join) use ($monthStart, $monthEnd) {
@@ -194,8 +186,6 @@ class DashboardController extends Controller
                         : null,
                 ],
                 'by_department' => $byDepartment->toArray(),
-                'leave_by_type' => $leaveByType->toArray(),
-                'leave_status_breakdown' => $leaveStatusBreakdown->toArray(),
                 'recent_leaves' => $recentLeaves->toArray(),
                 'department_attendance_rates' => $departmentAttendance->toArray(),
                 'weekly_attendance_trend' => $weeklyTrend,

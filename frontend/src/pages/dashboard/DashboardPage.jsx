@@ -162,38 +162,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Leave Status Breakdown */}
-        {leaveStatusData.length > 0 && (
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Leave Request Status</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={leaveStatusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ status, count }) => `${status}: ${count}`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="count"
-                >
-                  {leaveStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[entry.status.toLowerCase()] || '#9ca3af'} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value) => value}
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* Second Row Charts */}
-      <div className="grid lg:grid-cols-2 gap-6">
         {/* Department Attendance Rates */}
         {departmentAttendanceData.length > 0 && (
           <div className="card p-5">
@@ -208,28 +176,6 @@ export default function DashboardPage() {
                   formatter={(value) => `${value}%`}
                 />
                 <Bar dataKey="rate" fill="#6366f1" radius={[8, 8, 0, 0]} name="Attendance Rate %" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Leave by Type */}
-        {leaveByTypeData.length > 0 && (
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Pending Leaves by Type</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart 
-                data={leaveByTypeData}
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 150, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis dataKey="type" type="category" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-                />
-                <Bar dataKey="count" fill="#f59e0b" radius={[0, 8, 8, 0]} name="Pending Requests" />
               </BarChart>
             </ResponsiveContainer>
           </div>
