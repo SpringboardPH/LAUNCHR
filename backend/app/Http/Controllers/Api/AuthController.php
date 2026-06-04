@@ -59,7 +59,7 @@ class AuthController extends Controller
 
         // Generate OTP and send email
         $otp = OtpCode::generateForUser($user);
-        Mail::to($user->email)->send(new OtpMail($user, $otp->code));
+        Mail::to($user->email)->queue(new OtpMail($user, $otp->code));
 
         return response()->json([
             'success' => true,
