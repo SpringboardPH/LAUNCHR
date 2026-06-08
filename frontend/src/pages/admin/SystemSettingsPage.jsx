@@ -436,7 +436,7 @@ export default function SystemSettingsPage() {
                       )}
                       {!selectedTemplateFile && (
                         <a 
-                          href={`${apiBaseUrl}/${payrollTemplate}`} 
+                          href={`${apiBaseUrl}/payroll-template`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-[10px] text-gray-400 hover:text-brand-600 font-medium underline flex items-center gap-1 ml-auto"

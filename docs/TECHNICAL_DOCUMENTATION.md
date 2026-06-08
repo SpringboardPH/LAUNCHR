@@ -128,6 +128,42 @@ npm run dev
 
 ## 8. Known Constraints & Roadmap
 
-1. **Payroll Logic Expansion**: The API skeleton for `/payroll/compute` exists, but edge-case deduction formulas (like exact hourly rates for tardiness or half-day parsing) require future expansion.
-2. **Centralized Service Layer**: Attendance calculation logic is currently shared between Controllers and Cron Jobs. Future refactoring should further isolate this into `AttendanceService.php`.
-3. **Testing Suite**: A comprehensive Jest/Cypress integration testing suite for the React frontend needs to be established to prevent regression during large UI refactors.
+1. **Testing Suite**: A comprehensive Jest/Cypress integration testing suite for the React frontend needs to be established to prevent regression during large UI refactors.
+
+---
+
+## 9. Deployment Infrastructure
+
+For a production environment, the following infrastructure must be configured to ensure automated tasks and background jobs run reliably.
+
+### 9.1 Cron Job (Automation)
+The system relies on Laravel's scheduler for daily automated tasks, such as auto-clocking out employees and marking absentees. 
+
+Add the following entry to your server's crontab (`crontab -e`):
+
+```bash
+* * * * * cd /path-to-your-project/backend && php artisan schedule:run >> /dev/null 2>&1
+```
+
+**Configured Tasks (via `backend/routes/console.php`):**
+- **23:59**: Runs `attendance:auto-clock-out` to close any remaining open attendance logs.
+- **00:00**: Runs `attendance:mark-absent` to identify and mark employees who did not log any attendance for the previous day.
+
+### 9.2 Queue Worker (Background Jobs)
+For non-blocking operations (like sending email paystubs), the system uses Laravel Queues. Run a persistent queue worker process to handle these tasks:
+
+```bash
+cd backend
+php artisan queue:work --tries=3
+```
+
+### 9.3 Persistence with Tmux
+To ensure that the Laravel development/production server (`php artisan serve`) and the queue worker remain running after you disconnect from your SSH session, use `tmux`:
+
+1. **Start a new session:** `tmux new -s launchr`
+2. **Inside the session:**
+   - Run your server: `php artisan serve`
+   - Create a new window (`Ctrl+b`, `c`) to run your queue worker: `php artisan queue:work`
+3. **Detach from the session:** `Ctrl+b`, `d`
+4. **Re-attach later:** `tmux attach -t launchr`
+
