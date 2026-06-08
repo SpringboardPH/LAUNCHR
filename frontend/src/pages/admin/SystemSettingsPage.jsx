@@ -439,7 +439,7 @@ export default function SystemSettingsPage() {
                           type="button"
                           onClick={async () => {
                             try {
-                              const response = await fetch(`${apiBaseUrl}/payroll-template`, {
+                              const response = await fetch(`${apiBaseUrl}/api/payroll-template`, {
                                 headers: { 'Authorization': `Bearer ${localStorage.getItem('hr_token')}` }
                               });
                               if (!response.ok) throw new Error('Download failed');
