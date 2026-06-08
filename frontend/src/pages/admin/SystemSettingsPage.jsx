@@ -435,14 +435,31 @@ export default function SystemSettingsPage() {
                         </span>
                       )}
                       {!selectedTemplateFile && (
-                        <a 
-                          href={`${apiBaseUrl}/payroll-template`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
+                        <button 
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(`${apiBaseUrl}/payroll-template`, {
+                                headers: { 'Authorization': `Bearer ${localStorage.getItem('hr_token')}` }
+                              });
+                              if (!response.ok) throw new Error('Download failed');
+                              const blob = await response.blob();
+                              const url = window.URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = payrollTemplate; // Use the actual filename
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                              window.URL.revokeObjectURL(url);
+                            } catch (err) {
+                              alert('Failed to download template. Please check if you are still logged in.');
+                            }
+                          }}
                           className="text-[10px] text-gray-400 hover:text-brand-600 font-medium underline flex items-center gap-1 ml-auto"
                         >
                           Download Current Template
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>
