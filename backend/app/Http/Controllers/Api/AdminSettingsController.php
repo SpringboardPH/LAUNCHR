@@ -273,17 +273,20 @@ class AdminSettingsController extends Controller
 
     public function getTemplate()
     {
-        // Hardcode to the known correct location
-        $filename = 'payrolltemplate.xlsx';
+        $filename = SystemSettings::get('payroll_template', 'payrolltemplate.xlsx');
         $path = public_path($filename);
-
         if (!file_exists($path)) {
-            // Log for debugging if it's still failing
-            \Log::error("Template file not found at: " . $path);
             abort(404, 'Template not found');
         }
 
-        return response()->download($path, $filename);
+        $mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        if (str_ends_with($filename, '.xls')) {
+            $mimeType = 'application/vnd.ms-excel';
+        }
+
+        return response()->download($path, $filename, [
+            'Content-Type' => $mimeType,
+        ]);
     }
 
     public function listLogos()

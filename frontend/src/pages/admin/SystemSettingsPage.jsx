@@ -439,13 +439,7 @@ export default function SystemSettingsPage() {
                           type="button"
                           onClick={async () => {
                             try {
-                              // Ensure we use the full API URL including /api
-                              const apiBase = import.meta.env.VITE_API_BASE_URL;
-                              const templateUrl = apiBase.endsWith('/api') 
-                                ? `${apiBase}/payroll-template` 
-                                : `${apiBase}/api/payroll-template`;
-                                
-                              const response = await fetch(templateUrl, {
+                              const response = await fetch(`${apiBaseUrl}/payroll-template`, {
                                 headers: { 'Authorization': `Bearer ${localStorage.getItem('hr_token')}` }
                               });
                               if (!response.ok) throw new Error('Download failed');
