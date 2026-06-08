@@ -300,9 +300,16 @@ export default function PayrollPage() {
       })
 
       // Generate and add Excel files
+      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+      const templateUrl = `${apiBaseUrl}/api/payroll-template`
+
       for (let i = 0; i < selectedPayrollObjs.length; i++) {
         const payroll = selectedPayrollObjs[i]
-        const response = await fetch('/synctalents_payrolltemplate.xlsx')
+        const response = await fetch(templateUrl, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('hr_token')}`
+          }
+        })
         const arrayBuffer = await response.arrayBuffer()
         
         const workbook = new ExcelJS.Workbook()
@@ -479,8 +486,15 @@ export default function PayrollPage() {
 
   const exportPayrollToExcel = async (payroll) => {
     try {
-      // Fetch the template file
-      const response = await fetch('/synctalents_payrolltemplate.xlsx')
+      // Fetch the template file via API
+      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+      const templateUrl = `${apiBaseUrl}/api/payroll-template`
+      
+      const response = await fetch(templateUrl, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('hr_token')}`
+        }
+      })
       const arrayBuffer = await response.arrayBuffer()
       
       // Load template into workbook

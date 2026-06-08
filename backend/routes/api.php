@@ -89,6 +89,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/departments', [DepartmentController::class, 'index']);
     });
 
+    // Payroll template
+    Route::get('/payroll-template', [AdminSettingsController::class, 'getTemplate']);
+
     // System clock (virtual time used by attendance) - available to all authenticated users
     Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
     
@@ -105,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/defaults', [AdminSettingsController::class, 'getDefaults']);
             Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
             Route::post('/logo', [AdminSettingsController::class, 'uploadLogo']);
+            Route::post('/payroll-template', [AdminSettingsController::class, 'uploadPayrollTemplate']);
             Route::get('/logos', [AdminSettingsController::class, 'listLogos']);
             Route::get('/{key}', [AdminSettingsController::class, 'show']);
             Route::put('/{key}', [AdminSettingsController::class, 'update']);

@@ -231,6 +231,14 @@ export const uploadLogo = (file) => {
   }).then(r => r.data)
 }
 
+export const uploadPayrollTemplate = (file) => {
+  const formData = new FormData()
+  formData.append('template', file)
+  return api.post('/admin/settings/payroll-template', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
 export const getLogos = () =>
   api.get('/admin/settings/logos').then(r => r.data.data)
 

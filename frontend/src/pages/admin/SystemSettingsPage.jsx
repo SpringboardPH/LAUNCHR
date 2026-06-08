@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check } from 'lucide-react'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -24,12 +24,15 @@ const themePresets = [
 export default function SystemSettingsPage() {
   const qc = useQueryClient()
   const fileInputRef = useRef(null)
+  const templateFileInputRef = useRef(null)
   const [dateTime, setDateTime] = useState({ date: '', time: '' })
   const [absentMarkingTime, setAbsentMarkingTime] = useState('23:59')
   const [systemName, setSystemName] = useState('LAUNCHR')
   const [systemLogo, setSystemLogo] = useState('launchr_black.svg')
+  const [payrollTemplate, setPayrollTemplate] = useState('payrolltemplate.xlsx')
   const [logoPreview, setLogoPreview] = useState(null)
   const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedTemplateFile, setSelectedTemplateFile] = useState(null)
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [sssTable, setSssTable] = useState('')
   const [themeColor, setThemeColor] = useState('sienna')
@@ -64,6 +67,9 @@ export default function SystemSettingsPage() {
       const logoSetting = settings.find(s => s.key === 'system_logo')?.value || 'launchr_black.svg'
       setSystemLogo(logoSetting)
 
+      const templateSetting = settings.find(s => s.key === 'payroll_template')?.value || 'payrolltemplate.xlsx'
+      setPayrollTemplate(templateSetting)
+
       const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')
       if (autoClockOutSetting) {
         setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
@@ -92,8 +98,17 @@ export default function SystemSettingsPage() {
     }
   })
 
+  const uploadTemplateMutation = useMutation({
+    mutationFn: uploadPayrollTemplate,
+    onSuccess: (data) => {
+      setPayrollTemplate(data.data)
+      setSelectedTemplateFile(null)
+      qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
+    }
+  })
+
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo }) => {
+    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
@@ -106,6 +121,12 @@ export default function SystemSettingsPage() {
         await uploadLogoMutation.mutateAsync(selectedFile)
       } else {
         await updateAdminSetting('system_logo', systemLogo, 'The logo used by the system', 'string')
+      }
+
+      if (selectedTemplateFile) {
+        await uploadTemplateMutation.mutateAsync(selectedTemplateFile)
+      } else {
+        await updateAdminSetting('payroll_template', payrollTemplate, 'The Excel template used for payroll generation', 'string')
       }
 
       if (sssTable) {
@@ -153,13 +174,20 @@ export default function SystemSettingsPage() {
     }
   }
 
+  const handleTemplateFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      setSelectedTemplateFile(file)
+    }
+  }
+
   const handleSave = () => {
     setConfirmConfig({
       open: true,
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
     })
   }
 
@@ -189,6 +217,10 @@ export default function SystemSettingsPage() {
         setLogoPreview(null)
         setSelectedFile(null)
 
+        const templateSetting = settings.find(s => s.key === 'payroll_template')?.value || 'payrolltemplate.xlsx'
+        setPayrollTemplate(templateSetting)
+        setSelectedTemplateFile(null)
+
         const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
         setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
 
@@ -217,7 +249,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo })
+        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
       }
     })
   }
@@ -360,6 +392,58 @@ export default function SystemSettingsPage() {
                           </button>
                         )
                       })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">Payroll Excel Template</label>
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active: {selectedTemplateFile ? 'New Upload' : payrollTemplate}</div>
+              </div>
+              
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-white shadow-sm border border-gray-100 flex items-center justify-center shrink-0 text-brand-600">
+                    <FileSpreadsheet size={18} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-gray-900 mb-1">Upload Payroll Template</p>
+                    <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">XLSX, XLS supported. Max 5MB. This template will be used for all payroll exports.</p>
+                    
+                    <input
+                      type="file"
+                      ref={templateFileInputRef}
+                      onChange={handleTemplateFileChange}
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                    />
+                    
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => templateFileInputRef.current?.click()}
+                        className="btn-primary-soft text-[11px] px-3 py-1.5 flex items-center gap-2"
+                      >
+                        {selectedTemplateFile ? 'Change File' : 'Choose File'}
+                      </button>
+                      {selectedTemplateFile && (
+                        <span className="text-[10px] text-brand-600 font-medium truncate max-w-[200px] italic">
+                          Selected: {selectedTemplateFile.name}
+                        </span>
+                      )}
+                      {!selectedTemplateFile && (
+                        <a 
+                          href={`${apiBaseUrl}/${payrollTemplate}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-gray-400 hover:text-brand-600 font-medium underline flex items-center gap-1 ml-auto"
+                        >
+                          Download Current Template
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>

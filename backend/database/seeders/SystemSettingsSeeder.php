@@ -101,6 +101,12 @@ class SystemSettingsSeeder extends Seeder
                 'type' => 'string',
             ],
             [
+                'key' => 'payroll_template',
+                'value' => 'payrolltemplate.xlsx',
+                'description' => 'The Excel template used for payroll generation',
+                'type' => 'string',
+            ],
+            [
                 'key' => 'sss_contribution_table',
                 'value' => json_encode([
                     ['min' => 0, 'max' => 5249.99, 'msc' => 5000, 'ee' => 250, 'er' => 510],

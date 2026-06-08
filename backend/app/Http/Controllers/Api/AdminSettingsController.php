@@ -244,6 +244,43 @@ class AdminSettingsController extends Controller
         ], 400);
     }
 
+    public function uploadPayrollTemplate(Request $request)
+    {
+        $request->validate([
+            'template' => 'required|file|mimes:xlsx,xls|max:5120',
+        ]);
+
+        if ($request->hasFile('template')) {
+            $file = $request->file('template');
+            $name = 'payroll_template_' . time() . '.' . $file->getClientOriginalExtension();
+            $destinationPath = public_path('/');
+            $file->move($destinationPath, $name);
+
+            SystemSettings::set('payroll_template', $name, 'The Excel template used for payroll generation', 'string');
+
+            return response()->json([
+                'success' => true,
+                'data' => $name,
+                'message' => 'Payroll template uploaded successfully',
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'No template file provided',
+        ], 400);
+    }
+
+    public function getTemplate()
+    {
+        $filename = SystemSettings::get('payroll_template', 'payrolltemplate.xlsx');
+        $path = public_path($filename);
+        if (!file_exists($path)) {
+            abort(404, 'Template not found');
+        }
+        return response()->download($path);
+    }
+
     public function listLogos()
     {
         $directory = public_path('/');
