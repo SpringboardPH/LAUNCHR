@@ -279,14 +279,7 @@ class AdminSettingsController extends Controller
             abort(404, 'Template not found');
         }
 
-        $mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        if (str_ends_with($filename, '.xls')) {
-            $mimeType = 'application/vnd.ms-excel';
-        }
-
-        return response()->download($path, $filename, [
-            'Content-Type' => $mimeType,
-        ]);
+        return response()->download($path, $filename);
     }
 
     public function listLogos()
