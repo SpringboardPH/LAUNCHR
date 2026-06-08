@@ -24,6 +24,7 @@ class EmployeeSeeder extends Seeder
                 'department' => 'Human Resources',
                 'hire_date' => '2022-01-15',
                 'salary' => 45000.00,
+                'undeclared_salary' => 40000.00,
                 'status' => 'active',
                 'notes' => 'Senior HR Manager',
             ],

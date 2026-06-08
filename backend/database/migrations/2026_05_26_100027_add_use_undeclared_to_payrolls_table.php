@@ -12,6 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payrolls', function (Blueprint $table) {
+            $table->decimal('undeclared_salary', 12, 2)->nullable()->comment('Employee undeclared salary for calculation toggle');
             $table->boolean('use_undeclared')->default(false)->comment('Toggle between base salary (false) and undeclared salary (true) for undertime deduction');
         });
     }
@@ -22,7 +23,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('payrolls', function (Blueprint $table) {
-            $table->dropColumn('use_undeclared');
+            $table->dropColumn(['undeclared_salary', 'use_undeclared']);
         });
     }
 };

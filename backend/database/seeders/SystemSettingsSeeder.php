@@ -72,7 +72,7 @@ class SystemSettingsSeeder extends Seeder
             ],
             [
                 'key' => 'absent_marking_time',
-                'value' => '23:59',
+                'value' => '00:00',
                 'description' => 'Time when the system automatically marks employees as absent (HH:MM)',
                 'type' => 'string',
             ],
@@ -99,6 +99,24 @@ class SystemSettingsSeeder extends Seeder
                 'value' => 'launchr_black.svg',
                 'description' => 'The logo used by the system',
                 'type' => 'string',
+            ],
+            [
+                'key' => 'sss_contribution_table',
+                'value' => json_encode([
+                    ['min' => 0, 'max' => 4249.99, 'ee' => 180, 'er' => 400],
+                    ['min' => 4250, 'max' => 4749.99, 'ee' => 202.50, 'er' => 450],
+                    ['min' => 4750, 'max' => 5249.99, 'ee' => 225, 'er' => 500],
+                    ['min' => 5250, 'max' => 5749.99, 'ee' => 247.50, 'er' => 550],
+                    ['min' => 29750, 'max' => null, 'ee' => 1350, 'er' => 3000],
+                ]),
+                'description' => 'SSS Employee and Employer Contribution Table',
+                'type' => 'json',
+            ],
+            [
+                'key' => 'auto_clock_out_enabled',
+                'value' => 'false',
+                'description' => 'Whether automatic clock-out is enabled',
+                'type' => 'boolean',
             ],
         ];
 

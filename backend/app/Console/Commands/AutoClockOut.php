@@ -17,12 +17,6 @@ class AutoClockOut extends Command
 
     public function handle()
     {
-        $enabled = \App\Models\SystemSettings::get('auto_clock_out_enabled', false);
-        if (!$enabled) {
-            $this->info('Auto clock-out is disabled in settings.');
-            return;
-        }
-
         $employees = Employee::all();
         foreach ($employees as $employee) {
             $this->performAutoClockOut($employee->id);
@@ -40,9 +34,9 @@ class AutoClockOut extends Command
         return max(1, (int) round(($outMinutes - $inMinutes) / 60));
     }
 
-    private function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): string
+    private function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart, ?array $dayRule = null): string
     {
-        return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart);
+        return AttendanceService::calculateStatus($clockIn, $clockOut, $expectedHours, $workStart, $dayRule);
     }
 
     private function performAutoClockOut(int $employeeId)
@@ -85,8 +79,20 @@ class AutoClockOut extends Command
                 $log->clock_in_time,
                 $finalClockOutTime,
                 $expectedHours,
-                $workStartTime
+                $workStartTime,
+                $dayRule
             );
+
+            // Option A: Cap at 'completed' or 'late' to avoid accidental overtime
+            // for employees who simply forgot to clock out.
+            if ($status === 'overtime') {
+                $inMinutes = AttendanceService::parseTimeToMinutes($log->clock_in_time);
+                $startMinutes = AttendanceService::parseTimeToMinutes($workStartTime);
+                
+                // If they were late but worked until midnight, we still mark them as 'late'
+                // so HR can see the attendance infraction, but we don't give them overtime.
+                $status = ($inMinutes > $startMinutes) ? 'late' : 'completed';
+            }
 
             $log->update([
                 'clock_out_time' => $finalClockOutTime,
