@@ -11,7 +11,7 @@ class ScheduleTemplateSeeder extends Seeder
     {
         $allDays = [1, 2, 3, 4, 5, 6, 0]; // Monday to Sunday
 
-        return array_map(function ($day) use ($activeDays, $clockIn, $clockOut, $graceType, $graceMinutes) {
+        return array_map(function ($day) use ($activeDays, $clockIn, $clockOut, $graceEnabled, $graceType, $graceMinutes) {
             $enabled = in_array($day, $activeDays, true);
 
             return [
