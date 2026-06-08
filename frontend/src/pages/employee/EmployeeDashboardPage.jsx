@@ -79,6 +79,7 @@ export default function EmployeeDashboardPage() {
 
   const visualStatuses = [
     { key: 'completed', label: 'Completed', color: STATUS_COLORS.completed, icon: CheckCircle2 },
+    { key: 'overtime', label: 'Overtime', color: '#a855f7', icon: TrendingUp },
     { key: 'late', label: 'Late', color: STATUS_COLORS.late, icon: AlertCircle },
     { key: 'undertime', label: 'Undertime', color: STATUS_COLORS.undertime, icon: Zap },
     { key: 'half_day', label: 'Half Day', color: STATUS_COLORS.half_day, icon: Zap },

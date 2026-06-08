@@ -1254,6 +1254,13 @@ class AttendanceController extends Controller
                     $dayRule
                 );
 
+                // Option A: Cap status at 'completed' or 'late' to avoid accidental overtime
+                if ($status === 'overtime') {
+                    $inMinutes = AttendanceService::parseTimeToMinutes($log->clock_in_time);
+                    $startMinutes = AttendanceService::parseTimeToMinutes($workStartTime);
+                    $status = ($inMinutes > $startMinutes) ? 'late' : 'completed';
+                }
+
                 $log->update([
                     'clock_out_time' => $autoClockOutTime,
                     'status'         => $status,
