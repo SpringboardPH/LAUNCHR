@@ -380,7 +380,7 @@ export default function PayrollPage() {
         const halfDayAmount = getDeductionAmount('Half Day')
         const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
 
-        const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday'].includes(a.label)) || []
+        const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday', 'Incentives/Others'].includes(a.label)) || []
         const customAllowancesAmount = otherAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
 
         const fieldsMap = {
@@ -407,7 +407,7 @@ export default function PayrollPage() {
           'G33': Number(legalHolidayAmount) || 0,
           'G34': 0,
           'G35': Number(customAllowancesAmount) || 0,
-          'G36': 0,
+          'G36': Number(getEarningsAmount('Incentives/Others')) || 0,
           'G39': Number(payroll.gross_pay) || 0,
           'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
           'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
@@ -531,10 +531,12 @@ export default function PayrollPage() {
       // Extract earnings from allowances array
       const getEarningsAmount = (label) => {
         if (!payroll.allowances) return 0
-        const earning = Array.isArray(payroll.allowances) 
-          ? payroll.allowances.find(a => a?.label === label)
-          : null
-        return earning?.amount ? Number(earning.amount) : 0
+        if (Array.isArray(payroll.allowances)) {
+          const earning = payroll.allowances.find(a => a?.label === label)
+          return earning?.amount ? Number(earning.amount) : 0
+        }
+        // If it's an object
+        return payroll.allowances[label] ? Number(payroll.allowances[label]) : 0
       }
 
       // Extract deductions from deductions object/array
@@ -575,8 +577,15 @@ export default function PayrollPage() {
       const halfDayAmount = getDeductionAmount('Half Day')
       const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
 
-      const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday'].includes(a.label)) || []
-      const customAllowancesAmount = otherAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
+      // Calculate general allowances: Exclude hardcoded earnings AND the specific custom earning
+      const generalAllowances = payroll.allowances?.filter(a => {
+        const label = a.label?.trim().toLowerCase()
+        return !['overtime pay', 'rest day pay', 'rest day ot pay', 'night differential', 'special holiday', 'legal holiday', 'incentives/others', '13th month pay'].includes(label)
+      }) || []
+      const generalAllowancesAmount = generalAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
+
+      const otherDeductions = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount })))?.filter(d => !['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'Cash Advance/Others'].includes(d.label)) || []
+      const customDeductionsAmount = otherDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0)
 
       // Map payroll data to template cells
       const fieldsMap = {
@@ -589,7 +598,8 @@ export default function PayrollPage() {
         'L13': payroll.employee?.sss_number || '',
         'L15': payroll.employee?.philhealth_number || '',
         'L17': payroll.employee?.pagibig_number || '',
-        'L19': payroll.employee?.bank_account_number || payroll.employee?.tin_number || '', // Bank account number
+        'L19': payroll.employee?.bank_account_number || '',
+        'L21': payroll.employee?.tin_number || '',
         
         // Earnings - Days/Hrs (F column)
         'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
@@ -606,9 +616,9 @@ export default function PayrollPage() {
         'G31': Number(nightDiffAmount) || 0,
         'G32': Number(specialHolidayAmount) || 0,
         'G33': Number(legalHolidayAmount) || 0,
-        'G34': 0, // 13th Month Pay
-        'G35': Number(customAllowancesAmount) || 0, // Allowances Amount
-        'G36': 0, // Incentives/Others Amount
+        'G34': Number(getEarningsAmount('13th Month Pay')) || 0, // 13th Month Pay
+        'G35': Number(generalAllowancesAmount) || 0, // General Allowances
+        'G36': Number(getEarningsAmount('Incentives/Others')) || 0, // Incentives/Others Amount
         'G39': Number(payroll.gross_pay) || 0,
         
         // Deductions - Days/Hrs (N column)
@@ -626,7 +636,7 @@ export default function PayrollPage() {
         'O33': 0, // Withholding Tax
         'O34': 0, // SSS Loan
         'O35': 0, // Pag-IBIG Loan
-        'O36': 0, // Cash Advance/Others
+        'O36': Number(getDeductionAmount('Cash Advance/Others')) + Number(customDeductionsAmount) || 0, // Cash Advance/Others + Custom
         'O39': Number(totalDeductions) || 0,
         'O40': Number(payroll.net_pay) || 0,
       }
@@ -1034,6 +1044,7 @@ export default function PayrollPage() {
                       <option value="Night Differential">Night Differential</option>
                       <option value="Special Holiday">Special Holiday</option>
                       <option value="Legal Holiday">Legal Holiday</option>
+                      <option value="13th Month Pay">13th Month Pay</option>
                       <option value="Bonus">Bonus</option>
                       <option value="Travel Allowance">Travel Allowance</option>
                       <option value="custom">Other (Custom)</option>

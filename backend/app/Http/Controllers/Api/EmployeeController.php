@@ -342,6 +342,7 @@ class EmployeeController extends Controller
             'sss_number' => 'nullable|string|max:20',
             'philhealth_number' => 'nullable|string|max:20',
             'pagibig_number' => 'nullable|string|max:20',
+            'tin_number' => 'nullable|string|max:20',
         ]);
 
         $oldUserValues = [];
@@ -385,11 +386,26 @@ class EmployeeController extends Controller
             $oldEmpValues = [];
             $newEmpValues = [];
 
+            if (isset($validated['name'])) {
+                $names = explode(' ', trim($validated['name']));
+                $employeeUpdates['first_name'] = $names[0];
+                $employeeUpdates['last_name'] = isset($names[1]) ? implode(' ', array_slice($names, 1)) : '';
+                $oldEmpValues['first_name'] = $employee->first_name;
+                $oldEmpValues['last_name'] = $employee->last_name;
+                $newEmpValues['first_name'] = $employeeUpdates['first_name'];
+                $newEmpValues['last_name'] = $employeeUpdates['last_name'];
+            }
+            if (isset($validated['email'])) {
+                $oldEmpValues['email'] = $employee->email;
+                $newEmpValues['email'] = (string)$validated['email'];
+                $employeeUpdates['email'] = $validated['email'];
+            }
             if (isset($validated['phone'])) {
                 $oldEmpValues['phone'] = $employee->phone;
                 $newEmpValues['phone'] = (string)$validated['phone'];
                 $employeeUpdates['phone'] = $validated['phone'];
             }
+            // ... (rest of field updates)
             if (isset($validated['bank_account_number'])) {
                 $oldEmpValues['bank_account_number'] = $employee->bank_account_number;
                 $newEmpValues['bank_account_number'] = (string)$validated['bank_account_number'];
@@ -409,6 +425,11 @@ class EmployeeController extends Controller
                 $oldEmpValues['pagibig_number'] = $employee->pagibig_number;
                 $newEmpValues['pagibig_number'] = (string)$validated['pagibig_number'];
                 $employeeUpdates['pagibig_number'] = $validated['pagibig_number'];
+            }
+            if (isset($validated['tin_number'])) {
+                $oldEmpValues['tin_number'] = $employee->tin_number;
+                $newEmpValues['tin_number'] = (string)$validated['tin_number'];
+                $employeeUpdates['tin_number'] = $validated['tin_number'];
             }
 
             if (!empty($employeeUpdates)) {

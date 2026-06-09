@@ -10,16 +10,26 @@ import { useForm } from 'react-hook-form'
 export default function EmployeeProfilePage() {
   const { user, refreshUser } = useAuth()
   const emp = user?.employee
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [isEditingBank, setIsEditingBank] = useState(false)
   const [isEditingPassword, setIsEditingPassword] = useState(false)
   const [alert, setAlert] = useState(null)
 
-  const { register: registerProfile, handleSubmit: handleSubmitProfile, reset: resetProfile, formState: { errors: errorsProfile } } = useForm({
+  const { register: registerProfile, handleSubmit: handleSubmitProfile, reset: resetProfile, getValues: getValuesProfile, formState: { errors: errorsProfile } } = useForm({
+    defaultValues: {
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: emp?.phone || '',
+    }
+  })
+
+  const { register: registerBank, handleSubmit: handleSubmitBank, reset: resetBank, getValues: getValuesBank, formState: { errors: errorsBank } } = useForm({
     defaultValues: {
       bank_account_number: emp?.bank_account_number || '',
       sss_number: emp?.sss_number || '',
       philhealth_number: emp?.philhealth_number || '',
       pagibig_number: emp?.pagibig_number || '',
+      tin_number: emp?.tin_number || '',
     }
   })
 
@@ -29,6 +39,7 @@ export default function EmployeeProfilePage() {
     mutationFn: updateProfile,
     onSuccess: () => {
       refreshUser()
+      setIsEditingProfile(false)
       setIsEditingBank(false)
       setAlert({ type: 'success', message: 'Profile updated successfully' })
     },
@@ -50,7 +61,11 @@ export default function EmployeeProfilePage() {
   })
 
   const onSubmitProfile = (data) => {
-    mutationProfile.mutate(data)
+    mutationProfile.mutate({ ...getValuesProfile(), ...getValuesBank() })
+  }
+
+  const onSubmitBank = (data) => {
+    mutationProfile.mutate({ ...getValuesProfile(), ...getValuesBank() })
   }
 
   const onSubmitPassword = (data) => {
@@ -63,11 +78,18 @@ export default function EmployeeProfilePage() {
 
   const cancelEdit = () => {
     resetProfile({ 
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: emp?.phone || '',
+    })
+    resetBank({
       bank_account_number: emp?.bank_account_number || '',
       sss_number: emp?.sss_number || '',
       philhealth_number: emp?.philhealth_number || '',
       pagibig_number: emp?.pagibig_number || '',
+      tin_number: emp?.tin_number || '',
     })
+    setIsEditingProfile(false)
     setIsEditingBank(false)
     setIsEditingPassword(false)
   }
@@ -90,9 +112,9 @@ export default function EmployeeProfilePage() {
         description="View your personal and employment details"
       />
 
-      <div className="grid lg:grid-cols-3 gap-5">
+      <div className="grid lg:grid-cols-3 gap-5 items-start">
         {/* Profile card */}
-        <div className="card p-5 flex flex-col items-center justify-center text-center lg:col-span-1">
+        <div className="card p-5 flex flex-col items-center justify-center text-center lg:col-span-1 h-64">
           <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-xl font-semibold mb-3">
             {emp.first_name?.charAt(0)}{emp.last_name?.charAt(0)}
           </div>
@@ -105,24 +127,59 @@ export default function EmployeeProfilePage() {
         <div className="lg:col-span-2 space-y-5">
           {/* Details */}
           <div className="card p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-700">Employment Details</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              {[
-                { icon: Mail, label: 'Email Address', value: emp.email },
-                { icon: Phone, label: 'Phone Number', value: emp.phone || '—' },
-                { icon: Briefcase, label: 'Department', value: emp.department },
-                { icon: Calendar, label: 'Hire Date', value: emp.hire_date ? format(new Date(emp.hire_date), 'MMM dd, yyyy') : '—' },
-                { icon: Briefcase, label: 'Salary', value: `₱${Number(emp.salary).toLocaleString()}` },
-              ].map(({ icon: Icon, label, value }) => (
-                <div key={label} className="flex items-start gap-2 min-w-0">
-                  <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-gray-400">{label}</p>
-                    <p className="font-medium text-gray-800 break-words">{value}</p>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">Employment Details</h2>
+              {!isEditingProfile && (
+                <button
+                  onClick={() => setIsEditingProfile(true)}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
+            </div>
+            {isEditingProfile ? (
+              <form onSubmit={handleSubmitProfile(onSubmitProfile)} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Full Name</label>
+                    <input type="text" className="input text-sm w-full" {...registerProfile('name', { required: 'Required' })} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Email</label>
+                    <input type="email" className="input text-sm w-full" {...registerProfile('email', { required: 'Required' })} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Phone Number</label>
+                    <input type="text" className="input text-sm w-full" {...registerProfile('phone')} />
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={cancelEdit} className="btn-secondary px-4 py-2 text-sm">Cancel</button>
+                  <button type="submit" disabled={mutationProfile.isPending} className="btn-primary px-6 py-2 text-sm">
+                    {mutationProfile.isPending ? <Spinner size="sm" /> : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                {[
+                  { icon: Mail, label: 'Email Address', value: user?.email },
+                  { icon: Phone, label: 'Phone Number', value: emp.phone || '—' },
+                  { icon: Briefcase, label: 'Department', value: emp.department },
+                  { icon: Calendar, label: 'Hire Date', value: emp.hire_date ? format(new Date(emp.hire_date), 'MMM dd, yyyy') : '—' },
+                  { icon: Briefcase, label: 'Salary', value: `₱${Number(emp.salary).toLocaleString()}` },
+                ].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-start gap-2 min-w-0">
+                    <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-gray-400">{label}</p>
+                      <p className="font-medium text-gray-800 break-words">{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Payroll / Bank Details */}
@@ -142,23 +199,23 @@ export default function EmployeeProfilePage() {
             </div>
 
             {isEditingBank ? (
-              <form onSubmit={handleSubmitProfile(onSubmitProfile)} className="space-y-4">
+              <form onSubmit={handleSubmitBank(onSubmitBank)} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Bank Account Number</label>
                     <input
                       type="text"
-                      className={`input text-sm w-full ${errorsProfile.bank_account_number ? 'border-red-500' : ''}`}
+                      className={`input text-sm w-full ${errorsBank.bank_account_number ? 'border-red-500' : ''}`}
                       placeholder="0000000000"
-                      {...registerProfile('bank_account_number', {
+                      {...registerBank('bank_account_number', {
                         required: 'Account number is required',
                         minLength: { value: 10, message: 'Must be between 10 and 12 digits' },
                         maxLength: { value: 12, message: 'Must be between 10 and 12 digits' },
                         pattern: { value: /^\d+$/, message: 'Must be numbers only' }
                       })}
                     />
-                    {errorsProfile.bank_account_number && (
-                      <p className="text-[10px] text-red-500 mt-1">{errorsProfile.bank_account_number.message}</p>
+                    {errorsBank.bank_account_number && (
+                      <p className="text-[10px] text-red-500 mt-1">{errorsBank.bank_account_number.message}</p>
                     )}
                   </div>
                   <div>
@@ -167,7 +224,7 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="00-0000000-0"
-                      {...registerProfile('sss_number')}
+                      {...registerBank('sss_number')}
                     />
                   </div>
                   <div>
@@ -176,7 +233,7 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="00-000000000-0"
-                      {...registerProfile('philhealth_number')}
+                      {...registerBank('philhealth_number')}
                     />
                   </div>
                   <div>
@@ -185,7 +242,16 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="0000-0000-0000"
-                      {...registerProfile('pagibig_number')}
+                      {...registerBank('pagibig_number')}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">TIN Number</label>
+                    <input
+                      type="text"
+                      className="input text-sm w-full"
+                      placeholder="000-000-000-000"
+                      {...registerBank('tin_number')}
                     />
                   </div>
                 </div>
@@ -214,6 +280,7 @@ export default function EmployeeProfilePage() {
                   { label: 'SSS Number', value: emp.sss_number },
                   { label: 'PhilHealth', value: emp.philhealth_number },
                   { label: 'Pag-IBIG', value: emp.pagibig_number },
+                  { label: 'TIN Number', value: emp.tin_number },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-gray-50/50 p-3 rounded-lg border border-gray-100">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
