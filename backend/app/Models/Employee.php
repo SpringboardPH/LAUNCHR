@@ -32,6 +32,7 @@ class Employee extends Model
         'sss_number',
         'philhealth_number',
         'pagibig_number',
+        'tin_number',
     ];
 
     protected $casts = [

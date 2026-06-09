@@ -13,21 +13,22 @@ const schema = z.object({
   first_name:   z.string().min(1, 'Required'),
   last_name:    z.string().min(1, 'Required'),
   email:        z.string().email('Invalid email'),
-  phone:        z.string().optional(),
+  phone:        z.string().nullable().optional(),
   position:     z.string().min(1, 'Required'),
   department:   z.string().min(1, 'Required'),
   hire_date:    z.string().min(1, 'Required'),
   salary:            z.coerce.number().min(0, 'Must be ≥ 0'),
-  undeclared_salary: z.coerce.number().optional(),
+  undeclared_salary: z.coerce.number().nullable().optional(),
   rate_type:         z.enum(['monthly', 'daily']),
   role:         z.enum(['employee', 'hr', 'admin']).optional(),
   password:     z.string().min(8, 'Must be at least 8 characters').optional().or(z.literal('')),
-  bank_account_number: z.string().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
+  bank_account_number: z.string().nullable().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
     message: 'Must be between 10 and 12 digits'
   }),
-  sss_number:        z.string().optional(),
-  philhealth_number: z.string().optional(),
-  pagibig_number:    z.string().optional(),
+  sss_number:        z.string().nullable().optional(),
+  philhealth_number: z.string().nullable().optional(),
+  pagibig_number:    z.string().nullable().optional(),
+  tin_number:        z.string().nullable().optional(),
 })
 
 export default function EmployeeFormPage() {
@@ -163,7 +164,7 @@ export default function EmployeeFormPage() {
           </FormField>
         </div>
 
-        <FormField label="Undeclared Amount (Info Only)" error={errors.undeclared_salary?.message}>
+        <FormField label="Undeclared: Salary + Allowance" error={errors.undeclared_salary?.message}>
           <input type="number" step="0.01" {...register('undeclared_salary')} className="input" placeholder="Optional side information" />
         </FormField>
 
@@ -171,7 +172,7 @@ export default function EmployeeFormPage() {
           <input {...register('bank_account_number')} className={`input ${errors.bank_account_number ? 'input-error' : ''}`} placeholder="10-12 digits" />
         </FormField>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <FormField label="SSS Number" error={errors.sss_number?.message}>
             <input {...register('sss_number')} className="input" placeholder="00-0000000-0" />
           </FormField>
@@ -180,6 +181,9 @@ export default function EmployeeFormPage() {
           </FormField>
           <FormField label="Pag-IBIG Number" error={errors.pagibig_number?.message}>
             <input {...register('pagibig_number')} className="input" placeholder="0000-0000-0000" />
+          </FormField>
+          <FormField label="TIN Number" error={errors.tin_number?.message}>
+            <input {...register('tin_number')} className="input" placeholder="000-000-000-000" />
           </FormField>
         </div>
 
