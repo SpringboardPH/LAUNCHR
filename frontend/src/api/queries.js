@@ -29,6 +29,9 @@ export const deactivateEmployee = (id) =>
 export const updateProfile = (data) =>
   api.put('/profile', data).then(r => r.data)
 
+export const updatePassword = (data) =>
+  api.put('/user/password', data).then(r => r.data)
+
 // ─── Departments ─────────────────────────────────────────────
 export const departmentKeys = {
   all: ['departments'],

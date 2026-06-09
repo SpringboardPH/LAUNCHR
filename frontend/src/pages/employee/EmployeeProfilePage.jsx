@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { useAuth } from '../../store/AuthContext'
 import { PageHeader, StatusBadge, Spinner, AlertModal } from '../../components/ui/index.jsx'
-import { Mail, Phone, Calendar, Briefcase, CreditCard, Pencil, Check, X } from 'lucide-react'
+import { Mail, Phone, Calendar, Briefcase, CreditCard, Pencil, Check, X, Key } from 'lucide-react'
 import { format } from 'date-fns'
 import { useMutation } from '@tanstack/react-query'
-import { updateProfile } from '../../api/queries'
+import { updateProfile, updatePassword } from '../../api/queries'
 import { useForm } from 'react-hook-form'
 
 export default function EmployeeProfilePage() {
   const { user, refreshUser } = useAuth()
   const emp = user?.employee
   const [isEditingBank, setIsEditingBank] = useState(false)
+  const [isEditingPassword, setIsEditingPassword] = useState(false)
   const [alert, setAlert] = useState(null)
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+  const { register: registerProfile, handleSubmit: handleSubmitProfile, reset: resetProfile, formState: { errors: errorsProfile } } = useForm({
     defaultValues: {
       bank_account_number: emp?.bank_account_number || '',
       sss_number: emp?.sss_number || '',
@@ -22,29 +23,53 @@ export default function EmployeeProfilePage() {
     }
   })
 
-  const mutation = useMutation({
+  const { register: registerPassword, handleSubmit: handleSubmitPassword, reset: resetPassword, formState: { errors: errorsPassword } } = useForm()
+
+  const mutationProfile = useMutation({
     mutationFn: updateProfile,
     onSuccess: () => {
       refreshUser()
       setIsEditingBank(false)
+      setAlert({ type: 'success', message: 'Profile updated successfully' })
     },
     onError: (err) => {
       setAlert({ type: 'error', message: err?.response?.data?.message || 'Failed to update profile' })
     }
   })
 
-  const onSubmit = (data) => {
-    mutation.mutate(data)
+  const mutationPassword = useMutation({
+    mutationFn: updatePassword,
+    onSuccess: () => {
+      resetPassword()
+      setIsEditingPassword(false)
+      setAlert({ type: 'success', message: 'Password updated successfully' })
+    },
+    onError: (err) => {
+      setAlert({ type: 'error', message: err?.response?.data?.message || 'Failed to update password' })
+    }
+  })
+
+  const onSubmitProfile = (data) => {
+    mutationProfile.mutate(data)
+  }
+
+  const onSubmitPassword = (data) => {
+    if (data.password !== data.password_confirmation) {
+      setAlert({ type: 'error', message: 'New password and confirmation do not match.' })
+      return
+    }
+    mutationPassword.mutate(data)
   }
 
   const cancelEdit = () => {
-    reset({ 
+    resetProfile({ 
       bank_account_number: emp?.bank_account_number || '',
       sss_number: emp?.sss_number || '',
       philhealth_number: emp?.philhealth_number || '',
       pagibig_number: emp?.pagibig_number || '',
     })
     setIsEditingBank(false)
+    setIsEditingPassword(false)
   }
 
   if (!emp) {
@@ -117,23 +142,23 @@ export default function EmployeeProfilePage() {
             </div>
 
             {isEditingBank ? (
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmitProfile(onSubmitProfile)} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Bank Account Number</label>
                     <input
                       type="text"
-                      className={`input text-sm w-full ${errors.bank_account_number ? 'border-red-500' : ''}`}
+                      className={`input text-sm w-full ${errorsProfile.bank_account_number ? 'border-red-500' : ''}`}
                       placeholder="0000000000"
-                      {...register('bank_account_number', {
+                      {...registerProfile('bank_account_number', {
                         required: 'Account number is required',
                         minLength: { value: 10, message: 'Must be between 10 and 12 digits' },
                         maxLength: { value: 12, message: 'Must be between 10 and 12 digits' },
                         pattern: { value: /^\d+$/, message: 'Must be numbers only' }
                       })}
                     />
-                    {errors.bank_account_number && (
-                      <p className="text-[10px] text-red-500 mt-1">{errors.bank_account_number.message}</p>
+                    {errorsProfile.bank_account_number && (
+                      <p className="text-[10px] text-red-500 mt-1">{errorsProfile.bank_account_number.message}</p>
                     )}
                   </div>
                   <div>
@@ -142,7 +167,7 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="00-0000000-0"
-                      {...register('sss_number')}
+                      {...registerProfile('sss_number')}
                     />
                   </div>
                   <div>
@@ -151,7 +176,7 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="00-000000000-0"
-                      {...register('philhealth_number')}
+                      {...registerProfile('philhealth_number')}
                     />
                   </div>
                   <div>
@@ -160,7 +185,7 @@ export default function EmployeeProfilePage() {
                       type="text"
                       className="input text-sm w-full"
                       placeholder="0000-0000-0000"
-                      {...register('pagibig_number')}
+                      {...registerProfile('pagibig_number')}
                     />
                   </div>
                 </div>
@@ -175,10 +200,10 @@ export default function EmployeeProfilePage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={mutation.isPending}
+                    disabled={mutationProfile.isPending}
                     className="btn-primary px-6 py-2 text-sm min-w-[100px]"
                   >
-                    {mutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
+                    {mutationProfile.isPending ? <Spinner size="sm" /> : 'Save Changes'}
                   </button>
                 </div>
               </form>
@@ -202,6 +227,63 @@ export default function EmployeeProfilePage() {
             <p className="text-[10px] text-gray-400 mt-4 italic">
               These details are used for payroll and government compliance. Please ensure accuracy.
             </p>
+          </div>
+
+          {/* Change Password */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Key size={14} className="text-brand-600" /> Security
+              </h2>
+              {!isEditingPassword && (
+                <button
+                  onClick={() => setIsEditingPassword(true)}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                >
+                  <Pencil size={12} /> Change Password
+                </button>
+              )}
+            </div>
+
+            {isEditingPassword ? (
+              <form onSubmit={handleSubmitPassword(onSubmitPassword)} className="space-y-4">
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Current Password</label>
+                    <input
+                      type="password"
+                      className={`input text-sm w-full ${errorsPassword.current_password ? 'border-red-500' : ''}`}
+                      {...registerPassword('current_password', { required: 'Required' })}
+                    />
+                    {errorsPassword.current_password && <p className="text-[10px] text-red-500 mt-1">{errorsPassword.current_password.message}</p>}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">New Password</label>
+                    <input
+                      type="password"
+                      className={`input text-sm w-full ${errorsPassword.password ? 'border-red-500' : ''}`}
+                      {...registerPassword('password', { required: 'Required', minLength: { value: 8, message: 'Must be at least 8 characters' } })}
+                    />
+                    {errorsPassword.password && <p className="text-[10px] text-red-500 mt-1">{errorsPassword.password.message}</p>}
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Confirm New Password</label>
+                    <input
+                      type="password"
+                      className={`input text-sm w-full ${errorsPassword.password_confirmation ? 'border-red-500' : ''}`}
+                      {...registerPassword('password_confirmation', { required: 'Required' })}
+                    />
+                    {errorsPassword.password_confirmation && <p className="text-[10px] text-red-500 mt-1">{errorsPassword.password_confirmation.message}</p>}
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={cancelEdit} className="btn-secondary px-4 py-2 text-sm">Cancel</button>
+                  <button type="submit" disabled={mutationPassword.isPending} className="btn-primary px-6 py-2 text-sm">
+                    {mutationPassword.isPending ? <Spinner size="sm" /> : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         </div>
       </div>
