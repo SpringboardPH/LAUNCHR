@@ -600,6 +600,8 @@ export default function PayrollPage() {
         'L17': payroll.employee?.pagibig_number || '',
         'L19': payroll.employee?.tin_number || '',
         'L21': payroll.employee?.bank_account_number || '',
+        // pls work
+
         
         // Earnings - Days/Hrs (F column)
         'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
