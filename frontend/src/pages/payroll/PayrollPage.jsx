@@ -598,8 +598,8 @@ export default function PayrollPage() {
         'L13': payroll.employee?.sss_number || '',
         'L15': payroll.employee?.philhealth_number || '',
         'L17': payroll.employee?.pagibig_number || '',
-        'L19': payroll.employee?.bank_account_number || '',
-        'L21': payroll.employee?.tin_number || '',
+        'L19': payroll.employee?.tin_number || '',
+        'L21': payroll.employee?.bank_account_number || '',
 
         
         // Earnings - Days/Hrs (F column)
