@@ -67,7 +67,7 @@ export default function EmployeeProfilePage() {
 
       <div className="grid lg:grid-cols-3 gap-5">
         {/* Profile card */}
-        <div className="card p-5 flex flex-col items-center text-center lg:col-span-1">
+        <div className="card p-5 flex flex-col items-center justify-center text-center lg:col-span-1">
           <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-xl font-semibold mb-3">
             {emp.first_name?.charAt(0)}{emp.last_name?.charAt(0)}
           </div>

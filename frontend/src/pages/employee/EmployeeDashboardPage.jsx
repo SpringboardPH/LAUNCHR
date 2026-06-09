@@ -264,13 +264,13 @@ export default function EmployeeDashboardPage() {
           </div>
 
           {/* Detailed Status Breakdown */}
-          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          <div className="flex flex-wrap gap-3">
             {visualStatuses.map((item) => {
               const count = monthlyStatusCounts[item.key] || 0;
               const percent = totalVisualDays > 0 ? Math.round((count / totalVisualDays) * 100) : 0;
 
               return (
-                <div key={item.key} className="text-center p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition">
+                <div key={item.key} className="flex-1 min-w-[100px] text-center p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition">
                   <div 
                     className="w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-2" 
                     style={{ backgroundColor: item.color + '20' }}
