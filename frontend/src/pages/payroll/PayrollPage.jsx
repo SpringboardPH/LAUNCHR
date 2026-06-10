@@ -159,31 +159,83 @@ export default function PayrollPage() {
 
   const handleFieldChange = (type, index, field, value) => {
     setEditForm(prev => {
-      const next = { ...prev }
+      // 1. Deep clone top-level and arrays to avoid mutation
+      const next = { 
+        ...prev,
+        allowances: Array.isArray(prev.allowances) ? prev.allowances.map(a => ({ ...a })) : [],
+        deductions: Array.isArray(prev.deductions) ? prev.deductions.map(d => ({ ...d })) : []
+      }
+
+      // 2. Update the specific field
       if (type && index !== undefined) {
         next[type][index][field] = value
       } else if (field) {
         next[field] = value
       }
       
+      // 3. Update daily_rate if base_salary changed
+      if (field === 'base_salary') {
+        const isDaily = next.employee?.rate_type === 'daily'
+        if (isDaily) {
+          next.daily_rate = Number(value)
+        } else {
+          // For monthly, attempt to maintain the divisor ratio
+          const oldBase = Number(prev.base_salary)
+          const oldDaily = Number(prev.daily_rate)
+          if (oldBase > 0) {
+            next.daily_rate = (Number(value) / oldBase) * oldDaily
+          }
+        }
+      }
+
       const dRate = Number(next.daily_rate || 0)
       const hRate = dRate / 8
 
-      // Auto-sync line items if metrics changed
-      if (field === 'overtime_hours') {
-        const item = next.allowances.find(a => a.label === 'Overtime Pay')
-        if (item) item.amount = Math.round(Number(value) * hRate * 1.25 * 100) / 100
-      }
-      if (field === 'late_minutes') {
-        const item = next.deductions.find(d => d.label === 'Late')
-        if (item) item.amount = Math.round((Number(value) / 60) * hRate * 100) / 100
-      }
-      if (field === 'undertime_minutes') {
-        const item = next.deductions.find(d => d.label === 'Undertime')
-        if (item) item.amount = Math.round((Number(value) / 60) * hRate * 100) / 100
+      // 4. Auto-sync ALL derived items whenever rate OR metrics change
+      const syncDerivedItems = () => {
+        // Overtime Pay
+        const otItem = next.allowances.find(a => a.label === 'Overtime Pay')
+        if (otItem) {
+          otItem.amount = Math.round(Number(next.overtime_hours || 0) * hRate * 1.25 * 100) / 100
+        }
+        
+        // Late
+        const lateItem = next.deductions.find(d => d.label === 'Late')
+        if (lateItem) {
+          lateItem.amount = Math.round((Number(next.late_minutes || 0) / 60) * hRate * 100) / 100
+        }
+        
+        // Undertime
+        const utItem = next.deductions.find(d => d.label === 'Undertime')
+        if (utItem) {
+          utItem.amount = Math.round((Number(next.undertime_minutes || 0) / 60) * hRate * 100) / 100
+        }
+
+        // Absent & Half Day (based on daily rate)
+        const absentItem = next.deductions.find(d => d.label === 'Absent')
+        if (absentItem) {
+          // If the user changed days_worked, we can't easily guess absent_days 
+          // without knowing the cutoff's total work days. 
+          // But we can at least update the amount based on new daily rate 
+          // if we assume the previous amount was correctly proportional.
+          const oldDRate = Number(prev.daily_rate)
+          if (oldDRate > 0) {
+            absentItem.amount = Math.round((Number(absentItem.amount) / oldDRate) * dRate * 100) / 100
+          }
+        }
+
+        const halfDayItem = next.deductions.find(d => d.label === 'Half Day')
+        if (halfDayItem) {
+          const oldDRate = Number(prev.daily_rate)
+          if (oldDRate > 0) {
+            halfDayItem.amount = Math.round((Number(halfDayItem.amount) / (oldDRate / 2)) * (dRate / 2) * 100) / 100
+          }
+        }
       }
 
-      // Recalculate totals
+      syncDerivedItems()
+
+      // 5. Recalculate totals
       const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
       const totalDeductions = next.deductions.reduce((s, d) => s + Number(d.amount || 0), 0)
       
