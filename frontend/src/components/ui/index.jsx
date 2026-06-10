@@ -126,13 +126,15 @@ export function StatusBadge({ status }) {
     full_time:   'badge-blue',
     part_time:   'badge-yellow',
     contractual: 'badge-gray',
-    working:     'badge-green',
-    on_leave:    'badge-blue',
-    holiday:     'badge-purple',
-    undertime:   'badge-orange',
-    half_day:    'badge-orange',
-    completed:   'badge-green',
-    overtime:    'badge-purple',
+    working:       'badge-green',
+    on_leave:      'badge-blue',
+    holiday:       'badge-purple',
+    undertime:     'badge-orange',
+    half_day:      'badge-orange',
+    completed:     'badge-green',
+    overtime:      'badge-purple',
+    not_scheduled: 'badge-gray',
+    not_yet:       'badge-gray',
   }
   const label = status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
@@ -158,8 +160,8 @@ export function ConfirmModal({
     <Modal open={open} onClose={onClose} title={title} size="sm">
       <div className="space-y-4">
         {message && <p className="text-sm text-gray-600 leading-relaxed">{message}</p>}
-        <div className="flex justify-end gap-3 pt-2">
-          <button onClick={onClose} className="btn-secondary">
+        <div className="flex flex-col-reverse gap-3 pt-2">
+          <button onClick={onClose} className="btn-secondary w-full">
             {cancelLabel}
           </button>
           <button
@@ -167,7 +169,7 @@ export function ConfirmModal({
               onConfirm()
               onClose()
             }}
-            className={confirmClasses}
+            className={clsx(confirmClasses, 'w-full')}
           >
             {confirmLabel}
           </button>

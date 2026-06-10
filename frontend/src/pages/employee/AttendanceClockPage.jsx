@@ -38,7 +38,9 @@ const calculateHours = (clockInTime, clockOutTime) => {
 
 export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
+  const [isOvertime, setIsOvertime] = useState(false)
   const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
+  const [overtimeWarningOpen, setOvertimeWarningOpen] = useState(false)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user, loading: authLoading } = useAuth()
@@ -170,10 +172,11 @@ export default function AttendanceClockPage() {
     },
   })
   const outMutation = useMutation({
-    mutationFn: ({ confirmEarlyClockOut = false } = {}) =>
-      clockOut(notes, null, confirmEarlyClockOut),
+    mutationFn: ({ confirmEarlyClockOut = false, isOvertime = false } = {}) =>
+      clockOut(notes, null, confirmEarlyClockOut, isOvertime),
     onSuccess: () => {
       setNotes('')
+      setIsOvertime(false)
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
@@ -188,6 +191,7 @@ export default function AttendanceClockPage() {
 
       alert(error?.response?.data?.message || 'Failed to clock out')
       setNotes('')
+      setIsOvertime(false)
       refetch()
     },
   })
@@ -289,6 +293,19 @@ export default function AttendanceClockPage() {
         confirmLabel="Confirm Clock Out"
       />
 
+      <ConfirmModal
+        open={overtimeWarningOpen}
+        onClose={() => setOvertimeWarningOpen(false)}
+        onConfirm={() => {
+          setIsOvertime(true)
+          setOvertimeWarningOpen(false)
+        }}
+        title="Overtime Pre-approval Required"
+        message="Note: Overtime must be pre-approved by HR. Failure to do so while still confirming it will be noted by HR."
+        type="warning"
+        confirmLabel="I understand and proceed"
+      />
+
       <PageHeader
         title="Clock In / Out"
         description={displayDateLabel}
@@ -376,14 +393,30 @@ export default function AttendanceClockPage() {
                   : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
               </button>
             ) : !isClockedOut ? (
-              <button
-                onClick={() => outMutation.mutate({ confirmEarlyClockOut: false })}
-                disabled={outMutation.isPending || !canClockOut}
-                className={`btn w-full ${!canClockOut ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-secondary'}`}
-              >
-                <LogOut size={16} />
-                {!canClockOut ? 'Not available' : (outMutation.isPending ? 'Clocking out...' : 'Clock Out')}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isOvertime) {
+                      setIsOvertime(false)
+                    } else {
+                      setOvertimeWarningOpen(true)
+                    }
+                  }}
+                  className={`btn w-full mb-2 ${isOvertime ? 'bg-purple-600 text-white border-purple-600' : 'btn-outline border-purple-300 text-purple-700 hover:bg-purple-50'}`}
+                >
+                  <Clock size={16} />
+                  {isOvertime ? '✓ Overtime Selected' : 'Clocking out for overtime?'}
+                </button>
+                <button
+                  onClick={() => outMutation.mutate({ confirmEarlyClockOut: false, isOvertime })}
+                  disabled={outMutation.isPending || !canClockOut}
+                  className={`btn w-full ${!canClockOut ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-secondary'}`}
+                >
+                  <LogOut size={16} />
+                  {!canClockOut ? 'Not available' : (outMutation.isPending ? 'Clocking out...' : 'Clock Out')}
+                </button>
+              </>
             ) : (
               <div className="p-3 bg-gray-50 rounded-lg text-center">
                 <p className="text-sm text-gray-600">You've already clocked out today</p>
@@ -442,6 +475,11 @@ export default function AttendanceClockPage() {
               )}
             </div>
 
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 mb-5">
+              <p className="font-semibold mb-1">Important Note:</p>
+              <p>Late clock-ins and absences are automatically processed for deductions in the payroll system.</p>
+            </div>
+
             {monthlyLoading ? (
               <PageSpinner />
             ) : (
@@ -481,6 +519,7 @@ export default function AttendanceClockPage() {
                             }
 
                             if (log.status === 'completed') return <span className="badge-green text-[10px] px-1.5 py-0.5 rounded">Completed</span>
+                            if (log.status === 'overtime') return <span className="badge-purple text-[10px] px-1.5 py-0.5 rounded">Overtime</span>
                             if (log.status === 'working') return <span className="badge-green text-[10px] px-1.5 py-0.5 rounded animate-pulse">Working</span>
                             if (log.status === 'on_leave') return <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">On Leave</span>
                             if (log.status === 'late') return <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>

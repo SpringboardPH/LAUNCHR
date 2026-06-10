@@ -180,7 +180,7 @@ export default function LeaveRequestFormPage() {
             </div>
           ) : (
             <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
                 <Plus size={18} className="text-brand-600" /> New Request
               </h2>
               {mutation.error && (
@@ -202,7 +202,7 @@ export default function LeaveRequestFormPage() {
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
                     Leave Type
                   </label>
                   <select {...register('leave_type')} className="input">
@@ -223,7 +223,7 @@ export default function LeaveRequestFormPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
                       Start Date
                     </label>
                     <input type="date" {...register('start_date')} className="input px-2" />
@@ -233,7 +233,7 @@ export default function LeaveRequestFormPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
                       End Date
                     </label>
                     <input type="date" {...register('end_date')} className="input px-2" />
@@ -262,7 +262,7 @@ export default function LeaveRequestFormPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
                     Reason (Optional)
                   </label>
                   <textarea
@@ -290,7 +290,7 @@ export default function LeaveRequestFormPage() {
         <div className="lg:col-span-2">
           <div className="card overflow-hidden">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">My Leaves</h2>
+              <h2 className="text-sm font-semibold text-gray-700">My Leaves</h2>
             </div>
             {isLoadingLeaves ? (
               <PageSpinner />
@@ -339,7 +339,7 @@ export default function LeaveRequestFormPage() {
                   ))}
                   {myLeaves.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-12 text-center">
+                      <td colSpan={6} className="py-12 text-center">
                         <CalendarOff size={32} className="text-gray-200 mx-auto mb-2" />
                         <p className="text-sm text-gray-400">You have no leave requests</p>
                       </td>

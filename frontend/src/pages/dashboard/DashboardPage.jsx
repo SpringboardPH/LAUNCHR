@@ -217,21 +217,21 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Stats Box */}
-        <div className="card p-5 bg-gradient-to-br from-brand-50 to-blue-50 border border-brand-100">
+        <div className="card p-5 border-gray-200">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Quick Stats</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">New Hires (30d)</span>
               <span className="text-lg font-bold text-gray-900">{s.new_hires_30_days ?? 0}</span>
             </div>
-            <div className="flex items-center justify-between border-t border-brand-200 pt-4">
+            <div className="flex items-center justify-between border-t border-gray-100 pt-4">
               <span className="text-sm text-gray-600">Total Absences Today</span>
               <span className={`text-lg font-bold ${s.absent_today > 0 ? 'text-red-600' : 'text-green-600'}`}>
                 {s.absent_today ?? 0}
               </span>
             </div>
             {s.last_payroll && (
-              <div className="flex items-center justify-between border-t border-brand-200 pt-4">
+              <div className="flex items-center justify-between border-t border-gray-100 pt-4">
                 <span className="text-sm text-gray-600">Last Payroll</span>
                 <span className="text-sm font-medium text-gray-900">{s.last_payroll}</span>
               </div>

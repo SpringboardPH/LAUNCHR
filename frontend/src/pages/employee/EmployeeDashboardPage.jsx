@@ -119,29 +119,29 @@ export default function EmployeeDashboardPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {isClockedIn && (
-            <div className="flex flex-col p-4 bg-green-100 rounded-lg border border-green-300">
-              <p className="text-xs text-green-700 font-semibold uppercase tracking-wide">Clocked In</p>
-              <p className="text-2xl font-bold text-green-900 mt-1">{todayAttendance.clock_in_time}</p>
+            <div className="flex flex-col p-3 bg-green-50 rounded-lg border border-green-200">
+              <p className="text-[10px] text-green-700 font-semibold uppercase tracking-wider">Clocked In</p>
+              <p className="text-lg font-bold text-green-900">{todayAttendance.clock_in_time}</p>
             </div>
           )}
           {isClockedOut && (
-            <div className="flex flex-col p-4 bg-gray-100 rounded-lg border border-gray-300">
-              <p className="text-xs text-gray-700 font-semibold uppercase tracking-wide">Clocked Out</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{todayAttendance.clock_out_time}</p>
+            <div className="flex flex-col p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-[10px] text-gray-700 font-semibold uppercase tracking-wider">Clocked Out</p>
+              <p className="text-lg font-bold text-gray-900">{todayAttendance.clock_out_time}</p>
             </div>
           )}
           
           <Link 
             to="/employee/attendance" 
-            className={`btn ${isClockedIn && !isClockedOut ? 'btn-primary' : 'btn-secondary'} flex items-center justify-center gap-2`}
+            className={`btn ${isClockedIn && !isClockedOut ? 'btn-primary' : 'btn-secondary'} flex items-center justify-center gap-2 py-2 text-sm`}
           >
             {isClockedIn && !isClockedOut ? (
               <>
-                <LogOut size={16} /> Clock Out
+                <LogOut size={14} /> Clock Out
               </>
             ) : (
               <>
-                <Clock size={16} /> {isClockedOut ? 'View Details' : 'Clock In'}
+                <Clock size={14} /> {isClockedOut ? 'View Details' : 'Clock In'}
               </>
             )}
           </Link>
@@ -207,7 +207,7 @@ export default function EmployeeDashboardPage() {
         </div>
 
         {/* Quick Stats Card */}
-        <div className="card p-6 bg-gradient-to-br from-brand-50 to-blue-50 border border-brand-100">
+        <div className="card p-6 border-gray-200">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">This Month's Summary</h3>
           <div className="space-y-4">
             {visualStatuses.slice(0, 3).map(status => {
@@ -225,7 +225,7 @@ export default function EmployeeDashboardPage() {
                 </div>
               );
             })}
-            <div className="border-t border-brand-200 pt-4 mt-4">
+            <div className="border-t border-gray-100 pt-4 mt-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">Total Work Days</span>
                 <span className="text-lg font-bold text-gray-900">{totalVisualDays}</span>

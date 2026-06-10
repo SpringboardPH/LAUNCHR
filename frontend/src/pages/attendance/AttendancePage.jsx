@@ -28,6 +28,10 @@ export default function AttendancePage() {
     open: false,
     employeeId: null,
   })
+  const [overtimeConfirm, setOvertimeConfirm] = useState({
+    open: false,
+    employeeId: null,
+  })
   const [editLog, setEditLog] = useState(null)
   const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', clock_in_notes: '', clock_out_notes: '' })
   const [markAbsentModal, setMarkAbsentModal] = useState({ open: false, date: format(new Date(), 'yyyy-MM-dd') })
@@ -251,8 +255,8 @@ export default function AttendancePage() {
     },
   })
   const clockOutMutation = useMutation({
-    mutationFn: ({ employeeId, confirmEarlyClockOut = false }) =>
-      clockOut('', employeeId, confirmEarlyClockOut),
+    mutationFn: ({ employeeId, confirmEarlyClockOut = false, isOvertime = false }) =>
+      clockOut('', employeeId, confirmEarlyClockOut, isOvertime),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
@@ -392,6 +396,39 @@ export default function AttendancePage() {
         confirmLabel="Confirm Clock Out"
       />
 
+      <Modal 
+        open={overtimeConfirm.open}
+        onClose={() => setOvertimeConfirm({ open: false, employeeId: null })}
+        title="Clock Out?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            The employee is clocking out past their scheduled time. How should this be recorded?
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            <button 
+              onClick={() => {
+                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertime: true })
+                setOvertimeConfirm({ open: false, employeeId: null })
+              }}
+              className="w-full btn bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Record as Overtime
+            </button>
+            <button 
+              onClick={() => {
+                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertime: false })
+                setOvertimeConfirm({ open: false, employeeId: null })
+              }}
+              className="w-full btn bg-green-600 hover:bg-green-700 text-white"
+            >
+              Record as Complete
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <PageHeader 
         title="Attendance" 
         description={`Today: ${displayDateLabel}`} 
@@ -466,19 +503,19 @@ export default function AttendancePage() {
                           log.clock_out_time ? (
                             <StatusBadge status={log.status} />
                           ) : (
-                            <span className="badge-green text-xs px-2 py-1 rounded">Working</span>
+                            <StatusBadge status="working" />
                           )
                         ) : (
                           (() => {
                             const win = getClockWindow(schedule, sysClock)
                             if (win?.isInactiveDay) {
-                              return <span className="badge-gray text-xs px-2 py-1 rounded">Not scheduled</span>
+                              return <StatusBadge status="not_scheduled" />
                             }
                             const isPastShift = win && win.currentMinutes > win.outEnd
                             return isPastShift ? (
                               <StatusBadge status="absent" />
                             ) : (
-                              <span className="badge-gray text-xs px-2 py-1 rounded">Not yet</span>
+                              <StatusBadge status="not_yet" />
                             )
                           })()
                         )}
@@ -503,7 +540,15 @@ export default function AttendancePage() {
                           })()
                         ) : !log.clock_out_time ? (
                           <button
-                            onClick={() => clockOutMutation.mutate({ employeeId: emp.id })}
+                            onClick={() => {
+                              const win = getClockWindow(schedule, sysClock)
+                              const isPastShift = win && win.currentMinutes > win.outEnd
+                              if (isPastShift) {
+                                setOvertimeConfirm({ open: true, employeeId: emp.id })
+                              } else {
+                                clockOutMutation.mutate({ employeeId: emp.id })
+                              }
+                            }}
                             disabled={clockOutMutation.isPending}
                             className="btn-secondary text-xs py-1.5 px-3"
                           >
