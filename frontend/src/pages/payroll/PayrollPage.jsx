@@ -278,6 +278,41 @@ export default function PayrollPage() {
             halfDayItem.amount = Math.round((Number(halfDayItem.amount) / (oldDRate / 2)) * (dRate / 2) * 100) / 100
           }
         }
+
+        // Withholding Tax (PH TRAIN Law 2023-2027)
+        const calculateWTax = (income) => {
+          if (income <= 10417) return 0
+          if (income <= 16666) return (income - 10417) * 0.15
+          if (income <= 33332) return 937.50 + (income - 16667) * 0.20
+          if (income <= 83332) return 4270.83 + (income - 33333) * 0.25
+          if (income <= 333332) return 16770.83 + (income - 83333) * 0.30
+          return 91770.83 + (income - 333333) * 0.35
+        }
+
+        const getDeduction = (label) => {
+          const item = next.deductions.find(d => d.label === label)
+          return item ? Number(item.amount) : 0
+        }
+
+        const isDaily = next.employee?.rate_type === 'daily'
+        const baseGross = isDaily 
+          ? (Number(next.base_salary) * Number(next.days_worked || 0))
+          : (Number(next.base_salary) / 2)
+        const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
+        const currentGross = baseGross + totalAllowances
+        
+        const earnedGross = currentGross - (getDeduction('Late') + getDeduction('Undertime') + getDeduction('Absent') + getDeduction('Half Day'))
+        const taxableIncome = earnedGross - (getDeduction('SSS EE Contribution') + getDeduction('PhilHealth EE Contribution') + getDeduction('Pag-IBIG EE Contribution'))
+        
+        const wTaxAmount = Math.round(calculateWTax(taxableIncome) * 100) / 100
+        let wTaxItem = next.deductions.find(d => d.label === 'Withholding Tax')
+        
+        // Only update if we aren't manually editing the tax itself
+        if (wTaxItem && (field !== 'amount' || type !== 'deductions' || next.deductions[index].label !== 'Withholding Tax')) {
+          wTaxItem.amount = wTaxAmount
+        } else if (!wTaxItem && wTaxAmount > 0) {
+          next.deductions.push({ label: 'Withholding Tax', amount: wTaxAmount })
+        }
       }
 
       syncDerivedItems()
@@ -517,7 +552,7 @@ export default function PayrollPage() {
           'O30': Number(getDeductionAmount('SSS EE Contribution')) || 0,
           'O31': Number(getDeductionAmount('PhilHealth EE Contribution')) || 0,
           'O32': Number(getDeductionAmount('Pag-IBIG EE Contribution')) || 0,
-          'O33': 0,
+          'O33': Number(getDeductionAmount('Withholding Tax')) || 0,
           'O34': 0,
           'O35': 0,
           'O36': 0,
@@ -683,7 +718,7 @@ export default function PayrollPage() {
       }) || []
       const generalAllowancesAmount = generalAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
 
-      const otherDeductions = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount })))?.filter(d => !['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'Cash Advance/Others'].includes(d.label)) || []
+      const otherDeductions = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount })))?.filter(d => !['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'Cash Advance/Others', 'Withholding Tax'].includes(d.label)) || []
       const customDeductionsAmount = otherDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0)
 
       // Map payroll data to template cells
@@ -733,7 +768,7 @@ export default function PayrollPage() {
         'O30': Number(getDeductionAmount('SSS EE Contribution')) || 0,
         'O31': Number(getDeductionAmount('PhilHealth EE Contribution')) || 0,
         'O32': Number(getDeductionAmount('Pag-IBIG EE Contribution')) || 0,
-        'O33': 0, // Withholding Tax
+        'O33': Number(getDeductionAmount('Withholding Tax')) || 0, // Withholding Tax
         'O34': 0, // SSS Loan
         'O35': 0, // Pag-IBIG Loan
         'O36': Number(getDeductionAmount('Cash Advance/Others')) + Number(customDeductionsAmount) || 0, // Cash Advance/Others + Custom

@@ -216,13 +216,20 @@ class PayrollController extends Controller
             $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis);
             $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis);
 
-            // ── Totals ────────────────────────────────────────────────────
             $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
+            $finalGross = $grossBase + $totalAllowances;
+
+            // Withholding Tax Calculation
+            // Taxable Income = Gross - (Late/Undertime/Absent) - Mandatory Contributions
+            $earnedGross = $finalGross - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
+            $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
+            $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome);
+
+            // ── Totals ────────────────────────────────────────────────────
             $totalDeductions = $lateDeduction + $undertimeDeduction
                 + $absentDeduction + $halfDayDeduction
-                + $sss + $philhealth + $pagibig;
+                + $sss + $philhealth + $pagibig + $wTax;
 
-            $finalGross = $grossBase + $totalAllowances;
             $finalNet = $finalGross - $totalDeductions;
 
                     $deductions = array_filter([
@@ -233,6 +240,7 @@ class PayrollController extends Controller
                         'SSS EE Contribution' => round($sss, 2),
                         'PhilHealth EE Contribution' => round($philhealth, 2),
                         'Pag-IBIG EE Contribution' => round($pagibig, 2),
+                        'Withholding Tax' => round($wTax, 2),
                     ], fn($val) => $val > 0);
 
                     $allowances = array_filter([
@@ -570,6 +578,23 @@ class PayrollController extends Controller
             $deductions['Half Day'] = round($newHalfDayDeduction, 2);
         } else {
             unset($deductions['Half Day']);
+        }
+
+        // Recalculate Withholding Tax
+        $currentGross = $payroll->gross_pay;
+        
+        $sss = (float)($deductions['SSS EE Contribution'] ?? 0);
+        $philhealth = (float)($deductions['PhilHealth EE Contribution'] ?? 0);
+        $pagibig = (float)($deductions['Pag-IBIG EE Contribution'] ?? 0);
+        
+        $earnedGross = $currentGross - ($deductions['Late'] + $deductions['Undertime'] + ($deductions['Absent'] ?? 0) + ($deductions['Half Day'] ?? 0));
+        $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
+        $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome);
+        
+        if ($wTax > 0) {
+            $deductions['Withholding Tax'] = round($wTax, 2);
+        } else {
+            unset($deductions['Withholding Tax']);
         }
 
         // Remove zero deductions

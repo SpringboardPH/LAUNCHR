@@ -106,4 +106,26 @@ class PayrollService
         $base = min($monthlySalary, 10000);
         return ($base * 0.02) / 2;
     }
+
+    /**
+     * Calculate Withholding Tax (PH TRAIN Law 2023-2027)
+     * Calculated based on semi-monthly taxable income
+     * Formula: Taxable Income = Gross Pay - (SSS + PhilHealth + Pag-IBIG)
+     */
+    public static function calculateWithholdingTax(float $taxableIncome): float
+    {
+        if ($taxableIncome <= 10417) {
+            return 0;
+        } elseif ($taxableIncome <= 16666) {
+            return ($taxableIncome - 10417) * 0.15;
+        } elseif ($taxableIncome <= 33332) {
+            return 937.50 + ($taxableIncome - 16667) * 0.20;
+        } elseif ($taxableIncome <= 83332) {
+            return 4270.83 + ($taxableIncome - 33333) * 0.25;
+        } elseif ($taxableIncome <= 333332) {
+            return 16770.83 + ($taxableIncome - 83333) * 0.30;
+        } else {
+            return 91770.83 + ($taxableIncome - 333333) * 0.35;
+        }
+    }
 }
