@@ -131,14 +131,21 @@ export default function PayrollPage() {
   })
 
   const handleEditInit = () => {
+    const dRate = Number(selectedPayroll.daily_rate || 0)
+    const dList = Array.isArray(selectedPayroll.deductions)
+      ? selectedPayroll.deductions
+      : Object.entries(selectedPayroll.deductions || {}).map(([k, v]) => ({ label: k, amount: v }))
+    
+    const absentItem = dList.find(d => d.label === 'Absent')
+    const initialAbsentDays = absentItem && dRate > 0 ? Number(absentItem.amount) / dRate : 0
+    
     setEditForm({
       ...selectedPayroll,
       allowances: Array.isArray(selectedPayroll.allowances) 
         ? selectedPayroll.allowances 
         : Object.entries(selectedPayroll.allowances || {}).map(([k, v]) => ({ label: k, amount: v })),
-      deductions: Array.isArray(selectedPayroll.deductions)
-        ? selectedPayroll.deductions
-        : Object.entries(selectedPayroll.deductions || {}).map(([k, v]) => ({ label: k, amount: v })),
+      deductions: dList,
+      absent_days: initialAbsentDays
     })
     setIsEditing(true)
   }
@@ -173,13 +180,15 @@ export default function PayrollPage() {
         next[field] = value
       }
       
+      const dRate = Number(next.daily_rate || 0)
+      const hRate = dRate / 8
+
       // 3. Update daily_rate if base_salary changed
       if (field === 'base_salary') {
         const isDaily = next.employee?.rate_type === 'daily'
         if (isDaily) {
           next.daily_rate = Number(value)
         } else {
-          // For monthly, attempt to maintain the divisor ratio
           const oldBase = Number(prev.base_salary)
           const oldDaily = Number(prev.daily_rate)
           if (oldBase > 0) {
@@ -188,46 +197,84 @@ export default function PayrollPage() {
         }
       }
 
-      const dRate = Number(next.daily_rate || 0)
-      const hRate = dRate / 8
+      // 4. Handle Syncing
+      if (type === 'allowances' && field === 'amount') {
+        // Line Item -> Metric
+        const item = next.allowances[index]
+        if (item.label === 'Overtime Pay' && hRate > 0) {
+          next.overtime_hours = Math.round((Number(value) / (hRate * 1.25)) * 100) / 100
+        }
+      } else if (type === 'deductions' && field === 'amount') {
+        // Line Item -> Metric
+        const item = next.deductions[index]
+        if (item.label === 'Late' && hRate > 0) {
+          next.late_minutes = Math.round((Number(value) / hRate) * 60)
+        } else if (item.label === 'Undertime' && hRate > 0) {
+          next.undertime_minutes = Math.round((Number(value) / hRate) * 60)
+        } else if (item.label === 'Absent' && dRate > 0) {
+          next.absent_days = Math.round((Number(value) / dRate) * 100) / 100
+          // For Absent, we can also sync back to days_worked/hours if we want,
+          // but per previous request we kept them independent to avoid cascades.
+        }
+      } else if (field === 'total_hours') {
+        // Metric -> Metric
+        next.days_worked = Math.round((Number(value) / 8) * 100) / 100
+      } else if (field === 'days_worked') {
+        // Metric -> Metric
+        next.total_hours = Math.round(Number(value) * 8 * 100) / 100
+      } else if (field === 'absent_days') {
+        // Metric -> Metric (currently independent)
+      }
+      // absent_days is now independent to prevent "cascading" to 30 days
 
-      // 4. Auto-sync ALL derived items whenever rate OR metrics change
+      // 5. Auto-sync ALL derived items whenever rate OR metrics change
       const syncDerivedItems = () => {
+        const hRate = dRate / 8
+
         // Overtime Pay
-        const otItem = next.allowances.find(a => a.label === 'Overtime Pay')
-        if (otItem) {
-          otItem.amount = Math.round(Number(next.overtime_hours || 0) * hRate * 1.25 * 100) / 100
+        let otItem = next.allowances.find(a => a.label === 'Overtime Pay')
+        const otAmount = Math.round(Number(next.overtime_hours || 0) * hRate * 1.25 * 100) / 100
+        
+        // Only update the amount from metric if we aren't currently editing the amount itself
+        // to prevent rounding jitter.
+        if (otItem && (field !== 'amount' || type !== 'allowances' || next.allowances[index].label !== 'Overtime Pay')) {
+          otItem.amount = otAmount
+        } else if (!otItem && otAmount > 0) {
+          next.allowances.push({ label: 'Overtime Pay', amount: otAmount })
         }
         
         // Late
-        const lateItem = next.deductions.find(d => d.label === 'Late')
-        if (lateItem) {
-          lateItem.amount = Math.round((Number(next.late_minutes || 0) / 60) * hRate * 100) / 100
+        let lateItem = next.deductions.find(d => d.label === 'Late')
+        const lateAmount = Math.round((Number(next.late_minutes || 0) / 60) * hRate * 100) / 100
+        if (lateItem && (field !== 'amount' || type !== 'deductions' || next.deductions[index].label !== 'Late')) {
+          lateItem.amount = lateAmount
+        } else if (!lateItem && lateAmount > 0) {
+          next.deductions.push({ label: 'Late', amount: lateAmount })
         }
         
         // Undertime
-        const utItem = next.deductions.find(d => d.label === 'Undertime')
-        if (utItem) {
-          utItem.amount = Math.round((Number(next.undertime_minutes || 0) / 60) * hRate * 100) / 100
+        let utItem = next.deductions.find(d => d.label === 'Undertime')
+        const utAmount = Math.round((Number(next.undertime_minutes || 0) / 60) * hRate * 100) / 100
+        if (utItem && (field !== 'amount' || type !== 'deductions' || next.deductions[index].label !== 'Undertime')) {
+          utItem.amount = utAmount
+        } else if (!utItem && utAmount > 0) {
+          next.deductions.push({ label: 'Undertime', amount: utAmount })
         }
 
-        // Absent & Half Day (based on daily rate)
-        const absentItem = next.deductions.find(d => d.label === 'Absent')
-        if (absentItem) {
-          // If the user changed days_worked, we can't easily guess absent_days 
-          // without knowing the cutoff's total work days. 
-          // But we can at least update the amount based on new daily rate 
-          // if we assume the previous amount was correctly proportional.
-          const oldDRate = Number(prev.daily_rate)
-          if (oldDRate > 0) {
-            absentItem.amount = Math.round((Number(absentItem.amount) / oldDRate) * dRate * 100) / 100
-          }
+        // Absent
+        let absentItem = next.deductions.find(d => d.label === 'Absent')
+        const absentAmount = Math.round(Number(next.absent_days || 0) * dRate * 100) / 100
+        if (absentItem && (field !== 'amount' || type !== 'deductions' || next.deductions[index].label !== 'Absent')) {
+          absentItem.amount = absentAmount
+        } else if (!absentItem && absentAmount > 0) {
+          next.deductions.push({ label: 'Absent', amount: absentAmount })
         }
 
+        // Half Day
         const halfDayItem = next.deductions.find(d => d.label === 'Half Day')
         if (halfDayItem) {
           const oldDRate = Number(prev.daily_rate)
-          if (oldDRate > 0) {
+          if (oldDRate > 0 && field === 'base_salary') {
             halfDayItem.amount = Math.round((Number(halfDayItem.amount) / (oldDRate / 2)) * (dRate / 2) * 100) / 100
           }
         }
@@ -235,7 +282,7 @@ export default function PayrollPage() {
 
       syncDerivedItems()
 
-      // 5. Recalculate totals
+      // 6. Recalculate totals
       const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
       const totalDeductions = next.deductions.reduce((s, d) => s + Number(d.amount || 0), 0)
       
@@ -1234,10 +1281,15 @@ export default function PayrollPage() {
 
             <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100">
               <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-3">Attendance Metrics</p>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 {[
                   { label: 'Work Hours', value: isEditing ? editForm.total_hours : selectedPayroll.total_hours, suffix: 'h', key: 'total_hours' },
                   { label: 'Days Worked', value: isEditing ? editForm.days_worked : selectedPayroll.days_worked, suffix: 'd', key: 'days_worked' },
+                  { label: 'Absent', value: isEditing ? editForm.absent_days : (() => {
+                    const dList = Array.isArray(selectedPayroll.deductions) ? selectedPayroll.deductions : Object.entries(selectedPayroll.deductions || {}).map(([k, v]) => ({ label: k, amount: v }));
+                    const absentItem = dList.find(d => d.label === 'Absent');
+                    return absentItem ? (Number(absentItem.amount) / (Number(selectedPayroll.daily_rate) || 1)) : 0;
+                  })(), suffix: 'd', key: 'absent_days' },
                   { label: 'Overtime', value: isEditing ? editForm.overtime_hours : selectedPayroll.overtime_hours, suffix: 'h', key: 'overtime_hours' },
                   { label: 'Late', value: isEditing ? editForm.late_minutes : selectedPayroll.late_minutes, suffix: 'm', key: 'late_minutes' },
                   { label: 'Undertime', value: isEditing ? editForm.undertime_minutes : selectedPayroll.undertime_minutes, suffix: 'm', key: 'undertime_minutes' },

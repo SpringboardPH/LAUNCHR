@@ -586,6 +586,7 @@ class PayrollController extends Controller
         // Toggle the flag and save
         $payroll->update([
             'use_undeclared' => !$payroll->use_undeclared,
+            'daily_rate' => round($dailyRate, 2),
             'deductions' => $deductions,
             'net_pay' => round($newNetPay, 2),
         ]);
