@@ -28,6 +28,10 @@ export default function AttendancePage() {
     open: false,
     employeeId: null,
   })
+  const [earlyClockInConfirm, setEarlyClockInConfirm] = useState({
+    open: false,
+    employeeId: null,
+  })
   const [overtimeConfirm, setOvertimeConfirm] = useState({
     open: false,
     employeeId: null,
@@ -255,8 +259,8 @@ export default function AttendancePage() {
     },
   })
   const clockOutMutation = useMutation({
-    mutationFn: ({ employeeId, confirmEarlyClockOut = false, isOvertime = false }) =>
-      clockOut('', employeeId, confirmEarlyClockOut, isOvertime),
+    mutationFn: ({ employeeId, confirmEarlyClockOut = false, isOvertimeParam = null }) =>
+      clockOut('', employeeId, confirmEarlyClockOut, isOvertimeParam !== null ? isOvertimeParam : (overtimeConfirm.employeeId === employeeId ? true : false)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
@@ -380,6 +384,20 @@ export default function AttendancePage() {
   return (
     <div className="space-y-5">
       <ConfirmModal
+        open={earlyClockInConfirm.open}
+        onClose={() => setEarlyClockInConfirm({ open: false, employeeId: null })}
+        onConfirm={() => {
+          if (!earlyClockInConfirm.employeeId) return
+          clockInMutation.mutate(earlyClockInConfirm.employeeId)
+          setEarlyClockInConfirm({ open: false, employeeId: null })
+        }}
+        title="Clock In Early?"
+        message="Note: Clocking in early won't count toward overtime and will only be applied normally. Do you wish to proceed?"
+        type="warning"
+        confirmLabel="Confirm Clock In"
+      />
+
+      <ConfirmModal
         open={earlyClockOutConfirm.open}
         onClose={() => setEarlyClockOutConfirm({ open: false, employeeId: null })}
         onConfirm={() => {
@@ -387,6 +405,7 @@ export default function AttendancePage() {
           clockOutMutation.mutate({
             employeeId: earlyClockOutConfirm.employeeId,
             confirmEarlyClockOut: true,
+            isOvertimeParam: overtimeConfirm.employeeId === earlyClockOutConfirm.employeeId,
           })
           setEarlyClockOutConfirm({ open: false, employeeId: null })
         }}
@@ -409,7 +428,7 @@ export default function AttendancePage() {
           <div className="grid grid-cols-1 gap-2">
             <button 
               onClick={() => {
-                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertime: true })
+                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertimeParam: true })
                 setOvertimeConfirm({ open: false, employeeId: null })
               }}
               className="w-full btn bg-purple-600 hover:bg-purple-700 text-white"
@@ -418,7 +437,7 @@ export default function AttendancePage() {
             </button>
             <button 
               onClick={() => {
-                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertime: false })
+                clockOutMutation.mutate({ employeeId: overtimeConfirm.employeeId, isOvertimeParam: false })
                 setOvertimeConfirm({ open: false, employeeId: null })
               }}
               className="w-full btn bg-green-600 hover:bg-green-700 text-white"
@@ -527,7 +546,13 @@ export default function AttendancePage() {
                             const canClockIn = Boolean(win) && !win.isInactiveDay && win.currentMinutes >= win.inStart && win.currentMinutes <= win.outEnd
                             return (
                           <button
-                            onClick={() => clockInMutation.mutate(emp.id)}
+                            onClick={() => {
+                              if (win && win.currentMinutes < win.normalInStart) {
+                                setEarlyClockInConfirm({ open: true, employeeId: emp.id })
+                              } else {
+                                clockInMutation.mutate(emp.id)
+                              }
+                            }}
                             disabled={clockInMutation.isPending || !canClockIn}
                             className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
                           >
@@ -543,10 +568,18 @@ export default function AttendancePage() {
                             onClick={() => {
                               const win = getClockWindow(schedule, sysClock)
                               const isPastShift = win && win.currentMinutes > win.outEnd
+                              const isEarly = win && win.currentMinutes < win.outStart
+
                               if (isPastShift) {
                                 setOvertimeConfirm({ open: true, employeeId: emp.id })
+                              } else if (isEarly) {
+                                setEarlyClockOutConfirm({ open: true, employeeId: emp.id })
                               } else {
-                                clockOutMutation.mutate({ employeeId: emp.id })
+                                clockOutMutation.mutate({ 
+                                  employeeId: emp.id, 
+                                  confirmEarlyClockOut: false,
+                                  isOvertimeParam: overtimeConfirm.employeeId === emp.id 
+                                })
                               }
                             }}
                             disabled={clockOutMutation.isPending}

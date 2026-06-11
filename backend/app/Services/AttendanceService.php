@@ -21,6 +21,14 @@ class AttendanceService
         }
 
         $inMinutes = self::parseTimeToMinutes($clockIn);
+        $startMinutes = self::parseTimeToMinutes($workStart);
+
+        // Treat early clock-in within the hour as "normal" start for duration/OT
+        $effectiveInMin = $inMinutes;
+        if ($inMinutes < $startMinutes && $inMinutes >= ($startMinutes - 60)) {
+            $effectiveInMin = $startMinutes;
+        }
+
         $outMinutes = $clockOut ? self::parseTimeToMinutes($clockOut) : $inMinutes;
         
         // Handle overnight shifts if necessary
@@ -28,12 +36,11 @@ class AttendanceService
             $outMinutes += 1440;
         }
 
-        $startMinutes = self::parseTimeToMinutes($workStart);
         $lateMinutes = max(0, $inMinutes - $startMinutes);
-        $hoursWorked = max(0, ($outMinutes - $inMinutes) / 60);
+        $hoursWorked = max(0, ($outMinutes - $effectiveInMin) / 60);
         $halfExpected = $expectedHours / 2;
         $expectedMinutes = $expectedHours * 60;
-        $undertimeMinutes = max(0, $expectedMinutes - ($outMinutes - $inMinutes));
+        $undertimeMinutes = max(0, $expectedMinutes - ($outMinutes - $effectiveInMin));
 
         // Check if grace period covers the deviation
         $graceCovered = false;
@@ -100,9 +107,15 @@ class AttendanceService
         $outMin = self::parseTimeToMinutes($clockOut);
         $startMin = self::parseTimeToMinutes($workStart);
 
+        // Treat early clock-in within the hour as "normal" start for duration/OT
+        $effectiveInMin = $inMin;
+        if ($inMin < $startMin && $inMin >= ($startMin - 60)) {
+            $effectiveInMin = $startMin;
+        }
+
         if ($outMin < $inMin) $outMin += 1440;
 
-        $minutesWorked = $outMin - $inMin;
+        $minutesWorked = max(0, $outMin - $effectiveInMin);
         $hoursWorked = $minutesWorked / 60;
         $lateMin = max(0, $inMin - $startMin);
         

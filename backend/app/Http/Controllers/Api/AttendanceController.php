@@ -294,6 +294,9 @@ class AttendanceController extends Controller
         $latestClockInMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
         if ($dayRule && !empty($dayRule['clock_in'])) {
+            $targetInMinutes = $this->parseTimeToMinutes($dayRule['clock_in']);
+            $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
+
             $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
             if ($graceEnabled) {
                 $clockInWindow = $this->applyGraceWindow(
@@ -308,12 +311,11 @@ class AttendanceController extends Controller
                         $dayRule['grace_minutes'] ?? 15
                     )
                     : ['end' => self::LATE_CLOCK_OUT];
-                $earlyAllowedMinutes = $this->parseTimeToMinutes($clockInWindow['start']);
+                
                 $clockInGraceEndMinutes = $this->parseTimeToMinutes($clockInWindow['end']);
                 $latestClockInMinutes = $this->parseTimeToMinutes($clockOutWindow['end']);
             } else {
-                $exactTime = $this->parseTimeToMinutes($dayRule['clock_in']);
-                $earlyAllowedMinutes = $exactTime;
+                $exactTime = $targetInMinutes;
                 $clockInGraceEndMinutes = $exactTime;
                 $latestClockInMinutes = !empty($dayRule['clock_out'])
                     ? $this->parseTimeToMinutes($dayRule['clock_out'])
@@ -321,7 +323,9 @@ class AttendanceController extends Controller
             }
         } elseif ($schedule && $schedule->template) {
             $template = $schedule->template;
-            $earlyAllowedMinutes = $this->parseTimeToMinutes($template->clock_in_start ?? $template->work_start_time ?? self::EARLY_CLOCK_IN);
+            $targetInMinutes = $this->parseTimeToMinutes($template->work_start_time ?? self::WORK_START_TIME);
+            $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
+            
             $clockInGraceEndMinutes = $this->parseTimeToMinutes($template->clock_in_end ?? $template->work_start_time ?? self::WORK_START_TIME);
             $latestClockInMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? $template->work_end_time ?? self::LATE_CLOCK_OUT);
         }
@@ -437,32 +441,40 @@ class AttendanceController extends Controller
         $clockOutTime = SystemClock::timeString();
         $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
         $workEndTime = self::WORK_END_TIME;
+        $earlyThresholdMinutes = $this->parseTimeToMinutes(self::WORK_END_TIME);
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
         if ($dayRule && !empty($dayRule['clock_out'])) {
+            $workEndTime = $dayRule['clock_out'];
+            $targetOutMinutes = $this->parseTimeToMinutes($dayRule['clock_out']);
             $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+            
             if ($graceEnabled) {
                 $window = $this->applyGraceWindow(
                     $dayRule['clock_out'],
                     $dayRule['grace_type'] ?? '-/+',
                     $dayRule['grace_minutes'] ?? 15
                 );
-                $workEndTime = $dayRule['clock_out'];
+                $earlyThresholdMinutes = $this->parseTimeToMinutes($window['start']);
                 $lateAllowedMinutes = $this->parseTimeToMinutes($window['end']);
             } else {
-                $workEndTime = $dayRule['clock_out'];
-                $lateAllowedMinutes = $this->parseTimeToMinutes($dayRule['clock_out']);
+                $earlyThresholdMinutes = $targetOutMinutes;
+                $lateAllowedMinutes = $targetOutMinutes;
             }
         } elseif ($schedule && $schedule->template) {
             $template = $schedule->template;
             $workEndTime = $template->work_end_time ?? $template->end_time ?? $template->clock_out_start ?? self::WORK_END_TIME;
+            
+            // For templates, we use clock_out_start as the threshold if it exists, 
+            // otherwise use work_end_time.
+            $earlyThresholdMinutes = $this->parseTimeToMinutes($template->clock_out_start ?? $workEndTime);
             $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
         }
-        $workEndMinutes = $this->parseTimeToMinutes($workEndTime);
+
         $confirmEarlyClockOut = (bool) $request->boolean('confirm_early_clock_out');
         $isOvertime = (bool) $request->boolean('is_overtime');
         
-        if ($clockOutMinutes < $workEndMinutes && !$confirmEarlyClockOut) {
+        if ($clockOutMinutes < $earlyThresholdMinutes && !$confirmEarlyClockOut) {
             return response()->json([
                 'success' => false,
                 'message' => 'Clocking out now will count as incomplete hours. Confirm if you want to proceed.',

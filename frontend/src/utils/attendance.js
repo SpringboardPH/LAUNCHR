@@ -94,6 +94,9 @@ export const getClockWindow = (schedule, sysClock = null) => {
   let inStart, inEnd, outStart, outEnd
   let workStart = template.work_start_time?.substring(0, 5)
   let workEnd = template.work_end_time?.substring(0, 5)
+  let workStartMinutes = 0
+  let workEndMinutes = 0
+  let normalInStart = 0
 
   if (dayRule && dayRule.enabled) {
     const targetIn = parse(dayRule.clock_in)
@@ -102,18 +105,25 @@ export const getClockWindow = (schedule, sysClock = null) => {
     const type = dayRule.grace_type || '-/+'
     workStart = dayRule.clock_in.substring(0, 5)
     workEnd = dayRule.clock_out.substring(0, 5)
+    workStartMinutes = targetIn
+    workEndMinutes = targetOut
 
+    inStart = targetIn - 60 // Allow 1 hour before scheduled time
+    normalInStart = dayRule.grace_enabled ? (targetIn - ((type === '-' || type === '-/+') ? grace : 0)) : targetIn
+    
     if (dayRule.grace_enabled) {
-      inStart = targetIn - ((type === '-' || type === '-/+') ? grace : 0)
       inEnd = targetIn + ((type === '+' || type === '-/+') ? grace : 0)
       outStart = targetOut - ((type === '-' || type === '-/+') ? grace : 0)
       outEnd = targetOut + ((type === '+' || type === '-/+') ? grace : 0)
     } else {
-      inStart = inEnd = targetIn
+      inEnd = targetIn
       outStart = outEnd = targetOut
     }
   } else {
-    inStart = parse(template.clock_in_start || template.work_start_time)
+    workStartMinutes = parse(template.work_start_time)
+    workEndMinutes = parse(template.work_end_time)
+    inStart = workStartMinutes - 60 // Allow 1 hour before scheduled time
+    normalInStart = parse(template.clock_in_start || template.work_start_time)
     inEnd = parse(template.clock_in_end || template.work_start_time)
     outStart = parse(template.clock_out_start || template.work_end_time)
     outEnd = parse(template.clock_out_end || template.work_end_time)
@@ -126,6 +136,9 @@ export const getClockWindow = (schedule, sysClock = null) => {
     outEnd,
     workStart,
     workEnd,
+    workStartMinutes,
+    workEndMinutes,
+    normalInStart,
     currentMinutes,
     isWithinInWindow: currentMinutes >= inStart && currentMinutes <= inEnd,
     isWithinOutWindow: currentMinutes >= outStart && currentMinutes <= outEnd,

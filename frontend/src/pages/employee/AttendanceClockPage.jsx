@@ -40,6 +40,7 @@ export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
   const [isOvertime, setIsOvertime] = useState(false)
   const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
+  const [earlyClockInConfirmOpen, setEarlyClockInConfirmOpen] = useState(false)
   const [overtimeWarningOpen, setOvertimeWarningOpen] = useState(false)
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -172,8 +173,8 @@ export default function AttendanceClockPage() {
     },
   })
   const outMutation = useMutation({
-    mutationFn: ({ confirmEarlyClockOut = false, isOvertime = false } = {}) =>
-      clockOut(notes, null, confirmEarlyClockOut, isOvertime),
+    mutationFn: ({ confirmEarlyClockOut = false, isOvertimeParam = null } = {}) =>
+      clockOut(notes, null, confirmEarlyClockOut, isOvertimeParam !== null ? isOvertimeParam : isOvertime),
     onSuccess: () => {
       setNotes('')
       setIsOvertime(false)
@@ -281,10 +282,23 @@ export default function AttendanceClockPage() {
   return (
     <div>
       <ConfirmModal
+        open={earlyClockInConfirmOpen}
+        onClose={() => setEarlyClockInConfirmOpen(false)}
+        onConfirm={() => {
+          inMutation.mutate()
+          setEarlyClockInConfirmOpen(false)
+        }}
+        title="Clock In Early?"
+        message="Note: Clocking in early won't count toward overtime and will only be applied normally. Do you wish to proceed?"
+        type="warning"
+        confirmLabel="Confirm Clock In"
+      />
+
+      <ConfirmModal
         open={earlyClockOutConfirmOpen}
         onClose={() => setEarlyClockOutConfirmOpen(false)}
         onConfirm={() => {
-          outMutation.mutate({ confirmEarlyClockOut: true })
+          outMutation.mutate({ confirmEarlyClockOut: true, isOvertimeParam: isOvertime })
           setEarlyClockOutConfirmOpen(false)
         }}
         title="Clock Out Early?"
@@ -381,7 +395,13 @@ export default function AttendanceClockPage() {
             {/* Action Button */}
             {!isClockedIn ? (
               <button
-                onClick={() => inMutation.mutate()}
+                onClick={() => {
+                  if (window && window.currentMinutes < window.normalInStart) {
+                    setEarlyClockInConfirmOpen(true)
+                  } else {
+                    inMutation.mutate()
+                  }
+                }}
                 disabled={inMutation.isPending || !canClockIn}
                 className={`btn w-full ${!canClockIn ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
               >
@@ -394,22 +414,30 @@ export default function AttendanceClockPage() {
               </button>
             ) : !isClockedOut ? (
               <>
+                {window && window.currentMinutes > window.outEnd && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isOvertime) {
+                        setIsOvertime(false)
+                      } else {
+                        setOvertimeWarningOpen(true)
+                      }
+                    }}
+                    className={`btn w-full mb-2 ${isOvertime ? 'bg-purple-600 text-white border-purple-600' : 'btn-outline border-purple-300 text-purple-700 hover:bg-purple-50'}`}
+                  >
+                    <Clock size={16} />
+                    {isOvertime ? '✓ Overtime Selected' : 'Clocking out for overtime?'}
+                  </button>
+                )}
                 <button
-                  type="button"
                   onClick={() => {
-                    if (isOvertime) {
-                      setIsOvertime(false)
+                    if (window && window.currentMinutes < window.outStart) {
+                      setEarlyClockOutConfirmOpen(true)
                     } else {
-                      setOvertimeWarningOpen(true)
+                      outMutation.mutate({ confirmEarlyClockOut: false, isOvertimeParam: isOvertime })
                     }
                   }}
-                  className={`btn w-full mb-2 ${isOvertime ? 'bg-purple-600 text-white border-purple-600' : 'btn-outline border-purple-300 text-purple-700 hover:bg-purple-50'}`}
-                >
-                  <Clock size={16} />
-                  {isOvertime ? '✓ Overtime Selected' : 'Clocking out for overtime?'}
-                </button>
-                <button
-                  onClick={() => outMutation.mutate({ confirmEarlyClockOut: false, isOvertime })}
                   disabled={outMutation.isPending || !canClockOut}
                   className={`btn w-full ${!canClockOut ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-secondary'}`}
                 >
