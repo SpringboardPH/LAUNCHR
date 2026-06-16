@@ -147,7 +147,7 @@ class AttendanceController extends Controller
 
     private function maybeReopenAutoClockedOutLog(?AttendanceLog $log, ?EmployeeSchedule $schedule, ?array $dayRule, Carbon $today): void
     {
-        if (!$log || !$log->clock_out_time || !$log->notes) {
+        if (!$log || !$log->clock_out_time || !$log->clock_out_notes) {
             return;
         }
 

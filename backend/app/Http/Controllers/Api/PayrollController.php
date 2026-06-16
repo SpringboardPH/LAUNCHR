@@ -556,7 +556,7 @@ class PayrollController extends Controller
         // Calculate absent days from deductions (if present)
         $deductions = is_array($payroll->deductions) ? $payroll->deductions : [];
         $oldAbsentDeduction = (float)($deductions['Absent'] ?? 0);
-        $absentDays = $oldAbsentDeduction > 0 ? $oldAbsentDeduction / ($payroll->daily_rate / ($isDaily ? 1 : 1)) : 0;
+        $absentDays = $oldAbsentDeduction > 0 ? $oldAbsentDeduction / $payroll->daily_rate : 0;
         $newAbsentDeduction = $absentDays * $dailyRate;
 
         // Calculate half day deduction
