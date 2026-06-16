@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
 import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
@@ -36,6 +36,13 @@ export default function SystemSettingsPage() {
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [sssTable, setSssTable] = useState('')
   const [themeColor, setThemeColor] = useState('sienna')
+  const [payrollFrequency, setPayrollFrequency] = useState('semi_monthly')
+  const [p1Start, setP1Start] = useState(1)
+  const [p1End, setP1End] = useState(15)
+  const [p2Start, setP2Start] = useState(16)
+  const [p2End, setP2End] = useState(31)
+  const [pMonthlyStart, setPMonthlyStart] = useState(1)
+  const [pMonthlyEnd, setPMonthlyEnd] = useState(31)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
 
   const { data: settings = [], isLoading } = useQuery({
@@ -84,6 +91,14 @@ export default function SystemSettingsPage() {
 
       const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
       setThemeColor(themeSetting)
+
+      setPayrollFrequency(settings.find(s => s.key === 'payroll_frequency')?.value ?? 'semi_monthly')
+      setP1Start(parseInt(settings.find(s => s.key === 'payroll_period1_start_day')?.value ?? '1'))
+      setP1End(parseInt(settings.find(s => s.key === 'payroll_period1_end_day')?.value ?? '15'))
+      setP2Start(parseInt(settings.find(s => s.key === 'payroll_period2_start_day')?.value ?? '16'))
+      setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
+      setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
+      setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
     }
   }, [settings])
 
@@ -138,6 +153,14 @@ export default function SystemSettingsPage() {
           console.error("Invalid SSS JSON", e)
         }
       }
+
+      await updateAdminSetting('payroll_frequency',         payrollFrequency, 'Payroll cycle: semi_monthly or monthly',                     'string')
+      await updateAdminSetting('payroll_period1_start_day', p1Start,          'Semi-monthly: start day of first period',                    'integer')
+      await updateAdminSetting('payroll_period1_end_day',   p1End,            'Semi-monthly: end day of first period',                      'integer')
+      await updateAdminSetting('payroll_period2_start_day', p2Start,          'Semi-monthly: start day of second period',                   'integer')
+      await updateAdminSetting('payroll_period2_end_day',   p2End,            'Semi-monthly: end day of second period (31 = end of month)', 'integer')
+      await updateAdminSetting('payroll_monthly_start_day', pMonthlyStart,    'Monthly: start day of the payroll period',                   'integer')
+      await updateAdminSetting('payroll_monthly_end_day',   pMonthlyEnd,      'Monthly: end day of the payroll period (31 = end of month)', 'integer')
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -231,6 +254,14 @@ export default function SystemSettingsPage() {
 
         const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
         setThemeColor(themeSetting)
+
+        setPayrollFrequency(settings.find(s => s.key === 'payroll_frequency')?.value ?? 'semi_monthly')
+        setP1Start(parseInt(settings.find(s => s.key === 'payroll_period1_start_day')?.value ?? '1'))
+        setP1End(parseInt(settings.find(s => s.key === 'payroll_period1_end_day')?.value ?? '15'))
+        setP2Start(parseInt(settings.find(s => s.key === 'payroll_period2_start_day')?.value ?? '16'))
+        setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
+        setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
+        setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
       }
     })
   }
@@ -253,6 +284,33 @@ export default function SystemSettingsPage() {
       }
     })
   }
+
+  const previewPeriods = useMemo(() => {
+    const lastDay = (y, m) => new Date(y, m, 0).getDate()
+    const resolve = (day, y, m) => (day === 31 ? lastDay(y, m) : day)
+    const fmt = (y, m, d) => new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const buildPeriod = (sDay, eDay, y, m) => {
+      const rs = resolve(sDay, y, m)
+      if (eDay < sDay) {
+        const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1
+        return { start: fmt(y, m, rs), end: fmt(ny, nm, resolve(eDay, ny, nm)) }
+      }
+      return { start: fmt(y, m, rs), end: fmt(y, m, resolve(eDay, y, m)) }
+    }
+    const now = new Date()
+    const months = [0, 1, 2].map(i => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      return { y: d.getFullYear(), m: d.getMonth() + 1, label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) }
+    })
+    return months.flatMap(({ y, m, label }) =>
+      payrollFrequency === 'monthly'
+        ? [{ period: label, ...buildPeriod(pMonthlyStart, pMonthlyEnd, y, m) }]
+        : [
+            { period: `${label} — Period 1`, ...buildPeriod(p1Start, p1End, y, m) },
+            { period: `${label} — Period 2`, ...buildPeriod(p2Start, p2End, y, m) },
+          ]
+    )
+  }, [payrollFrequency, p1Start, p1End, p2Start, p2End, pMonthlyStart, pMonthlyEnd])
 
   if (isLoading) {
     return (
@@ -571,6 +629,96 @@ export default function SystemSettingsPage() {
                   Note: The JSON structure must include "min", "max", "msc", and "ee" fields.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <FileSpreadsheet size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Payroll Configuration</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Set payroll frequency and pay period cutoff days.</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 space-y-6">
+            {payrollFrequency !== (settings.find(s => s.key === 'payroll_frequency')?.value ?? 'semi_monthly') && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                <strong>Note:</strong> Changing payroll frequency will only affect future payroll runs. Existing draft payrolls must be deleted and regenerated.
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Payroll Frequency</label>
+              <select value={payrollFrequency} onChange={(e) => setPayrollFrequency(e.target.value)} className="input h-11">
+                <option value="semi_monthly">Semi-Monthly (twice a month)</option>
+                <option value="monthly">Monthly (once a month)</option>
+              </select>
+            </div>
+            {payrollFrequency === 'semi_monthly' ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 1 Start Day</label>
+                    <input type="number" min="1" max="31" value={p1Start} onChange={(e) => setP1Start(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 1 End Day</label>
+                    <input type="number" min="1" max="31" value={p1End} onChange={(e) => setP1End(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 2 Start Day</label>
+                    <input type="number" min="1" max="31" value={p2Start} onChange={(e) => setP2Start(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 2 End Day</label>
+                    <input type="number" min="1" max="31" value={p2End} onChange={(e) => setP2End(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 italic">Use 31 to always mean the last day of the month.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period Start Day</label>
+                    <input type="number" min="1" max="31" value={pMonthlyStart} onChange={(e) => setPMonthlyStart(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period End Day</label>
+                    <input type="number" min="1" max="31" value={pMonthlyEnd} onChange={(e) => setPMonthlyEnd(parseInt(e.target.value))} className="input h-10" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 italic">Use 31 to always mean the last day of the month.</p>
+              </div>
+            )}
+            <div className="rounded-lg border border-gray-100 overflow-hidden">
+              <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Preview — Next 3 Months</span>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">Period</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">Start</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-500">End</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewPeriods.map((row, i) => (
+                    <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+                      <td className="px-4 py-2 text-gray-600">{row.period}</td>
+                      <td className="px-4 py-2 text-gray-800 font-medium">{row.start}</td>
+                      <td className="px-4 py-2 text-gray-800 font-medium">{row.end}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

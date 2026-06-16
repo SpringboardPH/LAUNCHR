@@ -9,7 +9,8 @@ import {
   getSystemClock, systemClockKeys,
   bulkMarkAbsent,
   getCalendarEvents, calendarEventKeys,
-  getCalendarEventTypes, calendarEventTypeKeys
+  getCalendarEventTypes, calendarEventTypeKeys,
+  getAdminSettings, adminSettingsKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List, ChevronDown } from 'lucide-react'
@@ -38,7 +39,13 @@ export default function AttendancePage() {
   })
   const [editLog, setEditLog] = useState(null)
   const [editForm, setEditForm] = useState({ clock_in_time: '', clock_out_time: '', status: '', clock_in_notes: '', clock_out_notes: '' })
-  const [markAbsentModal, setMarkAbsentModal] = useState({ open: false, date: format(new Date(), 'yyyy-MM-dd') })
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const [markAbsentModal, setMarkAbsentModal] = useState({
+    open: false,
+    start_date: today,
+    end_date: today,
+    employee_id: '',
+  })
   const [statusConfirmModal, setStatusConfirmModal] = useState({
     open: false,
     detectedStatus: '',
@@ -57,12 +64,17 @@ export default function AttendancePage() {
     refetchInterval: 30_000,
   })
 
+  const { data: adminSettings = [] } = useQuery({
+    queryKey: adminSettingsKeys.all,
+    queryFn: getAdminSettings,
+  })
+
   const bulkMarkAbsentMutation = useMutation({
-    mutationFn: (date) => bulkMarkAbsent(date),
+    mutationFn: (params) => bulkMarkAbsent(params),
     onSuccess: (data) => {
       setAlert({ type: 'success', message: data.message || 'Absentees marked successfully' })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
-      setMarkAbsentModal({ ...markAbsentModal, open: false })
+      setMarkAbsentModal(m => ({ ...m, open: false }))
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.response?.data?.message || 'Failed to mark absentees' })
@@ -72,11 +84,11 @@ export default function AttendancePage() {
   // Set cutoff once sysClock is available
   useEffect(() => {
     if (sysClock && activeCutoff === null) {
-      setActiveCutoff(getCutoffPeriod(sysClock.date))
+      setActiveCutoff(getCutoffPeriod(sysClock.date, adminSettings))
     }
-  }, [sysClock, activeCutoff])
+  }, [sysClock, activeCutoff, adminSettings])
 
-  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date())
+  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
 
   const monthlyParams = {
     start_date: currentCutoff.startDate,
@@ -374,8 +386,8 @@ export default function AttendancePage() {
     : format(new Date(), 'EEEE, MMMM d, yyyy')
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
-    else setActiveCutoff(getPrevCutoff(currentCutoff))
+    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff, adminSettings))
+    else setActiveCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
@@ -973,48 +985,79 @@ export default function AttendancePage() {
         </div>
       </Modal>
 
-      <Modal 
-        open={markAbsentModal.open} 
-        onClose={() => setMarkAbsentModal({ ...markAbsentModal, open: false })} 
-        title="Mark Employees Absent" 
+      <Modal
+        open={markAbsentModal.open}
+        onClose={() => setMarkAbsentModal(m => ({ ...m, open: false }))}
+        title="Mark Employees Absent"
         size="md"
       >
         <div className="space-y-4">
           <div className="bg-blue-50 border-l-4 border-blue-400 p-4 text-sm text-blue-700">
             <p className="font-semibold mb-1">Optional Feature</p>
             <p>
-              This manually marks employees as absent if they have no attendance logs for the selected date. 
+              This manually marks employees as absent if they have no attendance logs for the selected date range.
               The system already does this automatically every day at 11:59 PM.
             </p>
             <p className="mt-2">
-              Use this only if you need to mark absences for a day that hasn't been processed yet, 
+              Use this only if you need to mark absences for a day that hasn't been processed yet,
               or if the automatic process didn't run.
             </p>
           </div>
 
-          <FormField label="Target Date">
-            <input 
-              type="date" 
-              className="input" 
-              value={markAbsentModal.date} 
-              max={format(new Date(), 'yyyy-MM-dd')}
-              onChange={e => setMarkAbsentModal({ ...markAbsentModal, date: e.target.value })} 
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Start Date">
+              <input
+                type="date"
+                className="input"
+                value={markAbsentModal.start_date}
+                max={today}
+                onChange={e => setMarkAbsentModal(m => ({ ...m, start_date: e.target.value, end_date: e.target.value > m.end_date ? e.target.value : m.end_date }))}
+              />
+            </FormField>
+            <FormField label="End Date">
+              <input
+                type="date"
+                className="input"
+                value={markAbsentModal.end_date}
+                min={markAbsentModal.start_date}
+                max={today}
+                onChange={e => setMarkAbsentModal(m => ({ ...m, end_date: e.target.value }))}
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Employee">
+            <select
+              className="input"
+              value={markAbsentModal.employee_id}
+              onChange={e => setMarkAbsentModal(m => ({ ...m, employee_id: e.target.value }))}
+            >
+              <option value="">All Employees</option>
+              {(employees?.data || []).map(emp => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.last_name}, {emp.first_name}
+                </option>
+              ))}
+            </select>
           </FormField>
 
           <div className="flex justify-end gap-3 mt-6">
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn-secondary"
-              onClick={() => setMarkAbsentModal({ ...markAbsentModal, open: false })}
+              onClick={() => setMarkAbsentModal(m => ({ ...m, open: false }))}
             >
               Cancel
             </button>
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn-primary"
               disabled={bulkMarkAbsentMutation.isPending}
-              onClick={() => bulkMarkAbsentMutation.mutate(markAbsentModal.date)}
+              onClick={() => bulkMarkAbsentMutation.mutate({
+                start_date: markAbsentModal.start_date,
+                end_date: markAbsentModal.end_date,
+                employee_id: markAbsentModal.employee_id || null,
+              })}
             >
               {bulkMarkAbsentMutation.isPending ? 'Processing...' : 'Run Marking Process'}
             </button>

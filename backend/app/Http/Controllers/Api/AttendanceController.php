@@ -1171,19 +1171,27 @@ class AttendanceController extends Controller
         }
 
         $request->validate([
-            'date' => 'required|date|before_or_equal:today',
+            'start_date'  => 'required|date|before_or_equal:today',
+            'end_date'    => 'required|date|before_or_equal:today|after_or_equal:start_date',
+            'employee_id' => 'nullable|integer|exists:employees,id',
         ]);
 
-        $date = $request->input('date');
+        $start      = $request->input('start_date');
+        $end        = $request->input('end_date');
+        $employeeId = $request->input('employee_id');
 
         try {
-            Artisan::call('attendance:mark-absent', [
-                'date' => $date
-            ]);
+            $args = ['date' => $start, '--to' => $end];
+            if ($employeeId) {
+                $args['--employee'] = $employeeId;
+            }
+            Artisan::call('attendance:mark-absent', $args);
 
+            $range = $start === $end ? $start : "{$start} to {$end}";
+            $who   = $employeeId ? "employee #{$employeeId}" : 'all employees';
             return response()->json([
                 'success' => true,
-                'message' => "Successfully processed absentee marking for {$date}.",
+                'message' => "Successfully processed absentee marking for {$who} ({$range}).",
             ]);
         } catch (\Exception $e) {
             return response()->json([

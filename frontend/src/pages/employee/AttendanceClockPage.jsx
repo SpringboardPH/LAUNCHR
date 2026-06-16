@@ -7,7 +7,8 @@ import {
   attendanceKeys, getCurrentScheduleForEmployee, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
   getCalendarEvents, calendarEventKeys,
-  getCalendarEventTypes, calendarEventTypeKeys
+  getCalendarEventTypes, calendarEventTypeKeys,
+  getAdminSettings, adminSettingsKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
@@ -57,14 +58,19 @@ export default function AttendanceClockPage() {
     staleTime: 0,
   })
 
+  const { data: adminSettings = [] } = useQuery({
+    queryKey: adminSettingsKeys.all,
+    queryFn: getAdminSettings,
+  })
+
   const [activeCutoff, setActiveCutoff] = useState(null)
 
   // Set cutoff once sysClock is available (only once)
   useEffect(() => {
     if (sysClock && activeCutoff === null) {
-      setActiveCutoff(getCutoffPeriod(sysClock.date))
+      setActiveCutoff(getCutoffPeriod(sysClock.date, adminSettings))
     }
-  }, [sysClock, activeCutoff])
+  }, [sysClock, activeCutoff, adminSettings])
 
   // Live display clock — ticks every second but starts from system clock
   const [displayTime, setDisplayTime] = useState(null)
@@ -103,7 +109,7 @@ export default function AttendanceClockPage() {
     enabled: !!user?.employee?.id,
   })
 
-  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date())
+  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
   const activeCutoffLabel = currentCutoff.label
 
   const { data: monthlyData, isLoading: monthlyLoading } = useQuery({
@@ -220,8 +226,8 @@ export default function AttendanceClockPage() {
   const totalVisualDays = visualStatuses.reduce((sum, item) => sum + (statusCounts[item.key] || 0), 0)
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
-    else setActiveCutoff(getPrevCutoff(currentCutoff))
+    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff, adminSettings))
+    else setActiveCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
   // Pass sysClock to window check so it uses the virtual time

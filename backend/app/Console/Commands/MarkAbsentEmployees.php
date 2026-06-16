@@ -12,30 +12,41 @@ use Illuminate\Support\Carbon;
 
 class MarkAbsentEmployees extends Command
 {
-    protected $signature = 'attendance:mark-absent {date?}';
+    protected $signature = 'attendance:mark-absent {date?} {--to=} {--employee=}';
     protected $description = 'Scan for scheduled working days with no attendance log and mark them as absent';
 
     public function handle()
     {
         $dateInput = $this->argument('date');
-        
-        // If no date is provided, determine the target date.
-        // If it's very early in the morning (e.g., 00:00), we usually want to mark absences for "yesterday".
+        $toInput   = $this->option('to');
+        $employeeId = $this->option('employee');
+
         if ($dateInput) {
-            $targetDate = Carbon::parse($dateInput);
+            $startDate = Carbon::parse($dateInput)->startOfDay();
         } else {
             $now = SystemClock::now();
-            // If running before 4 AM, assume we are marking for the day that just ended.
-            if ($now->hour < 4) {
-                $targetDate = $now->copy()->subDay()->startOfDay();
-            } else {
-                $targetDate = $now->copy()->startOfDay();
-            }
+            $startDate = ($now->hour < 4)
+                ? $now->copy()->subDay()->startOfDay()
+                : $now->copy()->startOfDay();
         }
-        
-        $this->info("Scanning for absences on: " . $targetDate->toDateString());
-        
-        $employees = Employee::where('status', 'active')->get();
+
+        $endDate = $toInput ? Carbon::parse($toInput)->startOfDay() : $startDate->copy();
+
+        // Build date range
+        $dates = [];
+        for ($d = $startDate->copy(); $d->lte($endDate); $d->addDay()) {
+            $dates[] = $d->toDateString();
+        }
+
+        $employeeQuery = Employee::where('status', 'active');
+        if ($employeeId) {
+            $employeeQuery->where('id', $employeeId);
+        }
+        $employees = $employeeQuery->get();
+
+        foreach ($dates as $dateStr) {
+            $targetDate = Carbon::parse($dateStr);
+            $this->info("Scanning for absences on: " . $dateStr);
 
         foreach ($employees as $employee) {
             // Skip if an attendance log already exists for this date
@@ -93,6 +104,7 @@ class MarkAbsentEmployees extends Command
                 ]);
             }
         }
-        $this->info('Daily absentee marking completed.');
+        } // end foreach $dates
+        $this->info('Absentee marking completed.');
     }
 }
