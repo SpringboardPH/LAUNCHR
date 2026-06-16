@@ -240,7 +240,7 @@ class AdminSettingsController extends Controller
 
         if ($request->hasFile('logo')) {
             $image = $request->file('logo');
-            $name = 'system_logo_' . time() . '.' . $image->getClientOriginalExtension();
+            $name = 'system_logo_' . time() . '.' . strtolower($image->getClientOriginalExtension());
             $destinationPath = public_path('/');
             $image->move($destinationPath, $name);
 

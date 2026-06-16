@@ -118,6 +118,7 @@ export default function SystemSettingsPage() {
       setSelectedFile(null)
       qc.invalidateQueries({ queryKey: systemConfigKeys.all })
       qc.invalidateQueries({ queryKey: ['admin', 'logos'] })
+      qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
     }
   })
 
