@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { X, CalendarDays, Clock, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import AlertModal from './AlertModal'
@@ -70,6 +71,17 @@ export function EmptyState({ icon: Icon, title, description, action }) {
 
 // ─── Modal ────────────────────────────────────────────────────
 export function Modal({ open, onClose, title, children, footer, headerAction, size = 'md' }) {
+  useEffect(() => {
+    if (!open) return
+    const sw = window.innerWidth - document.documentElement.clientWidth
+    document.body.style.overflow = 'hidden'
+    document.body.style.paddingRight = sw + 'px'
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.paddingRight = ''
+    }
+  }, [open])
+
   if (!open) return null
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
   return (

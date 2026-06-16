@@ -63,6 +63,9 @@ class PayrollController extends Controller
         $start = $request->cutoff_start;
         $end = $request->cutoff_end;
 
+        $frequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
+        $periods = $frequency === 'monthly' ? 1 : 2;
+
         $employees = Employee::where('status', 'active')->get();
         $generatedPayrolls = [];
 
@@ -179,10 +182,10 @@ class PayrollController extends Controller
 
             // ── Gross Base ───────────────────────────────────────────────
             // Daily employees: paid per actual day worked
-            // Monthly employees: semi-monthly base (salary / 2)
+            // Monthly employees: base divided by number of pay periods
             $grossBase = $isDaily
                 ? $dailyRate * $daysWorkedCount
-                : $baseSalary / 2;
+                : $baseSalary / $periods;
 
             // ── Allowances / Premiums ─────────────────────────────────────
             $undeclaredSalary = (float) $employee->undeclared_salary;
@@ -193,7 +196,7 @@ class PayrollController extends Controller
             
             $undeclaredAllowance = $isDaily
                 ? 0  // Daily rate: undeclared is not an allowance, it's the base rate
-                : $undeclaredDiff / 2;
+                : $undeclaredDiff / $periods;
 
             // OT Pay:          daily_rate * 1.25 / 8 * OT hours
             // Rest Day Pay:    daily_rate * 1.30 / 8 * rest day regular hours
@@ -212,18 +215,20 @@ class PayrollController extends Controller
             // (HR deducts these on every payslip, not just end-of-month)
             // Daily rate: contributions based on undeclared_salary; Monthly: based on base_salary
             $contributionBasis = $isDaily ? $undeclaredSalary : $baseSalary;
-            $sss = \App\Services\PayrollService::calculateSSS($contributionBasis);
-            $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis);
-            $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis);
+            $sss = \App\Services\PayrollService::calculateSSS($contributionBasis, $periods);
+            $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis, $periods);
+            $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis, $periods);
 
             $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
             $finalGross = $grossBase + $totalAllowances;
 
             // Withholding Tax Calculation
             // Taxable Income = Gross - (Late/Undertime/Absent) - Mandatory Contributions
+            // TRAIN brackets are semi-monthly. Normalize to semi-monthly equivalent before lookup,
+            // then scale the result back to the actual pay period.
             $earnedGross = $finalGross - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
             $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
-            $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome);
+            $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome * $periods / 2) * 2 / $periods;
 
             // ── Totals ────────────────────────────────────────────────────
             $totalDeductions = $lateDeduction + $undertimeDeduction

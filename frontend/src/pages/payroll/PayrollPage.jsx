@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { 
-  getPayrolls, generatePayroll, updatePayroll, payrollKeys, 
-  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings
+  getPayrolls, generatePayroll, updatePayroll, payrollKeys,
+  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings, adminSettingsKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
@@ -34,18 +34,23 @@ export default function PayrollPage() {
     queryFn: getSystemClock,
   })
 
-  const { data: adminSettings = {} } = useQuery({
-    queryKey: ['adminSettings'],
+  const { data: adminSettings = null } = useQuery({
+    queryKey: adminSettingsKeys.all,
     queryFn: getAdminSettings,
   })
 
   useEffect(() => {
     if (sysClock && activeCutoff === null) {
-      setActiveCutoff(getCutoffPeriod(sysClock.date))
+      setActiveCutoff(getCutoffPeriod(sysClock.date, adminSettings))
     }
-  }, [sysClock, activeCutoff])
+  }, [sysClock, activeCutoff, adminSettings])
 
-  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date())
+  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
+
+  const payPeriods = useMemo(() => {
+    if (!Array.isArray(adminSettings)) return 2
+    return adminSettings.find(s => s.key === 'payroll_frequency')?.value === 'monthly' ? 1 : 2
+  }, [adminSettings])
 
   const { data: payrolls = [], isLoading } = useQuery({
     queryKey: payrollKeys.list({ 
@@ -295,9 +300,9 @@ export default function PayrollPage() {
         }
 
         const isDaily = next.employee?.rate_type === 'daily'
-        const baseGross = isDaily 
+        const baseGross = isDaily
           ? (Number(next.base_salary) * Number(next.days_worked || 0))
-          : (Number(next.base_salary) / 2)
+          : (Number(next.base_salary) / payPeriods)
         const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
         const currentGross = baseGross + totalAllowances
         
@@ -351,8 +356,8 @@ export default function PayrollPage() {
   }
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff))
-    else setActiveCutoff(getPrevCutoff(currentCutoff))
+    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff, adminSettings))
+    else setActiveCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
   const togglePaystubSelection = (payrollId) => {
@@ -522,6 +527,7 @@ export default function PayrollPage() {
           'E15': payroll.employee?.phone || payroll.employee?.contact_info || '',
           'E17': scheduleDisplay,
           'E19': payPeriod,
+          'E21': Number(payroll.days_worked) || 0,
           'L10': Number(payroll.net_pay) || 0,
           'L13': payroll.employee?.sss_number || '',
           'L15': payroll.employee?.philhealth_number || '',
@@ -734,8 +740,8 @@ export default function PayrollPage() {
         'L17': payroll.employee?.pagibig_number || '',
         'L19': payroll.employee?.tin_number || '',
         'L21': payroll.employee?.bank_account_number || '',
+        'E21': Number(payroll.days_worked) || 0,
 
-        
         // Earnings - Days/Hrs (F column)
         'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
         'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
@@ -855,24 +861,24 @@ export default function PayrollPage() {
           const bracket = sssTable.find(b => 
             contributionBasis >= b.min && (b.max === null || contributionBasis <= b.max)
           )
-          sssER = bracket ? (bracket.er || 0) / 2 : 0
+          sssER = bracket ? (bracket.er || 0) / payPeriods : 0
         }
       }
     }
-    
+
     // Calculate PhilHealth ER: 5% total, 2.5% ER share
     let phicER = 0
     if (contributionBasis < 10000) {
-      phicER = (500 * 0.5) / 2
+      phicER = (500 * 0.5) / payPeriods
     } else if (contributionBasis > 100000) {
-      phicER = (5000 * 0.5) / 2
+      phicER = (5000 * 0.5) / payPeriods
     } else {
-      phicER = ((contributionBasis * 0.05) * 0.5) / 2
+      phicER = ((contributionBasis * 0.05) * 0.5) / payPeriods
     }
-    
+
     // Calculate Pag-IBIG ER: 2% capped at 10k salary
     const pagibigBase = Math.min(contributionBasis, 10000)
-    const hdmfER = (pagibigBase * 0.02) / 2
+    const hdmfER = (pagibigBase * 0.02) / payPeriods
     
     return {
       sssER: Number(sssER.toFixed(2)),
@@ -940,7 +946,7 @@ export default function PayrollPage() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 bg-gray-50/50">
           <h3 className="text-sm font-semibold text-gray-700">Cutoff Details</h3>
           <div className="flex gap-2">
-            <button 
+            <button
               disabled={generateMutation.isPending}
               onClick={() => generateMutation.mutate({ 
                 cutoff_start: currentCutoff.startDate, 
@@ -1192,14 +1198,14 @@ export default function PayrollPage() {
                     <span className="text-gray-600">
                       { (isEditing ? editForm.employee?.rate_type : selectedPayroll.employee?.rate_type) === 'daily' 
                         ? `Base Pay (${isEditing ? editForm.days_worked : selectedPayroll.days_worked} Days)`
-                        : 'Base Salary (Half)'
+                        : `Base Salary (${payPeriods === 1 ? 'Monthly' : 'Half'})`
                       }
                     </span>
                     {isEditing ? (
                       <div className="flex items-center gap-1">
                         <span className="text-gray-400">₱</span>
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           className="w-24 text-right bg-transparent font-semibold focus:outline-none"
                           value={editForm.base_salary}
                           onChange={(e) => handleFieldChange(null, null, 'base_salary', e.target.value)}
@@ -1207,9 +1213,9 @@ export default function PayrollPage() {
                       </div>
                     ) : (
                       <span className="font-semibold text-gray-900">
-                        ₱{ (selectedPayroll.employee?.rate_type === 'daily' 
+                        ₱{ (selectedPayroll.employee?.rate_type === 'daily'
                             ? (Number(selectedPayroll.base_salary) * Number(selectedPayroll.days_worked))
-                            : (Number(selectedPayroll.base_salary) / 2)
+                            : (Number(selectedPayroll.base_salary) / payPeriods)
                            ).toLocaleString() }
                       </span>
                     )}
@@ -1438,7 +1444,7 @@ export default function PayrollPage() {
                             <span className="text-[9px] text-gray-400 italic">
                               {selectedPayroll.employee.rate_type === 'daily' 
                                 ? `₱${Number(selectedPayroll.daily_rate).toLocaleString()} × ${selectedPayroll.days_worked}d`
-                                : `₱${Number(selectedPayroll.base_salary).toLocaleString()} / 2`}
+                                : `₱${Number(selectedPayroll.base_salary).toLocaleString()} / ${payPeriods}`}
                             </span>
                           </div>
                           <span className="text-gray-700 font-medium">₱{Number(selectedPayroll.gross_pay - (selectedPayroll.allowances?.reduce((acc, a) => acc + a.amount, 0) || 0)).toLocaleString()}</span>

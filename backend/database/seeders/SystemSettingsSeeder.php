@@ -186,6 +186,13 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Whether an email OTP is required to log in',
                 'type' => 'boolean',
             ],
+            ['key' => 'payroll_frequency',         'value' => 'semi_monthly', 'description' => 'Payroll cycle: semi_monthly or monthly',                                    'type' => 'string'],
+            ['key' => 'payroll_period1_start_day', 'value' => '11',           'description' => 'Semi-monthly: start day of first period',                                   'type' => 'integer'],
+            ['key' => 'payroll_period1_end_day',   'value' => '25',           'description' => 'Semi-monthly: end day of first period',                                     'type' => 'integer'],
+            ['key' => 'payroll_period2_start_day', 'value' => '26',           'description' => 'Semi-monthly: start day of second period',                                  'type' => 'integer'],
+            ['key' => 'payroll_period2_end_day',   'value' => '10',           'description' => 'Semi-monthly: end day of second period (cross-month: end < start)',         'type' => 'integer'],
+            ['key' => 'payroll_monthly_start_day', 'value' => '1',            'description' => 'Monthly: start day of the payroll period',                                  'type' => 'integer'],
+            ['key' => 'payroll_monthly_end_day',   'value' => '31',           'description' => 'Monthly: end day of the payroll period (31 = end of month)',                'type' => 'integer'],
         ];
 
         foreach ($settings as $setting) {

@@ -82,8 +82,8 @@ export const deleteAttendanceLog = (id) =>
 export const createAttendanceLog = (data) =>
   api.post('/attendance', data).then(r => r.data)
 
-export const bulkMarkAbsent = (date) =>
-  api.post('/attendance/bulk-mark-absent', { date }).then(r => r.data)
+export const bulkMarkAbsent = ({ start_date, end_date, employee_id = null }) =>
+  api.post('/attendance/bulk-mark-absent', { start_date, end_date, employee_id }).then(r => r.data)
 
 // ─── Leaves ──────────────────────────────────────────────────
 export const leaveKeys = {
