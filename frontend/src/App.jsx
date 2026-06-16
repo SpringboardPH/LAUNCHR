@@ -112,6 +112,9 @@ export default function App() {
 
   const themeColor = data?.theme_color || 'sienna'
   const systemName = data?.system_name || 'LAUNCHR'
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+  const systemLogo = data?.system_logo
+  const faviconUrl = systemLogo ? `${apiBaseUrl}/${systemLogo}` : '/launchr_logo.svg'
 
   useEffect(() => {
     applyTheme(themeColor)
@@ -120,6 +123,26 @@ export default function App() {
   useEffect(() => {
     document.title = `LAUNCHR - ${systemName}`
   }, [systemName])
+
+  useEffect(() => {
+    const updateFaviconLink = (rel) => {
+      let link = document.querySelector(`link[rel="${rel}"]`)
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = rel
+        document.head.appendChild(link)
+      }
+      link.href = faviconUrl
+      if (faviconUrl.toLowerCase().endsWith('.svg')) {
+        link.type = 'image/svg+xml'
+      } else {
+        link.removeAttribute('type')
+      }
+    }
+
+    updateFaviconLink('icon')
+    updateFaviconLink('shortcut icon')
+  }, [faviconUrl])
 
   return (
     <AuthProvider>
