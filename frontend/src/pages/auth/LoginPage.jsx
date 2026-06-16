@@ -77,9 +77,22 @@ export default function LoginPage() {
       const response = await axios.post('/api/auth/request-otp', {
         email,
         password,
+        remember_me: rememberMe,
       })
       
       if (response.data.success) {
+        if (response.data.data.token) {
+          sessionStorage.removeItem('login_step')
+          sessionStorage.removeItem('login_user_id')
+          sessionStorage.removeItem('login_email')
+
+          const token = response.data.data.token
+          localStorage.setItem('hr_token', token)
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          window.location.href = '/'
+          return
+        }
+
         setUserId(response.data.data.user_id)
         setStep('otp')
         setError('')

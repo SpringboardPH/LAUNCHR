@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Mail\OtpMail;
 use App\Models\OtpCode;
+use App\Models\SystemSettings;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -47,6 +48,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'email' => 'required|string|email',
             'password' => 'required|string',
+            'remember_me' => 'boolean',
         ]);
 
         $user = User::where('email', $validated['email'])->first();
@@ -54,6 +56,27 @@ class AuthController extends Controller
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
+            ]);
+        }
+
+        if (!SystemSettings::get('login_otp_required', false)) {
+            $rememberMe = $request->boolean('remember_me');
+            $tokenName = $rememberMe ? 'auth_token_remember' : 'auth_token';
+            $token = $user->createToken($tokenName);
+
+            if ($rememberMe) {
+                $token->accessToken->update([
+                    'expires_at' => now()->addDays(30),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'user' => $user->load('employee'),
+                    'token' => $token->plainTextToken,
+                ],
+                'message' => 'Login successful',
             ]);
         }
 

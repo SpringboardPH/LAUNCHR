@@ -180,6 +180,12 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Whether automatic clock-out is enabled',
                 'type' => 'boolean',
             ],
+            [
+                'key' => 'login_otp_required',
+                'value' => 'false',
+                'description' => 'Whether an email OTP is required to log in',
+                'type' => 'boolean',
+            ],
         ];
 
         foreach ($settings as $setting) {
