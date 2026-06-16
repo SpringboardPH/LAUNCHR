@@ -180,6 +180,12 @@ class SystemSettingsSeeder extends Seeder
                 'description' => 'Whether automatic clock-out is enabled',
                 'type' => 'boolean',
             ],
+            [
+                'key' => 'login_otp_required',
+                'value' => 'false',
+                'description' => 'Whether an email OTP is required to log in',
+                'type' => 'boolean',
+            ],
             ['key' => 'payroll_frequency',         'value' => 'semi_monthly', 'description' => 'Payroll cycle: semi_monthly or monthly',                                    'type' => 'string'],
             ['key' => 'payroll_period1_start_day', 'value' => '11',           'description' => 'Semi-monthly: start day of first period',                                   'type' => 'integer'],
             ['key' => 'payroll_period1_end_day',   'value' => '25',           'description' => 'Semi-monthly: end day of first period',                                     'type' => 'integer'],

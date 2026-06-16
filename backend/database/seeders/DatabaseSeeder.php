@@ -18,9 +18,9 @@ class DatabaseSeeder extends Seeder
     {
         // Create admin user
         User::updateOrCreate(
-            ['email' => 'michaelaaronluyun@gmail.com'],
+            ['email' => 'dev@springboardph.com'],
             [
-                'name' => 'Michael Aaron Luyun',
+                'name' => 'Administrator',
                 'password' => bcrypt('password'), // Ensure password is hashed
                 'role' => 'admin',
             ]

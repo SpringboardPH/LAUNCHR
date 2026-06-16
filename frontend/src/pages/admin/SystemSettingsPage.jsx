@@ -34,6 +34,7 @@ export default function SystemSettingsPage() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [selectedTemplateFile, setSelectedTemplateFile] = useState(null)
   const [autoClockOut, setAutoClockOut] = useState(false)
+  const [requireLoginOtp, setRequireLoginOtp] = useState(false)
   const [sssTable, setSssTable] = useState('')
   const [themeColor, setThemeColor] = useState('sienna')
   const [payrollFrequency, setPayrollFrequency] = useState('semi_monthly')
@@ -84,6 +85,13 @@ export default function SystemSettingsPage() {
         setAutoClockOut(false)
       }
 
+      const loginOtpSetting = settings.find(s => s.key === 'login_otp_required')
+      if (loginOtpSetting) {
+        setRequireLoginOtp(loginOtpSetting.value === 'true' || loginOtpSetting.value === true || loginOtpSetting.value === '1')
+      } else {
+        setRequireLoginOtp(false)
+      }
+
       const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
       if (sssSetting) {
         setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
@@ -123,11 +131,12 @@ export default function SystemSettingsPage() {
   })
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
+    mutationFn: async ({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
       await updateAdminSetting('auto_clock_out_enabled', autoClockOut, 'Whether automatic clock-out is enabled', 'boolean')
+      await updateAdminSetting('login_otp_required', requireLoginOtp, 'Whether an email OTP is required to log in', 'boolean')
       await updateAdminSetting('absent_marking_time', absentMarkingTime, 'Time when the system automatically marks employees as absent', 'string')
       await updateAdminSetting('theme_color', themeColor, 'System theme color preset', 'string')
       await updateAdminSetting('system_name', systemName, 'The name of the system displayed in the sidebar', 'string')
@@ -210,7 +219,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
     })
   }
 
@@ -247,6 +256,9 @@ export default function SystemSettingsPage() {
         const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
         setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
 
+        const loginOtpSetting = settings.find(s => s.key === 'login_otp_required')?.value
+        setRequireLoginOtp(loginOtpSetting === 'true' || loginOtpSetting === '1')
+
         const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
         if (sssSetting) {
           setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
@@ -280,7 +292,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
+        updateSettingMutation.mutate({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
       }
     })
   }
@@ -524,6 +536,23 @@ export default function SystemSettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Authentication</h2>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Require OTP at login</p>
+              <p className="text-xs text-gray-500">When disabled, users can sign in with email and password only.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRequireLoginOtp(!requireLoginOtp)}
+              className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${requireLoginOtp ? 'bg-brand-600' : 'bg-gray-300'}`}
+            >
+              <div className={`w-4 h-4 rounded-full bg-white transition-transform ${requireLoginOtp ? 'translate-x-6' : ''}`} />
+            </button>
           </div>
         </div>
 
