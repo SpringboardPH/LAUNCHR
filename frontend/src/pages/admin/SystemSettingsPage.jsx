@@ -333,7 +333,7 @@ export default function SystemSettingsPage() {
     )
   }
 
-  const logoBaseUrl = `${import.meta.env.VITE_API_BASE_URL}/logo`
+  const logoBaseUrl = '/api/logo'
 
   return (
     <div className="max-w-4xl mx-auto">

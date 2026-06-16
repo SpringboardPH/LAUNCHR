@@ -144,9 +144,7 @@ export default function LoginPage() {
     )
   }
 
-  const logoUrl = systemConfig?.system_logo
-    ? `${import.meta.env.VITE_API_BASE_URL}/logo/${systemConfig.system_logo}`
-    : `${import.meta.env.VITE_API_BASE_URL}/logo/launchr_black.svg`
+  const logoUrl = `/api/logo/${systemConfig?.system_logo || 'launchr_black.svg'}`
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
