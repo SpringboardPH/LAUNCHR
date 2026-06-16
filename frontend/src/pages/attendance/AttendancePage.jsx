@@ -18,7 +18,7 @@ import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculat
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
-  const [activeCutoff, setActiveCutoff] = useState(null)
+  const [navigatedCutoff, setNavigatedCutoff] = useState(null)
   const [viewMode, setViewMode] = useState('list') // 'list' or 'grid'
   const [includeWeekends, setIncludeWeekends] = useState(true)
   const [todayAttendanceExpanded, setTodayAttendanceExpanded] = useState(true)
@@ -81,14 +81,7 @@ export default function AttendancePage() {
     }
   })
 
-  // Set cutoff once sysClock is available
-  useEffect(() => {
-    if (sysClock && activeCutoff === null) {
-      setActiveCutoff(getCutoffPeriod(sysClock.date, adminSettings))
-    }
-  }, [sysClock, activeCutoff, adminSettings])
-
-  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
+  const currentCutoff = navigatedCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
 
   const monthlyParams = {
     start_date: currentCutoff.startDate,
@@ -386,8 +379,8 @@ export default function AttendancePage() {
     : format(new Date(), 'EEEE, MMMM d, yyyy')
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff, adminSettings))
-    else setActiveCutoff(getPrevCutoff(currentCutoff, adminSettings))
+    if (delta > 0) setNavigatedCutoff(getNextCutoff(currentCutoff, adminSettings))
+    else setNavigatedCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)

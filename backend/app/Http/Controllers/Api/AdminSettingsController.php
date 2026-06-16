@@ -46,6 +46,21 @@ class AdminSettingsController extends Controller
         ]);
     }
 
+    public function getPayrollConfig()
+    {
+        $keys = [
+            'payroll_frequency',
+            'payroll_period1_start_day',
+            'payroll_period1_end_day',
+            'payroll_period2_start_day',
+            'payroll_period2_end_day',
+            'payroll_monthly_start_day',
+            'payroll_monthly_end_day',
+        ];
+        $settings = SystemSettings::whereIn('key', $keys)->get();
+        return response()->json(['success' => true, 'data' => $settings]);
+    }
+
     public function show(string $key)
     {
         $setting = SystemSettings::where('key', $key)->first();

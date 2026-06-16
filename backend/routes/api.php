@@ -95,6 +95,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // System clock (virtual time used by attendance) - available to all authenticated users
     Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
+    // Payroll cutoff config — needed by employee attendance page, not admin-restricted
+    Route::get('/payroll-config', [AdminSettingsController::class, 'getPayrollConfig']);
     
     // Employee Schedules (Self-service)
     Route::get('/my-schedules', [EmployeeScheduleController::class, 'mySchedules']);

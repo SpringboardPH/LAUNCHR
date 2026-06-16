@@ -11,7 +11,7 @@ import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/atten
 import ExcelJS from 'exceljs'
 
 export default function PayrollPage() {
-  const [activeCutoff, setActiveCutoff] = useState(null)
+  const [navigatedCutoff, setNavigatedCutoff] = useState(null)
   const [selectedPayroll, setSelectedPayroll] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
@@ -39,13 +39,7 @@ export default function PayrollPage() {
     queryFn: getAdminSettings,
   })
 
-  useEffect(() => {
-    if (sysClock && activeCutoff === null) {
-      setActiveCutoff(getCutoffPeriod(sysClock.date, adminSettings))
-    }
-  }, [sysClock, activeCutoff, adminSettings])
-
-  const currentCutoff = activeCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
+  const currentCutoff = navigatedCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
 
   const payPeriods = useMemo(() => {
     if (!Array.isArray(adminSettings)) return 2
@@ -356,8 +350,8 @@ export default function PayrollPage() {
   }
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setActiveCutoff(getNextCutoff(currentCutoff, adminSettings))
-    else setActiveCutoff(getPrevCutoff(currentCutoff, adminSettings))
+    if (delta > 0) setNavigatedCutoff(getNextCutoff(currentCutoff, adminSettings))
+    else setNavigatedCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
   const togglePaystubSelection = (payrollId) => {

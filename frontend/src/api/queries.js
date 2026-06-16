@@ -218,6 +218,13 @@ export const getSystemClock = () =>
 export const getAdminSettings = () =>
   api.get('/admin/settings').then(r => r.data.data)
 
+export const payrollConfigKeys = {
+  all: ['payroll-config'],
+}
+
+export const getPayrollConfig = () =>
+  api.get('/payroll-config').then(r => r.data.data)
+
 export const getThemeColor = () =>
   api.get('/theme-color').then(r => r.data.data)
 
