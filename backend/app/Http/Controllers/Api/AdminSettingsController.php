@@ -286,6 +286,26 @@ class AdminSettingsController extends Controller
         ], 400);
     }
 
+    public function getLogo(string $filename)
+    {
+        // Only allow logo filenames — no path traversal
+        $filename = basename($filename);
+        $path = public_path($filename);
+        if (!file_exists($path)) {
+            abort(404, 'Logo not found');
+        }
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $mimeTypes = [
+            'svg'  => 'image/svg+xml',
+            'png'  => 'image/png',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif'  => 'image/gif',
+        ];
+        $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+        return response()->file($path, ['Content-Type' => $mime, 'Cache-Control' => 'public, max-age=86400']);
+    }
+
     public function getTemplate()
     {
         $filename = SystemSettings::get('payroll_template', 'payrolltemplate.xlsx');

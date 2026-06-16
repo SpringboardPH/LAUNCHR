@@ -112,9 +112,8 @@ export default function App() {
 
   const themeColor = data?.theme_color || 'sienna'
   const systemName = data?.system_name || 'LAUNCHR'
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
   const systemLogo = data?.system_logo
-  const faviconUrl = systemLogo ? `${apiBaseUrl}/${systemLogo}` : '/launchr_logo.svg'
+  const faviconUrl = systemLogo ? `${import.meta.env.VITE_API_BASE_URL}/logo/${systemLogo}` : '/launchr_logo.svg'
 
   useEffect(() => {
     applyTheme(themeColor)

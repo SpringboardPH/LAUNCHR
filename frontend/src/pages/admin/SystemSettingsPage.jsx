@@ -333,7 +333,7 @@ export default function SystemSettingsPage() {
     )
   }
 
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+  const logoBaseUrl = `${import.meta.env.VITE_API_BASE_URL}/logo`
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -389,7 +389,7 @@ export default function SystemSettingsPage() {
                     {logoPreview ? (
                       <img src={logoPreview} alt="Preview" className="w-full h-full object-contain p-4 transition-transform group-hover:scale-110" />
                     ) : systemLogo ? (
-                      <img src={systemLogo.startsWith('data:') ? systemLogo : `${apiBaseUrl}/${systemLogo}`} alt="Current Logo" className="w-full h-full object-contain p-4 transition-transform group-hover:scale-110" />
+                      <img src={systemLogo.startsWith('data:') ? systemLogo : `${logoBaseUrl}/${systemLogo}`} alt="Current Logo" className="w-full h-full object-contain p-4 transition-transform group-hover:scale-110" />
                     ) : (
                       <ImageIcon size={48} className="text-gray-300" />
                     )}
@@ -450,7 +450,7 @@ export default function SystemSettingsPage() {
                             }`}
                           >
                             <img 
-                              src={`${apiBaseUrl}/${logo}`} 
+                              src={`${logoBaseUrl}/${logo}`}
                               alt={logo} 
                               className="w-full h-full object-contain"
                             />
@@ -510,7 +510,7 @@ export default function SystemSettingsPage() {
                           type="button"
                           onClick={async () => {
                             try {
-                              const response = await fetch(`${apiBaseUrl}/api/payroll-template`, {
+                              const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/payroll-template`, {
                                 headers: { 'Authorization': `Bearer ${localStorage.getItem('hr_token')}` }
                               });
                               if (!response.ok) throw new Error('Download failed');

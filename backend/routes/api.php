@@ -26,6 +26,7 @@ Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::get('/theme-color', [AdminSettingsController::class, 'getThemeColor']);
 Route::get('/system-config', [AdminSettingsController::class, 'getSystemConfig']);
+Route::get('/logo/{filename}', [AdminSettingsController::class, 'getLogo']);
 
 // Protected routes (require authentication)
 Route::middleware('auth:sanctum')->group(function () {
