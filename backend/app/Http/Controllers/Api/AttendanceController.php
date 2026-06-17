@@ -637,6 +637,7 @@ class AttendanceController extends Controller
                 
                 $employeeLeaves = $leaves->get($employee->id, collect());
 
+                $employeeRecords = [];
                 for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
                     $dateStr = $date->format('Y-m-d');
                     $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
@@ -652,13 +653,13 @@ class AttendanceController extends Controller
                             $log->holiday_name = $events->get($dateStr)->title;
                         }
 
-                        $allRecords[] = $log;
+                        $employeeRecords[] = $log;
                     } elseif ($date->lte($generationEndDate)) {
                         // Check for holiday first
                         if ($events->has($dateStr)) {
                             $event = $events->get($dateStr);
                             if (!$event->shouldCountAsAbsence()) {
-                                $allRecords[] = [
+                                $employeeRecords[] = [
                                     'employee_id' => $employee->id,
                                     'employee' => $employee,
                                     'date' => $dateStr,
@@ -680,7 +681,7 @@ class AttendanceController extends Controller
                         });
 
                         if ($isOnLeave) {
-                            $allRecords[] = [
+                            $employeeRecords[] = [
                                 'employee_id' => $employee->id,
                                 'employee' => $employee,
                                 'date' => $dateStr,
@@ -709,7 +710,7 @@ class AttendanceController extends Controller
                             }
 
                             if ($isWorkingDay) {
-                                $allRecords[] = [
+                                $employeeRecords[] = [
                                     'employee_id' => $employee->id,
                                     'employee' => $employee,
                                     'date' => $dateStr,
@@ -722,6 +723,8 @@ class AttendanceController extends Controller
                         }
                     }
                 }
+                $this->applyHolidayAbsenceRule($employeeRecords);
+                $allRecords = array_merge($allRecords, $employeeRecords);
             }
 
             // Sort by date desc
@@ -1062,6 +1065,8 @@ class AttendanceController extends Controller
             }
         }
 
+        $this->applyHolidayAbsenceRule($allDays);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -1199,6 +1204,38 @@ class AttendanceController extends Controller
                 'message' => 'Error running mark-absent command: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * If an employee is absent the day before or after a holiday,
+     * that holiday also becomes absent for them (PH labor rule).
+     * Operates on a flat array of day records for a single employee.
+     */
+    private function applyHolidayAbsenceRule(array &$days): void
+    {
+        $statusByDate = [];
+        foreach ($days as $day) {
+            $date = is_array($day) ? $day['date'] : Carbon::parse($day->date)->format('Y-m-d');
+            $statusByDate[$date] = is_array($day) ? $day['status'] : $day->status;
+        }
+
+        foreach ($days as &$day) {
+            $status = is_array($day) ? $day['status'] : $day->status;
+            if ($status !== 'holiday') continue;
+
+            $dateStr = is_array($day) ? $day['date'] : Carbon::parse($day->date)->format('Y-m-d');
+            $prevDate = Carbon::parse($dateStr)->subDay()->format('Y-m-d');
+            $nextDate = Carbon::parse($dateStr)->addDay()->format('Y-m-d');
+
+            if (($statusByDate[$prevDate] ?? null) === 'absent' || ($statusByDate[$nextDate] ?? null) === 'absent') {
+                if (is_array($day)) {
+                    $day['status'] = 'absent';
+                } else {
+                    $day->status = 'absent';
+                }
+            }
+        }
+        unset($day);
     }
 
     /**
