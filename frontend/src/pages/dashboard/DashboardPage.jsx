@@ -139,8 +139,9 @@ export default function DashboardPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Weekly Attendance Trend */}
         {weeklyTrendData.length > 0 && (
-          <div className="card p-5">
+          <div className="card p-5 flex flex-col">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">Weekly Attendance Trend</h2>
+            <div className="flex-1 flex items-center">
             <ResponsiveContainer width="100%" height={250}>
               <AreaChart data={weeklyTrendData}>
                 <defs>
@@ -169,6 +170,7 @@ export default function DashboardPage() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           </div>
         )}
 
