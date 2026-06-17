@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getEmployee, createEmployee, updateEmployee, employeeKeys, getDepartments, departmentKeys, userKeys } from '../../api/queries'
+import { getEmployee, createEmployee, updateEmployee, getEmployeeGroups, employeeKeys, getDepartments, departmentKeys, userKeys } from '../../api/queries'
 import { PageHeader, FormField, PageSpinner, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
 import { useAuth } from '../../store/AuthContext'
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react'
@@ -29,6 +29,7 @@ const schema = z.object({
   philhealth_number: z.string().nullable().optional(),
   pagibig_number:    z.string().nullable().optional(),
   tin_number:        z.string().nullable().optional(),
+  group:             z.string().nullable().optional(),
 })
 
 export default function EmployeeFormPage() {
@@ -56,10 +57,15 @@ export default function EmployeeFormPage() {
     queryFn: getDepartments,
   })
 
+  const { data: existingGroups = [] } = useQuery({
+    queryKey: employeeKeys.groups,
+    queryFn: getEmployeeGroups,
+  })
+
   // Filter only active departments
   const activeDepts = departments.filter(d => !d.deleted_at)
 
-  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: { salary: 0, undeclared_salary: 0, rate_type: 'monthly', role: 'employee', password: '' },
   })
@@ -148,6 +154,24 @@ export default function EmployeeFormPage() {
             </select>
           </FormField>
         </div>
+
+        <FormField label="Group" error={errors.group?.message}>
+          <input {...register('group')} className="input" placeholder="e.g. Night Shift, Probationary, Field" />
+          {existingGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {existingGroups.map(g => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setValue('group', g, { shouldValidate: true })}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${watch('group') === g ? 'bg-brand-600 text-white border-brand-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-brand-400 hover:text-brand-600'}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+        </FormField>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <FormField label="Hire date" error={errors.hire_date?.message} required>

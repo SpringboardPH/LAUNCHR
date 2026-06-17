@@ -33,6 +33,7 @@ class Employee extends Model
         'philhealth_number',
         'pagibig_number',
         'tin_number',
+        'group',
     ];
 
     protected $casts = [

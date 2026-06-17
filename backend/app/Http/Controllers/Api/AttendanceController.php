@@ -545,6 +545,7 @@ class AttendanceController extends Controller
         $employeeSearch = trim((string) $request->query('employee_search', ''));
         $statusFilter = $request->query('status');
         $dateFilter = $request->query('date');
+        $groupFilter = $request->query('group');
 
         $query = AttendanceLog::with('employee');
 
@@ -582,6 +583,10 @@ class AttendanceController extends Controller
             });
         }
 
+        if ($groupFilter) {
+            $query->whereHas('employee', fn($q) => $q->where('group', $groupFilter));
+        }
+
         if ($dateFilter) {
             $query->whereDate('date', '=', $dateFilter);
         }
@@ -598,7 +603,11 @@ class AttendanceController extends Controller
             }
             $generationEndDate = $endDate->lt(SystemClock::today()) ? $endDate : SystemClock::today();
 
-            $employees = Employee::where('status', 'active')->get();
+            $empQuery = Employee::where('status', 'active');
+            if ($groupFilter) {
+                $empQuery->where('group', $groupFilter);
+            }
+            $employees = $empQuery->get();
             $logs = $query->orderBy('date', 'desc')->get()->groupBy('employee_id');
             $events = $this->getCalendarEventsForRange($startDate, $endDate);
 

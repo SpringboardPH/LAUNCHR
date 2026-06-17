@@ -1,20 +1,26 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { getEmployees, deactivateEmployee, employeeKeys, userKeys, employeeScheduleKeys } from '../../api/queries'
+import { getEmployees, getEmployeeGroups, deactivateEmployee, employeeKeys, userKeys, employeeScheduleKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, EmptyState, StatusBadge, ConfirmModal } from '../../components/ui/index.jsx'
 import { Plus, Search, UserX, Pencil, Eye, Users } from 'lucide-react'
 
 export default function EmployeeListPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [group, setGroup] = useState('')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
   const navigate = useNavigate()
 
   const { data, isLoading } = useQuery({
-    queryKey: employeeKeys.list({ search, status }),
-    queryFn: () => getEmployees({ search, status }),
+    queryKey: employeeKeys.list({ search, status, group }),
+    queryFn: () => getEmployees({ search, status, ...(group && { group }) }),
+  })
+
+  const { data: groups = [] } = useQuery({
+    queryKey: employeeKeys.groups,
+    queryFn: getEmployeeGroups,
   })
 
   const deactivate = useMutation({
@@ -65,6 +71,12 @@ export default function EmployeeListPage() {
           <option value="inactive">Inactive</option>
           <option value="terminated">Terminated</option>
         </select>
+        {groups.length > 0 && (
+          <select className="input sm:w-40" value={group} onChange={e => setGroup(e.target.value)}>
+            <option value="">All groups</option>
+            {groups.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Table */}

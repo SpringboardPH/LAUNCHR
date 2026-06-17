@@ -41,6 +41,10 @@ class PayrollController extends Controller
             $query->where('employee_id', $request->employee_id);
         }
 
+        if ($request->has('group')) {
+            $query->whereHas('employee', fn($q) => $q->where('group', $request->group));
+        }
+
         $records = $query->orderBy('cutoff_end', 'desc')->get();
 
         return response()->json([
@@ -66,7 +70,11 @@ class PayrollController extends Controller
         $frequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
         $periods = $frequency === 'monthly' ? 1 : 2;
 
-        $employees = Employee::where('status', 'active')->get();
+        $employeeQuery = Employee::where('status', 'active');
+        if ($request->has('group') && $request->group !== '') {
+            $employeeQuery->where('group', $request->group);
+        }
+        $employees = $employeeQuery->get();
         $generatedPayrolls = [];
 
         foreach ($employees as $employee) {

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import {
   getAttendance, attendanceKeys, deleteAttendanceLog, updateAttendanceLog, createAttendanceLog,
-  getEmployees, employeeKeys, getEmployeeSchedules, employeeScheduleKeys,
+  getEmployees, getEmployeeGroups, employeeKeys, getEmployeeSchedules, employeeScheduleKeys,
   getCalendarEvents, calendarEventKeys, getCalendarEventTypes, calendarEventTypeKeys,
   getSystemClock, systemClockKeys
 } from '../../api/queries'
@@ -18,6 +18,7 @@ export default function AdminAttendanceLogsPage() {
     employee_search: '',
     status: '',
     date: '',
+    group: '',
   })
   const [editLog, setEditLog] = useState(null)
   const [editForm, setEditForm] = useState({
@@ -82,9 +83,15 @@ export default function AdminAttendanceLogsPage() {
     ...(filters.employee_search.trim() ? { employee_search: filters.employee_search.trim() } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.date ? { date: filters.date } : {}),
+    ...(filters.group ? { group: filters.group } : {}),
   }
 
   // API Queries
+  const { data: employeeGroups = [] } = useQuery({
+    queryKey: employeeKeys.groups,
+    queryFn: getEmployeeGroups,
+  })
+
   const { data: employees } = useQuery({
     queryKey: employeeKeys.list({}),
     queryFn: () => getEmployees({ status: 'active' }),
@@ -254,11 +261,7 @@ export default function AdminAttendanceLogsPage() {
   }
 
   const clearFilters = () => {
-    setFilters({
-      employee_search: '',
-      status: '',
-      date: '',
-    })
+    setFilters({ employee_search: '', status: '', date: '', group: '' })
   }
 
   const handleCreateSubmit = (e) => {
@@ -335,48 +338,30 @@ export default function AdminAttendanceLogsPage() {
       {/* Cutoff Navigation and Filters */}
       <div className="card p-5">
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-700">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-gray-700 whitespace-nowrap">
               Cutoff: {currentCutoff?.startDate && currentCutoff?.endDate ? (() => {
                 try {
-                  return `${format(parseISO(currentCutoff.startDate), 'MMM dd')} - ${format(parseISO(currentCutoff.endDate), 'MMM dd, yyyy')}`
+                  return `${format(parseISO(currentCutoff.startDate), 'MMM dd')} – ${format(parseISO(currentCutoff.endDate), 'MMM dd, yyyy')}`
                 } catch {
                   return 'Loading...'
                 }
               })() : 'Loading...'}
             </h3>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn-secondary text-xs px-2 py-1"
-                onClick={() => moveCutoff(-1)}
-                disabled={!currentCutoff?.startDate}
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                className="btn-secondary text-xs px-2 py-1"
-                onClick={() => moveCutoff(1)}
-                disabled={!currentCutoff?.startDate}
-              >
-                Next
-              </button>
+              <button type="button" className="btn-secondary text-xs px-3 py-1.5" onClick={() => moveCutoff(-1)} disabled={!currentCutoff?.startDate}>← Prev</button>
+              <button type="button" className="btn-secondary text-xs px-3 py-1.5" onClick={() => moveCutoff(1)} disabled={!currentCutoff?.startDate}>Next →</button>
             </div>
           </div>
-          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+          <div className="flex items-center gap-2">
             <input
               type="text"
-              className="input text-sm"
+              className="input text-sm flex-1 min-w-0"
               value={filters.employee_search}
               onChange={e => setFilters({ ...filters, employee_search: e.target.value })}
-              placeholder="Search employee name"
+              placeholder="Search employee…"
             />
-            <select
-              className="input text-sm"
-              value={filters.status}
-              onChange={e => setFilters({ ...filters, status: e.target.value })}
-            >
+            <select className="input text-sm w-36 shrink-0" value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="working">Working</option>
@@ -387,19 +372,14 @@ export default function AdminAttendanceLogsPage() {
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
             </select>
-            <input
-              type="date"
-              className="input text-sm"
-              value={filters.date}
-              onChange={e => setFilters({ ...filters, date: e.target.value })}
-            />
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              onClick={clearFilters}
-            >
-              Clear Filters
-            </button>
+            <input type="date" className="input text-sm w-36 shrink-0" value={filters.date} onChange={e => setFilters({ ...filters, date: e.target.value })} />
+            {employeeGroups.length > 0 && (
+              <select className="input text-sm w-32 shrink-0" value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}>
+                <option value="">All Groups</option>
+                {employeeGroups.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            )}
+            <button type="button" className="btn-secondary text-sm shrink-0 px-3" onClick={clearFilters}>Clear</button>
           </div>
         </div>
       </div>

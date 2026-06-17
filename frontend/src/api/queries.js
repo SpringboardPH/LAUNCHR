@@ -5,6 +5,7 @@ export const employeeKeys = {
   all: ['employees'],
   list: (params) => ['employees', 'list', params],
   detail: (id) => ['employees', id],
+  groups: ['employees', 'groups'],
 }
 
 export const getEmployees = (params) =>
@@ -13,6 +14,9 @@ export const getEmployees = (params) =>
     pagination: r.data.pagination,
     total: r.data.pagination.total,
   }))
+
+export const getEmployeeGroups = () =>
+  api.get('/employees/groups').then(r => r.data.data)
 
 export const getEmployee = (id) =>
   api.get(`/employees/${id}`).then(r => r.data.data)

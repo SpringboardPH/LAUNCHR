@@ -37,6 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Employees
     Route::put('/profile', [EmployeeController::class, 'updateProfile']);
+    Route::get('/employees/groups', [EmployeeController::class, 'groups']);
     Route::apiResource('employees', EmployeeController::class);
     Route::patch('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate']);
     

@@ -43,6 +43,7 @@ class UpdateEmployeeRequest extends FormRequest
             'philhealth_number' => 'nullable|string|max:20',
             'pagibig_number' => 'nullable|string|max:20',
             'tin_number' => 'nullable|string|max:20',
+            'group' => 'nullable|string|max:100',
             'role' => 'nullable|in:employee,hr,admin',
             'password' => 'nullable|string|min:8',
         ];

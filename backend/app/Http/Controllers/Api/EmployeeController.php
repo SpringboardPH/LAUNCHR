@@ -41,6 +41,11 @@ class EmployeeController extends Controller
             $query->where('department', $department);
         }
 
+        // Filter by group
+        if ($group = $request->query('group')) {
+            $query->where('group', $group);
+        }
+
         $employees = $query->orderBy('created_at', 'desc')->paginate(15);
 
         return response()->json([
@@ -55,6 +60,18 @@ class EmployeeController extends Controller
             ],
             'message' => 'Employees retrieved successfully',
         ]);
+    }
+
+    public function groups()
+    {
+        $groups = Employee::whereNotNull('group')
+            ->where('group', '!=', '')
+            ->distinct()
+            ->pluck('group')
+            ->sort()
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $groups]);
     }
 
     public function store(StoreEmployeeRequest $request)

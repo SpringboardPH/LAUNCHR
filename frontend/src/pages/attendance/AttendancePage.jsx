@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, isWeekend } from 'date-fns'
 import {
   getAttendanceToday, getAttendance, clockIn, clockOut, updateAttendanceLog,
-  getEmployees, attendanceKeys, employeeKeys,
+  getEmployees, getEmployeeGroups, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
   bulkMarkAbsent,
@@ -25,6 +25,7 @@ export default function AttendancePage() {
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
+  const [monthlyGroup, setMonthlyGroup] = useState('')
   const [earlyClockOutConfirm, setEarlyClockOutConfirm] = useState({
     open: false,
     employeeId: null,
@@ -54,6 +55,11 @@ export default function AttendancePage() {
   
   const [alert, setAlert] = useState(null)
   const qc = useQueryClient()
+
+  const { data: employeeGroups = [] } = useQuery({
+    queryKey: employeeKeys.groups,
+    queryFn: getEmployeeGroups,
+  })
 
   const { data: sysClock } = useQuery({
     queryKey: systemClockKeys.all,
@@ -91,12 +97,14 @@ export default function AttendancePage() {
     ...(monthlyEmployeeSearch.trim() ? { employee_search: monthlyEmployeeSearch.trim() } : {}),
     ...(monthlyStatus ? { status: monthlyStatus } : {}),
     ...(monthlyDate ? { date: monthlyDate } : {}),
+    ...(monthlyGroup ? { group: monthlyGroup } : {}),
   }
 
   const clearMonthlyFilters = () => {
     setMonthlyEmployeeSearch('')
     setMonthlyStatus('')
     setMonthlyDate('')
+    setMonthlyGroup('')
   }
 
   const openEditModal = (log) => {
@@ -651,22 +659,15 @@ export default function AttendancePage() {
               </button>
             </div>
           </div>
-          <div className={clsx(
-            "grid gap-3",
-            viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-5" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4"
-          )}>
+          <div className="flex items-center gap-2">
             <input
               type="text"
-              className="input text-sm"
+              className="input text-sm flex-1 min-w-0"
               value={monthlyEmployeeSearch}
               onChange={e => setMonthlyEmployeeSearch(e.target.value)}
-              placeholder="Search employee name"
+              placeholder="Search employee…"
             />
-            <select
-              className="input text-sm"
-              value={monthlyStatus}
-              onChange={e => setMonthlyStatus(e.target.value)}
-            >
+            <select className="input text-sm w-36 shrink-0" value={monthlyStatus} onChange={e => setMonthlyStatus(e.target.value)}>
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="working">Working</option>
@@ -677,33 +678,28 @@ export default function AttendancePage() {
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
             </select>
-            <input
-              type="date"
-              className="input text-sm"
-              value={monthlyDate}
-              onChange={e => setMonthlyDate(e.target.value)}
-            />
+            <input type="date" className="input text-sm w-36 shrink-0" value={monthlyDate} onChange={e => setMonthlyDate(e.target.value)} />
+            {employeeGroups.length > 0 && (
+              <select className="input text-sm w-32 shrink-0" value={monthlyGroup} onChange={e => setMonthlyGroup(e.target.value)}>
+                <option value="">All Groups</option>
+                {employeeGroups.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            )}
             {viewMode === 'grid' && (
-              <div className="flex items-center gap-2 px-3 bg-gray-50 border border-gray-100 rounded-lg animate-in fade-in slide-in-from-left-2 duration-300">
-                <input 
-                  type="checkbox" 
+              <div className="flex items-center gap-2 px-3 h-10 bg-gray-50 border border-gray-100 rounded-lg shrink-0">
+                <input
+                  type="checkbox"
                   id="includeWeekends"
                   checked={includeWeekends}
                   onChange={e => setIncludeWeekends(e.target.checked)}
                   className="rounded border-gray-300 text-brand-600 focus:ring-brand-600 h-4 w-4"
                 />
-                <label htmlFor="includeWeekends" className="text-xs font-medium text-gray-600 cursor-pointer">
-                  Include Weekends
+                <label htmlFor="includeWeekends" className="text-xs font-medium text-gray-600 cursor-pointer whitespace-nowrap">
+                  Weekends
                 </label>
               </div>
             )}
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              onClick={clearMonthlyFilters}
-            >
-              Clear Filters
-            </button>
+            <button type="button" className="btn-secondary text-sm shrink-0 px-3" onClick={clearMonthlyFilters}>Clear</button>
           </div>
         </div>
 

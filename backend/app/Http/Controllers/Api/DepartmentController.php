@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Department;
+use App\Models\Employee;
 use Illuminate\Http\Request;
 
 class DepartmentController extends Controller
@@ -54,7 +55,12 @@ class DepartmentController extends Controller
             'description' => 'nullable|string',
         ]);
 
+        $oldName = $department->name;
         $department->update($validated);
+
+        if ($oldName !== $department->name) {
+            Employee::where('department', $oldName)->update(['department' => $department->name]);
+        }
 
         return response()->json([
             'success' => true,

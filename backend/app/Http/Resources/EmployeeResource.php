@@ -35,6 +35,7 @@ class EmployeeResource extends JsonResource
             'philhealth_number' => $this->philhealth_number,
             'pagibig_number' => $this->pagibig_number,
             'tin_number' => $this->tin_number,
+            'group' => $this->group,
             'user' => [
                 'id' => $this->user?->id,
                 'role' => $this->user?->role,

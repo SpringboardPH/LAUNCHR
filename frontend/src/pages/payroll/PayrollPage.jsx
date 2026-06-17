@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
-import { 
+import {
   getPayrolls, generatePayroll, updatePayroll, payrollKeys,
-  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings, adminSettingsKeys
+  getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings, adminSettingsKeys,
+  getEmployeeGroups, employeeKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
@@ -27,6 +28,7 @@ export default function PayrollPage() {
   const [showToggleConfirm, setShowToggleConfirm] = useState(false)
   const [toggleSuccess, setToggleSuccess] = useState(null)
   const [alert, setAlert] = useState(null)
+  const [groupFilter, setGroupFilter] = useState('')
   const qc = useQueryClient()
 
   const { data: sysClock } = useQuery({
@@ -39,6 +41,11 @@ export default function PayrollPage() {
     queryFn: getAdminSettings,
   })
 
+  const { data: payrollGroups = [] } = useQuery({
+    queryKey: employeeKeys.groups,
+    queryFn: getEmployeeGroups,
+  })
+
   const currentCutoff = navigatedCutoff || getCutoffPeriod(sysClock?.date || new Date(), adminSettings)
 
   const payPeriods = useMemo(() => {
@@ -47,13 +54,15 @@ export default function PayrollPage() {
   }, [adminSettings])
 
   const { data: payrolls = [], isLoading } = useQuery({
-    queryKey: payrollKeys.list({ 
-      cutoff_start: currentCutoff.startDate, 
-      cutoff_end: currentCutoff.endDate 
+    queryKey: payrollKeys.list({
+      cutoff_start: currentCutoff.startDate,
+      cutoff_end: currentCutoff.endDate,
+      group: groupFilter || undefined,
     }),
-    queryFn: () => getPayrolls({ 
-      cutoff_start: currentCutoff.startDate, 
-      cutoff_end: currentCutoff.endDate 
+    queryFn: () => getPayrolls({
+      cutoff_start: currentCutoff.startDate,
+      cutoff_end: currentCutoff.endDate,
+      ...(groupFilter && { group: groupFilter }),
     }),
     enabled: !!currentCutoff,
   })
@@ -937,41 +946,56 @@ export default function PayrollPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 bg-gray-50/50">
-          <h3 className="text-sm font-semibold text-gray-700">Cutoff Details</h3>
-          <div className="flex gap-2">
-            <button
-              disabled={generateMutation.isPending}
-              onClick={() => generateMutation.mutate({ 
-                cutoff_start: currentCutoff.startDate, 
-                cutoff_end: currentCutoff.endDate 
-              })}
-              className="btn-primary py-2 text-xs"
-            >
-              {generateMutation.isPending ? <Spinner size="sm" /> : <><Plus size={14} /> Generate for Period</>}
-            </button>
-            <button 
-              disabled={exportablePayrolls.length === 0}
-              onClick={handleBatchExportCsv}
-              className="btn-primary py-2 text-xs bg-green-600 hover:bg-green-700 border-green-600"
-              title={exportablePayrolls.length === 0 ? 'No finalized or paid payrolls to export' : ''}
-            >
-              <Download size={14} /> Batch Export CSV
-            </button>
-            <button 
-              disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
-              onClick={() => {
-                setShowEmailModal(true)
-                setCcEmails([])
-                setBccEmails([])
-                setCcInput('')
-                setBccInput('')
-              }}
-              className="btn-primary py-2 text-xs bg-purple-600 hover:bg-purple-700 border-purple-600"
-              title={finalizedPaystubs.length === 0 ? 'No finalized paystubs to send' : ''}
-            >
-              {sendPaystubsMutation.isPending ? <Spinner size="sm" /> : <><Mail size={14} /> Email Paystub</>}
-            </button>
+        <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-gray-700 whitespace-nowrap">Cutoff Details</h3>
+              {payrollGroups.length > 0 && (
+                <select
+                  value={groupFilter}
+                  onChange={e => setGroupFilter(e.target.value)}
+                  className="input py-1.5 text-xs w-36"
+                >
+                  <option value="">All Groups</option>
+                  {payrollGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              )}
+            </div>
+            <div className="flex gap-2 items-center">
+              <button
+                disabled={generateMutation.isPending}
+                onClick={() => generateMutation.mutate({
+                  cutoff_start: currentCutoff.startDate,
+                  cutoff_end: currentCutoff.endDate,
+                  ...(groupFilter && { group: groupFilter }),
+                })}
+                className="btn-primary py-2 text-xs whitespace-nowrap"
+              >
+                {generateMutation.isPending ? <Spinner size="sm" /> : <><Plus size={14} /> {groupFilter ? `Generate — ${groupFilter}` : 'Generate for Period'}</>}
+              </button>
+              <button
+                disabled={exportablePayrolls.length === 0}
+                onClick={handleBatchExportCsv}
+                className="btn-primary py-2 text-xs whitespace-nowrap bg-green-600 hover:bg-green-700 border-green-600"
+                title={exportablePayrolls.length === 0 ? 'No finalized or paid payrolls to export' : ''}
+              >
+                <Download size={14} /> Batch Export CSV
+              </button>
+              <button
+                disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
+                onClick={() => {
+                  setShowEmailModal(true)
+                  setCcEmails([])
+                  setBccEmails([])
+                  setCcInput('')
+                  setBccInput('')
+                }}
+                className="btn-primary py-2 text-xs whitespace-nowrap bg-purple-600 hover:bg-purple-700 border-purple-600"
+                title={finalizedPaystubs.length === 0 ? 'No finalized paystubs to send' : ''}
+              >
+                {sendPaystubsMutation.isPending ? <Spinner size="sm" /> : <><Mail size={14} /> Email Paystub</>}
+              </button>
+            </div>
           </div>
         </div>
 
