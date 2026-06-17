@@ -10,7 +10,7 @@ import {
   getCalendarEventTypes, calendarEventTypeKeys,
   getPayrollConfig, payrollConfigKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
@@ -43,6 +43,7 @@ export default function AttendanceClockPage() {
   const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
   const [earlyClockInConfirmOpen, setEarlyClockInConfirmOpen] = useState(false)
   const [overtimeWarningOpen, setOvertimeWarningOpen] = useState(false)
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { user, loading: authLoading } = useAuth()
@@ -191,7 +192,7 @@ export default function AttendanceClockPage() {
         return
       }
 
-      alert(error?.response?.data?.message || 'Failed to clock out')
+      setAlertConfig({ open: true, title: 'Clock Out Failed', message: error?.response?.data?.message || 'Failed to clock out', type: 'error' })
       setNotes('')
       setIsOvertime(false)
       refetch()
@@ -282,6 +283,14 @@ export default function AttendanceClockPage() {
 
   return (
     <div>
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+      />
+
       <ConfirmModal
         open={earlyClockInConfirmOpen}
         onClose={() => setEarlyClockInConfirmOpen(false)}

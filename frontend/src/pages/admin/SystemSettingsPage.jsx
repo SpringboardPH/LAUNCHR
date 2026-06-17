@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PageHeader, FormField, ConfirmModal, Spinner } from '../../components/ui/index.jsx'
+import { PageHeader, FormField, ConfirmModal, AlertModal, Spinner } from '../../components/ui/index.jsx'
 import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
 import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet } from 'lucide-react'
 
@@ -45,6 +45,7 @@ export default function SystemSettingsPage() {
   const [pMonthlyStart, setPMonthlyStart] = useState(1)
   const [pMonthlyEnd, setPMonthlyEnd] = useState(31)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
 
   const { data: settings = [], isLoading } = useQuery({
     queryKey: adminSettingsKeys.all,
@@ -350,6 +351,13 @@ export default function SystemSettingsPage() {
         message={confirmConfig.message}
         type={confirmConfig.type}
       />
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+      />
 
       <div className="space-y-6">
         <div className="card overflow-hidden">
@@ -524,7 +532,7 @@ export default function SystemSettingsPage() {
                               a.remove();
                               window.URL.revokeObjectURL(url);
                             } catch (err) {
-                              alert('Failed to download template. Please check if you are still logged in.');
+                              setAlertConfig({ open: true, title: 'Download Failed', message: 'Failed to download template. Please check if you are still logged in.', type: 'error' })
                             }
                           }}
                           className="text-[10px] text-gray-400 hover:text-brand-600 font-medium underline flex items-center gap-1 ml-auto"

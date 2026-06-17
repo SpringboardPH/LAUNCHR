@@ -8,7 +8,7 @@ import {
   getSystemClock,
   systemClockKeys,
 } from '../../api/queries'
-import { PageHeader, ConfirmModal, StatusBadge } from '../../components/ui/index.jsx'
+import { PageHeader, ConfirmModal, AlertModal, StatusBadge } from '../../components/ui/index.jsx'
 import { CalendarDays, Plus, Edit2, Clock3 } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import clsx from 'clsx'
@@ -64,6 +64,7 @@ export default function EmployeeSchedulePage() {
   }, [baseDate])
 
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
 
   const { data: schedules = [] } = useQuery({
     queryKey: ['my-schedules'],
@@ -82,7 +83,7 @@ export default function EmployeeSchedulePage() {
       resetForm()
     },
     onError: (error) => {
-      alert(error?.response?.data?.message || 'Failed to set schedule')
+      setAlertConfig({ open: true, title: 'Error', message: error?.response?.data?.message || 'Failed to set schedule', type: 'error' })
     }
   })
 
@@ -97,7 +98,7 @@ export default function EmployeeSchedulePage() {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!formData.schedule_template_id) {
-      alert('Please select a schedule template')
+      setAlertConfig({ open: true, title: 'Validation Error', message: 'Please select a schedule template', type: 'warning' })
       return
     }
 
@@ -184,6 +185,13 @@ export default function EmployeeSchedulePage() {
         title={confirmConfig.title}
         message={confirmConfig.message}
         type={confirmConfig.type}
+      />
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
       />
 
       <div className="grid lg:grid-cols-2 gap-6 items-start">

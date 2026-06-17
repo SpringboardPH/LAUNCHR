@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getUsers, getTrashedUsers, deleteUser, hardDeleteUser, restoreUser, userKeys, employeeScheduleKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader, PageSpinner, EmptyState, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, EmptyState, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Search, Pencil, Trash2, Users, UserX, RotateCcw, Archive } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -11,6 +11,7 @@ export default function UserListPage() {
   const { user: currentUser } = useAuth()
   const [search, setSearch] = useState('')
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const queryClient = useQueryClient()
 
 
@@ -34,7 +35,7 @@ export default function UserListPage() {
       queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
     },
     onError: (error) => {
-      alert(error.response?.data?.message || 'Failed to delete user')
+      setAlertConfig({ open: true, title: 'Error', message: error.response?.data?.message || 'Failed to delete user', type: 'error' })
     }
   })
 
@@ -46,7 +47,7 @@ export default function UserListPage() {
       queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
     },
     onError: (error) => {
-      alert(error.response?.data?.message || 'Failed to permanently delete user')
+      setAlertConfig({ open: true, title: 'Error', message: error.response?.data?.message || 'Failed to permanently delete user', type: 'error' })
     }
   })
 
@@ -58,7 +59,7 @@ export default function UserListPage() {
       queryClient.invalidateQueries({ queryKey: employeeScheduleKeys.all })
     },
     onError: (error) => {
-      alert(error.response?.data?.message || 'Failed to restore user')
+      setAlertConfig({ open: true, title: 'Error', message: error.response?.data?.message || 'Failed to restore user', type: 'error' })
     }
   })
 
@@ -92,6 +93,13 @@ export default function UserListPage() {
         title={confirmConfig.title}
         message={confirmConfig.message}
         type={confirmConfig.type}
+      />
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
       />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-5">

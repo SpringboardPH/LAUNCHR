@@ -118,7 +118,7 @@ export function Calendar({ events = [], onDateClick, onEventClick, onAddEvent, c
                 </span>
               </div>
 
-              <div className="space-y-1 overflow-y-auto max-h-[80px] scrollbar-hide">
+              <div className="space-y-1 overflow-y-auto overflow-x-hidden max-h-[80px] scrollbar-hide">
                 {dayEvents.map((event) => (
                   <div
                     key={event.id}

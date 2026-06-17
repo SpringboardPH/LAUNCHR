@@ -10,7 +10,7 @@ import {
   importCalendarEvents,
   exportCalendarEvents,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, Modal, FormField } from '../../components/ui'
+import { PageHeader, PageSpinner, Modal, FormField, AlertModal, ConfirmModal } from '../../components/ui'
 import { Calendar } from '../../components/calendar/Calendar'
 import { useAuth } from '../../store/AuthContext'
 import { useForm } from 'react-hook-form'
@@ -71,6 +71,8 @@ export default function CalendarPage({ readOnly = false }) {
   const [importResult, setImportResult] = useState(null)
   const [isUpdateScopeModalOpen, setIsUpdateScopeModalOpen] = useState(false)
   const [isDeleteScopeModalOpen, setIsDeleteScopeModalOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const [pendingUpdateData, setPendingUpdateData] = useState(null)
   const [selectedUpdateScope, setSelectedUpdateScope] = useState('single')
   const [selectedDeleteScope, setSelectedDeleteScope] = useState('single')
@@ -148,7 +150,7 @@ export default function CalendarPage({ readOnly = false }) {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Export failed:', error)
-      alert('Failed to export holidays')
+      setAlertConfig({ open: true, title: 'Export Failed', message: 'Failed to export holidays', type: 'error' })
     }
   }
 
@@ -161,7 +163,7 @@ export default function CalendarPage({ readOnly = false }) {
 
   const handleImportSubmit = () => {
     if (!importFile) {
-      alert('Please select a file')
+      setAlertConfig({ open: true, title: 'No File Selected', message: 'Please select a file to import', type: 'warning' })
       return
     }
     importMutation.mutate(importFile)
@@ -274,9 +276,7 @@ export default function CalendarPage({ readOnly = false }) {
       setSelectedDeleteScope('single')
       setIsDeleteScopeModalOpen(true)
     } else {
-      if (window.confirm('Are you sure you want to delete this event?')) {
-        deleteMutation.mutate({ id: selectedEvent.id, deleteScope: 'single' })
-      }
+      setDeleteConfirmOpen(true)
     }
   }
 
@@ -330,6 +330,26 @@ export default function CalendarPage({ readOnly = false }) {
           <CalendarLegend types={eventTypes || []} />
         </div>
       </div>
+
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+      />
+
+      <ConfirmModal
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          deleteMutation.mutate({ id: selectedEvent.id, deleteScope: 'single' })
+          setDeleteConfirmOpen(false)
+        }}
+        title="Delete Event"
+        message="Are you sure you want to delete this event?"
+        type="danger"
+      />
 
       {/* Day View Modal */}
       <Modal

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, CalendarDays, Clock, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import AlertModal from './AlertModal'
@@ -84,7 +85,7 @@ export function Modal({ open, onClose, title, children, footer, headerAction, si
 
   if (!open) return null
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className={clsx('relative bg-white rounded-xl shadow-xl w-full flex flex-col max-h-[90vh]', sizes[size])}>
@@ -104,7 +105,8 @@ export function Modal({ open, onClose, title, children, footer, headerAction, si
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

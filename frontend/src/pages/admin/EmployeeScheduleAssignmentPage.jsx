@@ -15,7 +15,7 @@ import {
   getSystemClock,
   systemClockKeys,
 } from '../../api/queries'
-import { PageHeader, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
 import { CalendarDays, Plus, Edit2, Trash2 } from 'lucide-react'
 
 const getApiErrorMessage = (error, fallbackMessage) => {
@@ -65,6 +65,7 @@ const EmployeeScheduleAssignmentPage = () => {
     ...getWeekRange(baseDate, 0),
   })
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
+  const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
 
   const { data: employeeResponse } = useQuery({
     queryKey: employeeKeys.all,
@@ -103,7 +104,7 @@ const EmployeeScheduleAssignmentPage = () => {
       resetForm()
     },
     onError: (error) => {
-      alert(getApiErrorMessage(error, 'Failed to assign schedule.'))
+      setAlertConfig({ open: true, title: 'Error', message: getApiErrorMessage(error, 'Failed to assign schedule.'), type: 'error' })
     },
   })
 
@@ -114,7 +115,7 @@ const EmployeeScheduleAssignmentPage = () => {
       resetForm()
     },
     onError: (error) => {
-      alert(getApiErrorMessage(error, 'Failed to update schedule.'))
+      setAlertConfig({ open: true, title: 'Error', message: getApiErrorMessage(error, 'Failed to update schedule.'), type: 'error' })
     },
   })
 
@@ -153,7 +154,7 @@ const EmployeeScheduleAssignmentPage = () => {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!formData.employee_id || !formData.schedule_template_id || !formData.start_date || !formData.end_date) {
-      alert('All fields are required')
+      setAlertConfig({ open: true, title: 'Validation Error', message: 'All fields are required', type: 'warning' })
       return
     }
 
@@ -331,6 +332,13 @@ const EmployeeScheduleAssignmentPage = () => {
         title={confirmConfig.title}
         message={confirmConfig.message}
         type={confirmConfig.type}
+      />
+      <AlertModal
+        open={alertConfig.open}
+        onClose={() => setAlertConfig(a => ({ ...a, open: false }))}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
       />
 
       {/* Form */}
