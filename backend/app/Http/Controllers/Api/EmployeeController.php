@@ -46,7 +46,8 @@ class EmployeeController extends Controller
             $query->where('group', $group);
         }
 
-        $employees = $query->orderBy('created_at', 'desc')->paginate(15);
+        $perPage = min((int) $request->query('per_page', 15), 1000);
+        $employees = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,

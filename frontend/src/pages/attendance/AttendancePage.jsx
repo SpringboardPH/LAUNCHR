@@ -22,6 +22,9 @@ export default function AttendancePage() {
   const [viewMode, setViewMode] = useState('list') // 'list' or 'grid'
   const [includeWeekends, setIncludeWeekends] = useState(true)
   const [todayAttendanceExpanded, setTodayAttendanceExpanded] = useState(true)
+  const [todaySearch, setTodaySearch] = useState('')
+  const [todayStatusFilter, setTodayStatusFilter] = useState('')
+  const [todayGroupFilter, setTodayGroupFilter] = useState('')
   const [monthlyEmployeeSearch, setMonthlyEmployeeSearch] = useState('')
   const [monthlyStatus, setMonthlyStatus] = useState('')
   const [monthlyDate, setMonthlyDate] = useState('')
@@ -205,7 +208,7 @@ export default function AttendancePage() {
 
   const { data: employees } = useQuery({
     queryKey: employeeKeys.list({}),
-    queryFn: () => getEmployees({ status: 'active' }),
+    queryFn: () => getEmployees({ status: 'active', per_page: 1000 }),
   })
 
   const { data: scheduleResponse } = useQuery({
@@ -394,6 +397,29 @@ export default function AttendancePage() {
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
   const getScheduleForEmployee = (empId) => resolvedCurrentSchedules.find(s => s.employee_id === empId)
 
+  const filteredTodayEmployees = activeEmployees.filter(emp => {
+    if (todaySearch.trim()) {
+      const name = `${emp.first_name} ${emp.last_name}`.toLowerCase()
+      if (!name.includes(todaySearch.toLowerCase())) return false
+    }
+    if (todayGroupFilter && emp.group !== todayGroupFilter) return false
+    if (todayStatusFilter) {
+      const log = todayLogsArray.find(l => l.employee_id === emp.id)
+      const schedule = resolvedCurrentSchedules.find(s => s.employee_id === emp.id)
+      const win = getClockWindow(schedule, sysClock)
+      let effective
+      if (log) {
+        effective = log.clock_out_time ? (log.status || 'completed') : 'working'
+      } else {
+        if (win?.isInactiveDay) effective = 'not_scheduled'
+        else if (win && win.currentMinutes > win.outEnd) effective = 'absent'
+        else effective = 'not_yet'
+      }
+      if (todayStatusFilter !== effective) return false
+    }
+    return true
+  })
+
   return (
     <div className="space-y-5">
       <ConfirmModal
@@ -490,7 +516,34 @@ export default function AttendancePage() {
           />
         </button>
         {todayAttendanceExpanded && (todayLoading ? <PageSpinner /> : (
-          <div className="overflow-x-auto animate-in fade-in duration-200 mt-4">
+          <div className="animate-in fade-in duration-200 mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                className="input text-sm flex-1 min-w-0"
+                value={todaySearch}
+                onChange={e => setTodaySearch(e.target.value)}
+                placeholder="Search employee…"
+              />
+              <select className="input text-sm w-40 shrink-0" value={todayStatusFilter} onChange={e => setTodayStatusFilter(e.target.value)}>
+                <option value="">All Statuses</option>
+                <option value="working">Working</option>
+                <option value="completed">Done</option>
+                <option value="not_yet">Not Yet</option>
+                <option value="absent">Absent</option>
+                <option value="not_scheduled">Not Scheduled</option>
+              </select>
+              {employeeGroups.length > 0 && (
+                <select className="input text-sm w-32 shrink-0" value={todayGroupFilter} onChange={e => setTodayGroupFilter(e.target.value)}>
+                  <option value="">All Groups</option>
+                  {employeeGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              )}
+              {(todaySearch || todayStatusFilter || todayGroupFilter) && (
+                <button type="button" className="btn-secondary text-sm shrink-0 px-3" onClick={() => { setTodaySearch(''); setTodayStatusFilter(''); setTodayGroupFilter('') }}>Clear</button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100">
                 <tr>
@@ -504,7 +557,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {activeEmployees.map(emp => {
+                {filteredTodayEmployees.map(emp => {
                   const log = getClockedIn(emp.id)
                   const schedule = getScheduleForEmployee(emp.id)
                   return (
@@ -607,11 +660,12 @@ export default function AttendancePage() {
                     </tr>
                   )
                 })}
-                {activeEmployees.length === 0 && (
-                  <tr><td colSpan={7} className="py-6 text-center text-gray-400 text-sm">No active employees</td></tr>
+                {filteredTodayEmployees.length === 0 && (
+                  <tr><td colSpan={7} className="py-6 text-center text-gray-400 text-sm">{activeEmployees.length === 0 ? 'No active employees' : 'No employees match the filters'}</td></tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         ))}
       </div>
