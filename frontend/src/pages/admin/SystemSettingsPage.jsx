@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, AlertModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet } from 'lucide-react'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, deleteLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2 } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -121,6 +121,18 @@ export default function SystemSettingsPage() {
       qc.invalidateQueries({ queryKey: ['admin', 'logos'] })
       qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
     }
+  })
+
+  const deleteLogoMutation = useMutation({
+    mutationFn: deleteLogo,
+    onSuccess: (_, filename) => {
+      if (systemLogo === filename) setSystemLogo('launchr_black.svg')
+      qc.invalidateQueries({ queryKey: ['admin', 'logos'] })
+      qc.invalidateQueries({ queryKey: systemConfigKeys.all })
+    },
+    onError: (error) => {
+      setAlertConfig({ open: true, title: 'Error', message: error?.response?.data?.message || 'Failed to delete logo', type: 'error' })
+    },
   })
 
   const uploadTemplateMutation = useMutation({
@@ -442,33 +454,49 @@ export default function SystemSettingsPage() {
                     <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3">
                       {availableLogos.map((logo) => {
                         const isSelected = systemLogo === logo && !selectedFile
+                        const isDefault = ['launchr_black.svg', 'launchr_logo.svg'].includes(logo)
                         return (
-                          <button
-                            key={logo}
-                            type="button"
-                            onClick={() => {
-                              setSystemLogo(logo)
-                              setLogoPreview(null)
-                              setSelectedFile(null)
-                            }}
-                            className={`aspect-square rounded-lg border-2 transition-all p-1.5 bg-white relative group ${
-                              isSelected 
-                                ? 'border-brand-500 ring-2 ring-brand-500/20' 
-                                : 'border-gray-100 hover:border-gray-300 shadow-sm'
-                            }`}
-                          >
-                            <img 
-                              src={`${logoBaseUrl}/${logo}`}
-                              alt={logo} 
-                              className="w-full h-full object-contain"
-                            />
-                            {isSelected && (
-                              <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-brand-500 text-white flex items-center justify-center shadow-sm">
-                                <Check size={10} strokeWidth={4} />
-                              </div>
+                          <div key={logo} className="relative group">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSystemLogo(logo)
+                                setLogoPreview(null)
+                                setSelectedFile(null)
+                              }}
+                              className={`aspect-square w-full rounded-lg border-2 transition-all p-1.5 bg-white relative ${
+                                isSelected
+                                  ? 'border-brand-500 ring-2 ring-brand-500/20'
+                                  : 'border-gray-100 hover:border-gray-300 shadow-sm'
+                              }`}
+                            >
+                              <img
+                                src={`${logoBaseUrl}/${logo}`}
+                                alt={logo}
+                                className="w-full h-full object-contain"
+                              />
+                              {isSelected && (
+                                <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-brand-500 text-white flex items-center justify-center shadow-sm">
+                                  <Check size={10} strokeWidth={4} />
+                                </div>
+                              )}
+                            </button>
+                            {!isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmConfig({
+                                  open: true,
+                                  title: 'Delete Logo',
+                                  message: `Delete "${logo}"? This cannot be undone.`,
+                                  type: 'danger',
+                                  onConfirm: () => deleteLogoMutation.mutate(logo),
+                                })}
+                                className="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full bg-red-500 text-white items-center justify-center shadow-sm hidden group-hover:flex z-10"
+                              >
+                                <Trash2 size={10} strokeWidth={3} />
+                              </button>
                             )}
-                            <div className="absolute inset-0 bg-brand-600 opacity-0 group-hover:opacity-5 rounded-lg pointer-events-none transition-opacity" />
-                          </button>
+                          </div>
                         )
                       })}
                     </div>

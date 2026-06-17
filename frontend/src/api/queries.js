@@ -257,6 +257,9 @@ export const uploadPayrollTemplate = (file) => {
 export const getLogos = () =>
   api.get('/admin/settings/logos').then(r => r.data.data)
 
+export const deleteLogo = (filename) =>
+  api.delete(`/admin/settings/logo/${filename}`).then(r => r.data)
+
 // ─── Audit Logs (Admin) ──────────────────────────────────────────
 export const auditLogKeys = {
   all: ['admin', 'audit-logs'],

@@ -113,6 +113,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/defaults', [AdminSettingsController::class, 'getDefaults']);
             Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
             Route::post('/logo', [AdminSettingsController::class, 'uploadLogo']);
+            Route::delete('/logo/{filename}', [AdminSettingsController::class, 'deleteLogo']);
             Route::post('/payroll-template', [AdminSettingsController::class, 'uploadPayrollTemplate']);
             Route::get('/logos', [AdminSettingsController::class, 'listLogos']);
             Route::get('/{key}', [AdminSettingsController::class, 'show']);

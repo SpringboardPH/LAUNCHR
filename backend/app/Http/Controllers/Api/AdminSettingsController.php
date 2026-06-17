@@ -344,6 +344,29 @@ class AdminSettingsController extends Controller
         ]);
     }
 
+    public function deleteLogo(string $filename)
+    {
+        $filename = basename($filename);
+
+        $protected = ['launchr_black.svg', 'launchr_logo.svg'];
+        if (in_array($filename, $protected)) {
+            return response()->json(['success' => false, 'message' => 'Cannot delete default logos'], 403);
+        }
+
+        $path = public_path($filename);
+        if (!file_exists($path)) {
+            return response()->json(['success' => false, 'message' => 'Logo not found'], 404);
+        }
+
+        if (SystemSettings::get('system_logo') === $filename) {
+            SystemSettings::set('system_logo', 'launchr_black.svg', 'The logo used by the system', 'string');
+        }
+
+        unlink($path);
+
+        return response()->json(['success' => true, 'message' => 'Logo deleted']);
+    }
+
     public function getSystemConfig()
     {
         return response()->json([
