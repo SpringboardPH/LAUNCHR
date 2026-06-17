@@ -35,7 +35,7 @@ import AuditLogPage from './pages/admin/AuditLogPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
-  return !['admin', 'hr'].includes(user.role);
+  return !['admin', 'hr', 'accounting'].includes(user.role);
 };
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -64,7 +64,7 @@ function RootRoute() {
   )
   // If logged in, redirect to appropriate dashboard
   if (user) {
-    if (['admin', 'hr'].includes(user.role)) return <Navigate to="/hr" replace />
+    if (['admin', 'hr', 'accounting'].includes(user.role)) return <Navigate to="/hr" replace />
     return <Navigate to="/employee" replace />
   }
   // If not logged in, redirect to login
@@ -100,7 +100,7 @@ function LayoutSelector() {
   // Admin is not allowed to access standard employee pages
   if (user?.role === 'admin') return <Navigate to="/hr" replace />
   // HR uses the rich AppLayout to keep management links visible, standard employees use simple EmployeeLayout
-  return user?.role === 'hr' ? <AppLayout /> : <EmployeeLayout />
+  return ['hr', 'accounting'].includes(user?.role) ? <AppLayout /> : <EmployeeLayout />
 }
 
 export default function App() {

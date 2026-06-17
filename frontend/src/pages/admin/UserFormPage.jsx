@@ -12,7 +12,7 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 const userSchema = (isEdit) => z.object({
   name: z.string().min(2, 'Name is required'),
   email: z.string().email('Valid email is required'),
-  role: z.enum(['admin', 'hr', 'employee']),
+  role: z.enum(['admin', 'hr', 'accounting', 'employee']),
   password: isEdit 
     ? z.string().min(8, 'Password must be at least 8 characters').optional().or(z.literal(''))
     : z.string().min(8, 'Password must be at least 8 characters'),
@@ -135,6 +135,7 @@ export default function UserFormPage() {
                 <select className="input" {...register('role')}>
                   <option value="employee">Standard Employee</option>
                   <option value="hr">Human Resources (HR)</option>
+                  <option value="accounting">Accounting</option>
                   <option value="admin">System Administrator</option>
                 </select>
               </FormField>

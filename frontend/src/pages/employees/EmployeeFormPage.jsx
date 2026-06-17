@@ -20,7 +20,7 @@ const schema = z.object({
   salary:            z.coerce.number().min(0, 'Must be ≥ 0'),
   undeclared_salary: z.coerce.number().nullable().optional(),
   rate_type:         z.enum(['monthly', 'daily']),
-  role:         z.enum(['employee', 'hr', 'admin']).optional(),
+  role:         z.enum(['employee', 'hr', 'accounting', 'admin']).optional(),
   password:     z.string().min(8, 'Must be at least 8 characters').optional().or(z.literal('')),
   bank_account_number: z.string().nullable().optional().refine(val => !val || (val.length >= 10 && val.length <= 12 && /^\d+$/.test(val)), {
     message: 'Must be between 10 and 12 digits'
@@ -220,7 +220,8 @@ export default function EmployeeFormPage() {
                 <select {...register('role')} className={`input ${errors.role ? 'input-error' : ''}`}>
                   <option value="employee">Standard Employee</option>
                   <option value="hr">Human Resources (HR)</option>
-                  <option value="admin">System Administrator</option>
+                  <option value="accounting">Accounting</option>
+                  {canManageAccount && <option value="admin">System Administrator</option>}
                 </select>
               </FormField>
 

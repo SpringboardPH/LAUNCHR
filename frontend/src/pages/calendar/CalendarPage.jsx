@@ -78,7 +78,7 @@ export default function CalendarPage({ readOnly = false }) {
   const [selectedDeleteScope, setSelectedDeleteScope] = useState('single')
 
   // Capability check: User must be HR/Admin AND page must NOT be in readOnly mode
-  const canManage = !readOnly && ['admin', 'hr'].includes(user?.role)
+  const canManage = !readOnly && ['admin', 'hr', 'accounting'].includes(user?.role)
 
   const { data: events, isLoading: eventsLoading } = useQuery({
     queryKey: calendarEventKeys.all,

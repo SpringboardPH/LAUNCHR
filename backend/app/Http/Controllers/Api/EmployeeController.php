@@ -20,7 +20,10 @@ class EmployeeController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Employee::query();
+        $query = Employee::query()->where(function ($q) {
+            $q->whereDoesntHave('user')
+              ->orWhereHas('user', fn($u) => $u->where('role', '!=', 'admin'));
+        });
 
         // Search by name, ID, or email
         if ($search = $request->query('search')) {

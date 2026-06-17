@@ -30,7 +30,12 @@ class PayrollController extends Controller
     public function index(Request $request)
     {
         $query = Payroll::with('employee')
-            ->where('status', '!=', 'archived');
+            ->where('status', '!=', 'archived')
+            ->whereHas('employee', function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereDoesntHave('user')->orWhereHas('user', fn($u) => $u->where('role', '!=', 'admin'));
+                });
+            });
 
         if ($request->has('cutoff_start') && $request->has('cutoff_end')) {
             $query->where('cutoff_start', $request->cutoff_start)
@@ -70,7 +75,9 @@ class PayrollController extends Controller
         $frequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
         $periods = $frequency === 'monthly' ? 1 : 2;
 
-        $employeeQuery = Employee::where('status', 'active');
+        $employeeQuery = Employee::where('status', 'active')->where(function ($q) {
+            $q->whereDoesntHave('user')->orWhereHas('user', fn($u) => $u->where('role', '!=', 'admin'));
+        });
         if ($request->has('group') && $request->group !== '') {
             $employeeQuery->where('group', $request->group);
         }

@@ -50,9 +50,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [AttendanceController::class, 'store'])->middleware('role:admin');
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
-        Route::put('/{id}', [AttendanceController::class, 'update'])->middleware('role:admin,hr');
+        Route::put('/{id}', [AttendanceController::class, 'update'])->middleware('role:admin,hr,accounting');
         Route::delete('/{id}', [AttendanceController::class, 'destroy'])->middleware('role:admin');
-        Route::post('/bulk-mark-absent', [AttendanceController::class, 'bulkMarkAbsent'])->middleware('role:admin,hr');
+        Route::post('/bulk-mark-absent', [AttendanceController::class, 'bulkMarkAbsent'])->middleware('role:admin,hr,accounting');
     });
     
     // Leave
@@ -75,12 +75,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payroll
     Route::prefix('payroll')->group(function () {
         Route::get('/', [PayrollController::class, 'index']);
-        Route::post('/generate', [PayrollController::class, 'generate'])->middleware('role:admin,hr');
-        Route::post('/send-paystubs', [PayrollController::class, 'sendPaystubs'])->middleware('role:admin,hr');
-        Route::post('/{id}/revert-to-draft', [PayrollController::class, 'revertToDraft'])->middleware('role:admin,hr');
-        Route::post('/{id}/toggle-undertime-calc', [PayrollController::class, 'toggleUndertimeCalculation'])->middleware('role:admin,hr');
+        Route::post('/generate', [PayrollController::class, 'generate'])->middleware('role:admin,hr,accounting');
+        Route::post('/send-paystubs', [PayrollController::class, 'sendPaystubs'])->middleware('role:admin,hr,accounting');
+        Route::post('/{id}/revert-to-draft', [PayrollController::class, 'revertToDraft'])->middleware('role:admin,hr,accounting');
+        Route::post('/{id}/toggle-undertime-calc', [PayrollController::class, 'toggleUndertimeCalculation'])->middleware('role:admin,hr,accounting');
         Route::get('/{id}', [PayrollController::class, 'show']);
-        Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr');
+        Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr,accounting');
         Route::get('/{id}/export', [PayrollController::class, 'export']);
     });
     
@@ -88,7 +88,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 
     // Shared lookup data for admin + HR forms
-    Route::middleware('role:admin,hr')->group(function () {
+    Route::middleware('role:admin,hr,accounting')->group(function () {
         Route::get('/departments', [DepartmentController::class, 'index']);
     });
 
@@ -160,7 +160,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     
     // Employee Schedules & Templates (Admin + HR)
-    Route::middleware('role:admin,hr')->group(function () {
+    Route::middleware('role:admin,hr,accounting')->group(function () {
         Route::apiResource('admin/employee-schedules', EmployeeScheduleController::class);
         Route::apiResource('admin/schedule-templates', ScheduleTemplateController::class);
         Route::apiResource('admin/calendar-events', CalendarEventController::class)->except(['index', 'show']);

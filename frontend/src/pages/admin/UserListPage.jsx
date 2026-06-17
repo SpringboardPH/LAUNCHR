@@ -143,10 +143,12 @@ export default function UserListPage() {
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
                         u.role === 'hr' ? 'bg-blue-100 text-blue-700' :
+                        u.role === 'accounting' ? 'bg-green-100 text-green-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {u.role === 'admin' ? 'System Administrator' : 
-                         u.role === 'hr' ? 'Human Resources' : 'Standard Employee'}
+                        {u.role === 'admin' ? 'System Administrator' :
+                         u.role === 'hr' ? 'Human Resources' :
+                         u.role === 'accounting' ? 'Accounting' : 'Standard Employee'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -262,10 +264,12 @@ export default function UserListPage() {
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
                         u.role === 'hr' ? 'bg-blue-100 text-blue-700' :
+                        u.role === 'accounting' ? 'bg-green-100 text-green-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {u.role === 'admin' ? 'System Administrator' : 
-                         u.role === 'hr' ? 'Human Resources' : 'Standard Employee'}
+                        {u.role === 'admin' ? 'System Administrator' :
+                         u.role === 'hr' ? 'Human Resources' :
+                         u.role === 'accounting' ? 'Accounting' : 'Standard Employee'}
                       </span>
                     </td>
                     <td className="px-4 py-3">

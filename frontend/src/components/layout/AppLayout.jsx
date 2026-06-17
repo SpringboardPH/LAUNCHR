@@ -53,7 +53,7 @@ export default function AppLayout() {
   const { data: dashboardData } = useQuery({
     queryKey: dashboardKeys.all,
     queryFn: () => getDashboard(),
-    enabled: !!user && ['admin', 'hr'].includes(user.role),
+    enabled: !!user && ['admin', 'hr', 'accounting'].includes(user.role),
     staleTime: 60_000,
   })
 
@@ -86,7 +86,7 @@ export default function AppLayout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {user?.role === 'hr' ? (
+          {['hr', 'accounting'].includes(user?.role) ? (
             <>
               <div className="px-3 py-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
@@ -188,7 +188,7 @@ export default function AppLayout() {
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
               <p className="text-xs text-gray-500 truncate">
-                {user?.role === 'admin' ? 'Administrator' : 'Human Resources'}
+                {user?.role === 'admin' ? 'Administrator' : user?.role === 'accounting' ? 'Accounting' : 'Human Resources'}
               </p>
             </div>
           </div>
