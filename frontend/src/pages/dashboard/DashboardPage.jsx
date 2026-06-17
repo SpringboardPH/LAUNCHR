@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys, getSystemClock, systemClockKeys } from '../../api/queries'
+import { useAuth } from '../../store/AuthContext'
 import { PageHeader, StatCard, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { Users, Clock, CalendarOff, Banknote, TrendingUp, AlertCircle, Zap, CheckCircle2, XCircle, Clock3 } from 'lucide-react'
+import { Users, Clock, CalendarOff, TrendingUp, AlertCircle, Zap, CheckCircle2, XCircle, Clock3 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts'
 
@@ -21,6 +22,9 @@ const COLORS = {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const firstName = user?.name?.split(' ')[0] || 'there'
+
   const { data: sysClock } = useQuery({
     queryKey: systemClockKeys.all,
     queryFn: getSystemClock,
@@ -54,7 +58,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Good morning 👋`}
+        title={`Good day, ${firstName}! 👋`}
         description={displayDateLabel}
       />
 
@@ -138,46 +142,65 @@ export default function DashboardPage() {
           <div className="card p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">Weekly Attendance Trend</h2>
             <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={weeklyTrendData}>
+              <AreaChart data={weeklyTrendData}>
+                <defs>
+                  <linearGradient id="attendanceGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="week" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} />
-                <Tooltip 
+                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-                  formatter={(value) => `${value}%`}
+                  formatter={(value) => [`${value}%`, 'Attendance']}
                   labelStyle={{ color: '#1f2937' }}
                 />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="rate" 
-                  stroke="#0ea5e9" 
-                  strokeWidth={2}
-                  dot={{ fill: '#0ea5e9', r: 4 }}
+                <Area
+                  type="monotone"
+                  dataKey="rate"
+                  stroke="#0ea5e9"
+                  strokeWidth={2.5}
+                  fill="url(#attendanceGradient)"
+                  dot={{ fill: '#0ea5e9', r: 4, strokeWidth: 0 }}
                   activeDot={{ r: 6 }}
                   name="Attendance %"
                 />
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         )}
 
         {/* Department Attendance Rates */}
         {departmentAttendanceData.length > 0 && (
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">Department Attendance Rates</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={departmentAttendanceData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="department" stroke="#9ca3af" style={{ fontSize: '12px' }} angle={-45} textAnchor="end" height={80} />
-                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} />
-                <Tooltip 
+          <div className="card p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">Department Attendance</h2>
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> ≥85%</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" /> 70–84%</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> &lt;70%</span>
+              </div>
+            </div>
+            <div className="flex-1 flex items-center">
+            <ResponsiveContainer width="100%" height={departmentAttendanceData.length * 38 + 40}>
+              <BarChart data={departmentAttendanceData} layout="vertical" margin={{ top: 5, right: 20, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <YAxis type="category" dataKey="department" stroke="#9ca3af" style={{ fontSize: '12px' }} width={110} />
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-                  formatter={(value) => `${value}%`}
+                  formatter={(value) => [`${value}%`, 'Attendance']}
                 />
-                <Bar dataKey="rate" fill="#6366f1" radius={[8, 8, 0, 0]} name="Attendance Rate %" />
+                <Bar dataKey="rate" radius={[0, 8, 8, 0]} barSize={22} name="Attendance Rate %">
+                  {departmentAttendanceData.map((entry, i) => (
+                    <Cell key={i} fill={entry.rate >= 85 ? '#10b981' : entry.rate >= 70 ? '#f59e0b' : '#ef4444'} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
+            </div>
           </div>
         )}
       </div>

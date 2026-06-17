@@ -5,7 +5,7 @@ import { getAttendanceToday, getLeaveBalance, getMonthlyAttendance, attendanceKe
 import { PageHeader, StatCard, PageSpinner, ScheduleDisplay } from '../../components/ui/index.jsx'
 import { Clock, CalendarOff, TrendingUp, LogOut, Plus, CheckCircle2, AlertCircle, Zap } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const STATUS_COLORS = {
   completed: '#10b981',
@@ -18,6 +18,7 @@ const STATUS_COLORS = {
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuth()
+  const firstName = user?.name?.split(' ')[0] || 'there'
 
   const { data: sysClock, isLoading: loadingClock } = useQuery({
     queryKey: systemClockKeys.all,
@@ -100,7 +101,7 @@ export default function EmployeeDashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="My Dashboard"
+        title={`Good day, ${firstName}! 👋`}
         description={displayDateLabel}
       />
 
@@ -243,23 +244,30 @@ export default function EmployeeDashboardPage() {
             <span className="text-xs text-gray-500">{totalVisualDays} work days tracked</span>
           </div>
           
-          {/* Bar Chart */}
-          <div className="mb-6">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
-                  cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
-                />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+          {/* Donut Chart */}
+          <div className="mb-6 flex items-center justify-center">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={65}
+                  outerRadius={95}
+                  paddingAngle={3}
+                  dataKey="count"
+                  nameKey="name"
+                >
                   {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell key={index} fill={entry.color} />
                   ))}
-                </Bar>
-              </BarChart>
+                </Pie>
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px' }}
+                  formatter={(value, name) => [`${value} day${value !== 1 ? 's' : ''}`, name]}
+                />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+              </PieChart>
             </ResponsiveContainer>
           </div>
 
