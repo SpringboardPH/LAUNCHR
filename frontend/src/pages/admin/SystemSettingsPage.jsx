@@ -36,6 +36,7 @@ export default function SystemSettingsPage() {
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [requireLoginOtp, setRequireLoginOtp] = useState(false)
   const [sssTable, setSssTable] = useState('')
+  const [withholdingTable, setWithholdingTable] = useState('')
   const [themeColor, setThemeColor] = useState('sienna')
   const [payrollFrequency, setPayrollFrequency] = useState('semi_monthly')
   const [p1Start, setP1Start] = useState(1)
@@ -98,6 +99,11 @@ export default function SystemSettingsPage() {
         setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
       }
 
+      const withholdingSetting = settings.find(s => s.key === 'withholding_tax_table')
+      if (withholdingSetting) {
+        setWithholdingTable(typeof withholdingSetting.value === 'string' ? withholdingSetting.value : JSON.stringify(withholdingSetting.value, null, 2))
+      }
+
       const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
       setThemeColor(themeSetting)
 
@@ -145,7 +151,7 @@ export default function SystemSettingsPage() {
   })
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
+    mutationFn: async ({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
@@ -169,11 +175,19 @@ export default function SystemSettingsPage() {
 
       if (sssTable) {
         try {
-          // Validate JSON before sending
           const parsed = JSON.parse(sssTable)
           await updateAdminSetting('sss_contribution_table', parsed, 'SSS Employee Contribution Table', 'json')
         } catch (e) {
           console.error("Invalid SSS JSON", e)
+        }
+      }
+
+      if (withholdingTable) {
+        try {
+          const parsed = JSON.parse(withholdingTable)
+          await updateAdminSetting('withholding_tax_table', parsed, 'BIR Withholding Tax Brackets — TRAIN Law RA 10963 RR 8-2018', 'json')
+        } catch (e) {
+          console.error("Invalid Withholding Tax JSON", e)
         }
       }
 
@@ -233,7 +247,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate })
     })
   }
 
@@ -278,6 +292,11 @@ export default function SystemSettingsPage() {
           setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
         }
 
+        const withholdingSetting = settings.find(s => s.key === 'withholding_tax_table')
+        if (withholdingSetting) {
+          setWithholdingTable(typeof withholdingSetting.value === 'string' ? withholdingSetting.value : JSON.stringify(withholdingSetting.value, null, 2))
+        }
+
         const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
         setThemeColor(themeSetting)
 
@@ -306,7 +325,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, themeColor, systemName, systemLogo, payrollTemplate })
+        updateSettingMutation.mutate({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate })
       }
     })
   }
@@ -677,12 +696,12 @@ export default function SystemSettingsPage() {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Statutory Contribution Tables</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Update the SSS table annually to comply with new regulations.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Update the SSS and withholding tax tables to comply with new BIR regulations.</p>
               </div>
             </div>
           </div>
           <div className="p-6">
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">SSS Employee Contribution Table (JSON)</label>
                 <textarea
@@ -692,7 +711,19 @@ export default function SystemSettingsPage() {
                   placeholder='[{"min": 0, "max": 5000, "ee": 250}, ...]'
                 />
                 <p className="text-[10px] text-gray-400 italic">
-                  Note: The JSON structure must include "min", "max", "msc", and "ee" fields.
+                  Required fields: "min", "max", "msc", "ee"
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Withholding Tax Brackets — TRAIN Law (JSON)</label>
+                <textarea
+                  value={withholdingTable}
+                  onChange={(e) => setWithholdingTable(e.target.value)}
+                  className="input font-mono text-xs h-64 p-4 leading-relaxed"
+                  placeholder='{"semi_monthly": [...], "monthly": [...]}'
+                />
+                <p className="text-[10px] text-gray-400 italic">
+                  Object with "semi_monthly" and "monthly" arrays. Each bracket: &#123;"from", "to" (null for top), "fixed", "rate", "floor"&#125;. Update when BIR revises the TRAIN Law tables.
                 </p>
               </div>
             </div>

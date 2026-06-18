@@ -239,11 +239,9 @@ class PayrollController extends Controller
 
             // Withholding Tax Calculation
             // Taxable Income = Gross - (Late/Undertime/Absent) - Mandatory Contributions
-            // TRAIN brackets are semi-monthly. Normalize to semi-monthly equivalent before lookup,
-            // then scale the result back to the actual pay period.
             $earnedGross = $finalGross - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
             $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
-            $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome * $periods / 2) * 2 / $periods;
+            $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $frequency);
 
             // ── Totals ────────────────────────────────────────────────────
             $totalDeductions = $lateDeduction + $undertimeDeduction
@@ -291,7 +289,7 @@ class PayrollController extends Controller
                     'net_pay' => round($finalNet, 2),
                     'status' => 'draft',
                     'use_undeclared' => false,
-                    'processed_at' => now(),
+                    'processed_at' => \App\Helpers\SystemClock::now(),
                 ]
             );
 
@@ -365,7 +363,7 @@ class PayrollController extends Controller
         $payroll->fill($data);
 
         if ($request->status === 'paid' && !$payroll->paid_at) {
-            $payroll->paid_at = now();
+            $payroll->paid_at = \App\Helpers\SystemClock::now();
         }
 
         $payroll->save();
@@ -462,7 +460,7 @@ class PayrollController extends Controller
                 // Mark as paid
                 $payroll->update([
                     'status' => 'paid',
-                    'paid_at' => now(),
+                    'paid_at' => \App\Helpers\SystemClock::now(),
                 ]);
 
                 $sent[] = [
@@ -602,14 +600,15 @@ class PayrollController extends Controller
 
         // Recalculate Withholding Tax
         $currentGross = $payroll->gross_pay;
-        
+        $payFrequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
+
         $sss = (float)($deductions['SSS EE Contribution'] ?? 0);
         $philhealth = (float)($deductions['PhilHealth EE Contribution'] ?? 0);
         $pagibig = (float)($deductions['Pag-IBIG EE Contribution'] ?? 0);
-        
+
         $earnedGross = $currentGross - ($deductions['Late'] + $deductions['Undertime'] + ($deductions['Absent'] ?? 0) + ($deductions['Half Day'] ?? 0));
         $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
-        $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome);
+        $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $payFrequency);
         
         if ($wTax > 0) {
             $deductions['Withholding Tax'] = round($wTax, 2);
@@ -639,8 +638,8 @@ class PayrollController extends Controller
         return response()->json([
             'success' => true,
             'data' => $payroll->load('employee'),
-            'message' => 'Deduction calculations toggled successfully. Now using ' . 
-                        (!$payroll->use_undeclared ? 'undeclared' : 'base') . ' salary for late, undertime, and absent deductions',
+            'message' => 'Deduction calculations toggled successfully. Now using ' .
+                        ($payroll->use_undeclared ? 'undeclared' : 'base') . ' salary for late, undertime, and absent deductions',
         ]);
     }
 

@@ -108,24 +108,57 @@ class PayrollService
     }
 
     /**
-     * Calculate Withholding Tax (PH TRAIN Law 2023-2027)
-     * Calculated based on semi-monthly taxable income
-     * Formula: Taxable Income = Gross Pay - (SSS + PhilHealth + Pag-IBIG)
+     * Calculate Withholding Tax (PH TRAIN Law RA 10963, RR 8-2018, effective Jan 1 2023)
+     * taxableIncome is after SSS + PhilHealth + Pag-IBIG deductions.
+     * frequency: 'monthly' | 'semi_monthly' (default)
+     * Brackets are loaded from system_settings key 'withholding_tax_table'; hardcoded values are the fallback.
      */
-    public static function calculateWithholdingTax(float $taxableIncome): float
+    public static function calculateWithholdingTax(float $taxableIncome, string $frequency = 'semi_monthly'): float
     {
-        if ($taxableIncome <= 10417) {
-            return 0;
-        } elseif ($taxableIncome <= 16666) {
-            return ($taxableIncome - 10417) * 0.15;
-        } elseif ($taxableIncome <= 33332) {
-            return 937.50 + ($taxableIncome - 16667) * 0.20;
-        } elseif ($taxableIncome <= 83332) {
-            return 4270.83 + ($taxableIncome - 33333) * 0.25;
-        } elseif ($taxableIncome <= 333332) {
-            return 16770.83 + ($taxableIncome - 83333) * 0.30;
-        } else {
-            return 91770.83 + ($taxableIncome - 333333) * 0.35;
+        $tax = 0;
+        $brackets = self::withholdingBrackets($frequency);
+
+        foreach ($brackets as $bracket) {
+            $aboveFrom = $taxableIncome >= $bracket['from'];
+            $belowTo   = $bracket['to'] === null || $taxableIncome <= $bracket['to'];
+            if ($aboveFrom && $belowTo) {
+                $tax = $bracket['fixed'] + ($taxableIncome - $bracket['floor']) * $bracket['rate'];
+                break;
+            }
         }
+
+        return round($tax, 2);
+    }
+
+    private static function withholdingBrackets(string $frequency): array
+    {
+        $setting = \App\Models\SystemSettings::where('key', 'withholding_tax_table')->first();
+        if ($setting && $setting->value) {
+            $table = is_array($setting->value) ? $setting->value : json_decode($setting->value, true);
+            if (is_array($table) && isset($table[$frequency])) {
+                return $table[$frequency];
+            }
+        }
+
+        // ponytail: fallback — keeps working before the seeder runs or if the setting is missing
+        $fallback = [
+            'semi_monthly' => [
+                ['from' => 0,        'to' => 10417,  'fixed' => 0,        'rate' => 0,    'floor' => 0],
+                ['from' => 10417.01, 'to' => 16666,  'fixed' => 0,        'rate' => 0.15, 'floor' => 10417],
+                ['from' => 16667,    'to' => 33332,  'fixed' => 937.50,   'rate' => 0.20, 'floor' => 16667],
+                ['from' => 33333,    'to' => 83332,  'fixed' => 4270.70,  'rate' => 0.25, 'floor' => 33333],
+                ['from' => 83333,    'to' => 333332, 'fixed' => 16770.70, 'rate' => 0.30, 'floor' => 83333],
+                ['from' => 333333,   'to' => null,   'fixed' => 91770.70, 'rate' => 0.35, 'floor' => 333333],
+            ],
+            'monthly' => [
+                ['from' => 0,        'to' => 20833,  'fixed' => 0,         'rate' => 0,    'floor' => 0],
+                ['from' => 20833.01, 'to' => 33332,  'fixed' => 0,         'rate' => 0.15, 'floor' => 20833],
+                ['from' => 33333,    'to' => 66666,  'fixed' => 1875.00,   'rate' => 0.20, 'floor' => 33333],
+                ['from' => 66667,    'to' => 166666, 'fixed' => 8541.80,   'rate' => 0.25, 'floor' => 66667],
+                ['from' => 166667,   'to' => 666666, 'fixed' => 33541.80,  'rate' => 0.30, 'floor' => 166667],
+                ['from' => 666667,   'to' => null,   'fixed' => 183541.80, 'rate' => 0.35, 'floor' => 666667],
+            ],
+        ];
+        return $fallback[$frequency] ?? $fallback['semi_monthly'];
     }
 }

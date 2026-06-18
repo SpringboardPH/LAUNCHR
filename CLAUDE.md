@@ -22,7 +22,9 @@ Full-stack HR Management System. Backend: Laravel 13 / PHP 8.3 in `backend/`. Fr
 
 Any change to permissions requires updating **both** layers:
 1. **Frontend** — route guards in `frontend/src/App.jsx` (`<HrRoute>`, `<SystemAdminRoute>`, `<ProtectedRoute>`)
-2. **Backend** — role middleware in `backend/routes/api.php` (`middleware('role:admin')`, `middleware('role:admin,hr')`)
+2. **Backend** — role middleware in `backend/routes/api.php` (`middleware('role:admin')`, `middleware('role:admin,hr,accounting')`)
+
+Roles: `admin` > `hr` > `accounting` > `employee`. The `accounting` role shares HR-level access to payroll and attendance editing but cannot access admin-only settings/user management.
 
 Missing either one creates a security gap.
 
@@ -73,7 +75,7 @@ Missing either one creates a security gap.
 - **PhilHealth**: 5% total, employee pays 2.5% semi-monthly → `(salary × 0.05 × 0.5) / 2`
 - **Pag-IBIG**: 2% up to ₱10,000, semi-monthly → `(min(salary, 10000) × 0.02) / 2`
 - **SSS**: Bracket table stored in `system_settings` key `sss_contribution_table`
-- **Withholding Tax**: TRAIN Law semi-monthly brackets (see `PayrollService::calculateWithholdingTax`)
+- **Withholding Tax**: TRAIN Law brackets — `PayrollService::calculateWithholdingTax($taxableIncome, $frequency)` supports `'semi_monthly'` (default) and `'monthly'`; uses the correct BIR table for each (RA 10963, RR 8-2018)
 - Taxable income = gross pay − late/undertime/absent deductions − SSS − PhilHealth − Pag-IBIG
 
 ---

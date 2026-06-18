@@ -175,6 +175,29 @@ class SystemSettingsSeeder extends Seeder
                 'type' => 'json',
             ],
             [
+                'key' => 'withholding_tax_table',
+                'value' => json_encode([
+                    'semi_monthly' => [
+                        ['from' => 0,         'to' => 10417,  'fixed' => 0,        'rate' => 0,    'floor' => 0],
+                        ['from' => 10417.01,  'to' => 16666,  'fixed' => 0,        'rate' => 0.15, 'floor' => 10417],
+                        ['from' => 16667,     'to' => 33332,  'fixed' => 937.50,   'rate' => 0.20, 'floor' => 16667],
+                        ['from' => 33333,     'to' => 83332,  'fixed' => 4270.70,  'rate' => 0.25, 'floor' => 33333],
+                        ['from' => 83333,     'to' => 333332, 'fixed' => 16770.70, 'rate' => 0.30, 'floor' => 83333],
+                        ['from' => 333333,    'to' => null,   'fixed' => 91770.70, 'rate' => 0.35, 'floor' => 333333],
+                    ],
+                    'monthly' => [
+                        ['from' => 0,         'to' => 20833,  'fixed' => 0,         'rate' => 0,    'floor' => 0],
+                        ['from' => 20833.01,  'to' => 33332,  'fixed' => 0,         'rate' => 0.15, 'floor' => 20833],
+                        ['from' => 33333,     'to' => 66666,  'fixed' => 1875.00,   'rate' => 0.20, 'floor' => 33333],
+                        ['from' => 66667,     'to' => 166666, 'fixed' => 8541.80,   'rate' => 0.25, 'floor' => 66667],
+                        ['from' => 166667,    'to' => 666666, 'fixed' => 33541.80,  'rate' => 0.30, 'floor' => 166667],
+                        ['from' => 666667,    'to' => null,   'fixed' => 183541.80, 'rate' => 0.35, 'floor' => 666667],
+                    ],
+                ]),
+                'description' => 'BIR Withholding Tax Brackets — TRAIN Law RA 10963 RR 8-2018',
+                'type' => 'json',
+            ],
+            [
                 'key' => 'auto_clock_out_enabled',
                 'value' => 'false',
                 'description' => 'Whether automatic clock-out is enabled',

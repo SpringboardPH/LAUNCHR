@@ -67,7 +67,7 @@ frontend/src/
 
 #### Routing Strategy (Strict RBAC)
 - `/` → redirects to `/hr` or `/employee` based on role
-- `/hr/*` → operational dashboard for `hr` and `admin`
+- `/hr/*` → operational dashboard for `hr`, `accounting`, and `admin`
 - `/admin/*` → system configuration for `admin` only
 - `/employee/*` → self-service portal for `employee`, `hr` (read-only self view)
 
@@ -112,6 +112,7 @@ backend/
 |------|--------|
 | `admin` | Full system access: config, audit logs, user management, hard-deletes, all HR operations |
 | `hr` | Operational access: employees, attendance, leaves, payroll, schedules |
+| `accounting` | Payroll-focused: payroll generate/edit/send/revert, attendance edit, schedules, calendar — no admin settings or user management |
 | `employee` | Self-service only: clock in/out, own attendance/leaves/profile/schedule/calendar |
 
 **Double-layer enforcement:**
@@ -122,12 +123,14 @@ backend/
 
 ## 5. Authentication Flow
 
-Login is a **two-step OTP process**:
+Login supports two modes depending on the `login_otp_required` system setting:
 
-1. `POST /api/auth/request-otp` — verifies email + password, sends 6-digit OTP to the user's email via queue
-2. `POST /api/auth/verify-otp` — verifies OTP code, issues Sanctum bearer token
-   - Standard session: 24-hour token
-   - "Remember Me": 30-day token
+- **OTP enabled (default: false)**: two-step flow — `POST /api/auth/request-otp` verifies credentials and sends a 6-digit OTP via email queue, then `POST /api/auth/verify-otp` validates the code and issues a Sanctum bearer token.
+- **OTP disabled**: single-step — credentials are verified and a token is issued immediately.
+
+Token lifetime:
+- Standard session: 24-hour token
+- "Remember Me": 30-day token
 
 The bearer token is stored in `localStorage` and injected into every Axios request via an interceptor in `frontend/src/api/axios.js`.
 
@@ -216,7 +219,7 @@ Used in: attendance clock-in/out, absentee generation, leave balance checks, das
 
 ### 6.5 Payroll Calculation
 
-Payroll is **semi-monthly** (two cutoff periods per month). All calculations use Philippine labor law standards.
+Payroll frequency is configurable via the `payroll_frequency` system setting (`semi_monthly` default, or `monthly`). Cutoff period boundaries are set via `payroll_period1_start_day`, `payroll_period1_end_day`, `payroll_period2_start_day`, `payroll_period2_end_day` (semi-monthly) or `payroll_monthly_start_day`, `payroll_monthly_end_day` (monthly). All calculations use Philippine labor law standards.
 
 **Daily Rate Derivation:**
 - Monthly employee: `(base_salary × 12) / divisor`
@@ -246,7 +249,7 @@ Payroll is **semi-monthly** (two cutoff periods per month). All calculations use
 | SSS EE | Per contribution table (2024/2025 schedule) stored in `system_settings` |
 | PhilHealth EE | 5% total, 2.5% EE share, semi-monthly → divided by 2 |
 | Pag-IBIG EE | 2% of salary up to ₱10,000 cap, semi-monthly → divided by 2 |
-| Withholding Tax | TRAIN Law 2023–2027 brackets on taxable income |
+| Withholding Tax | TRAIN Law 2023–2027 brackets on taxable income; `PayrollService::calculateWithholdingTax($income, $frequency)` uses the correct BIR table for `semi_monthly` or `monthly` |
 
 **Taxable Income** = Gross Pay − Late/Undertime/Absent deductions − SSS − PhilHealth − Pag-IBIG
 
@@ -305,6 +308,14 @@ Payroll is **semi-monthly** (two cutoff periods per month). All calculations use
 | `leave_include_weekends` | `false` | Whether Sat/Sun count in leave days |
 | `payroll_template` | `payrolltemplate.xlsx` | Excel template filename |
 | `sss_contribution_table` | Full 2024/2025 table | JSON bracket table |
+| `login_otp_required` | `false` | Whether email OTP is required to complete login |
+| `payroll_frequency` | `semi_monthly` | Payroll cycle: `semi_monthly` or `monthly` |
+| `payroll_period1_start_day` | `11` | Semi-monthly: start day of first period |
+| `payroll_period1_end_day` | `25` | Semi-monthly: end day of first period |
+| `payroll_period2_start_day` | `26` | Semi-monthly: start day of second period |
+| `payroll_period2_end_day` | `10` | Semi-monthly: end day of second period (cross-month when end < start) |
+| `payroll_monthly_start_day` | `1` | Monthly: start day of the payroll period |
+| `payroll_monthly_end_day` | `31` | Monthly: end day of the payroll period (31 = end of month) |
 | `system_date` | *(unset)* | Virtual system date override (YYYY-MM-DD) |
 | `system_time` | *(unset)* | Virtual system time override (HH:MM:SS) |
 
