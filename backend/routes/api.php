@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTypeController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\EmployeeRequestController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -63,6 +64,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [LeaveController::class, 'show']);
         Route::patch('/{id}/approve', [LeaveController::class, 'approve']);
         Route::patch('/{id}/reject', [LeaveController::class, 'reject']);
+    });
+
+    // Employee Requests
+    Route::prefix('requests')->group(function () {
+        Route::post('/', [EmployeeRequestController::class, 'store']);
+        Route::get('/', [EmployeeRequestController::class, 'index']);
+        Route::get('/{id}', [EmployeeRequestController::class, 'show']);
+        Route::patch('/{id}/approve', [EmployeeRequestController::class, 'approve'])->middleware('role:admin,hr');
+        Route::patch('/{id}/reject', [EmployeeRequestController::class, 'reject'])->middleware('role:admin,hr');
     });
 
     Route::get('/leave-types', [LeaveTypeController::class, 'index']);
