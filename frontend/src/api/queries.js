@@ -445,3 +445,28 @@ export const updateCalendarEventType = (id, data) =>
 
 export const deleteCalendarEventType = (id) =>
   api.delete(`/admin/calendar-event-types/${id}`).then(r => r.data)
+
+// ─── Employee Requests ──────────────────────────────────────────────
+export const requestKeys = {
+  all: ['requests'],
+  list: (params) => ['requests', 'list', params],
+  detail: (id) => ['requests', id],
+}
+
+export const getRequests = (params = {}) =>
+  api.get('/requests', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+  }))
+
+export const getRequest = (id) =>
+  api.get(`/requests/${id}`).then(r => r.data.data)
+
+export const createRequest = (data) =>
+  api.post('/requests', data).then(r => r.data)
+
+export const approveRequest = (id, responseNotes = null) =>
+  api.patch(`/requests/${id}/approve`, { response_notes: responseNotes }).then(r => r.data)
+
+export const rejectRequest = (id, responseNotes) =>
+  api.patch(`/requests/${id}/reject`, { response_notes: responseNotes }).then(r => r.data)
