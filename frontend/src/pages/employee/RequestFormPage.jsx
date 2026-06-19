@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -46,6 +46,9 @@ const requestSchema = z.object({
   if (t === 'schedule_change') {
     if (!data.date) ctx.addIssue({ path: ['date'], code: z.ZodIssueCode.custom, message: 'Date is required' })
   }
+  if (['concern', 'coe', 'other'].includes(data.request_type) && !data.details?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Details are required for this request type', path: ['details'] })
+  }
 })
 
 function buildMeta(data) {
@@ -71,7 +74,7 @@ export default function RequestFormPage() {
 
   const myRequests = requestsData?.data ?? []
 
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(requestSchema),
     defaultValues: {
       request_type:   'overtime',
@@ -86,6 +89,14 @@ export default function RequestFormPage() {
   })
 
   const requestType = watch('request_type')
+
+  useEffect(() => {
+    setValue('date', '')
+    setValue('start_time', '')
+    setValue('end_time', '')
+    setValue('half', 'am')
+    setValue('departure_time', '')
+  }, [requestType, setValue])
 
   const mutation = useMutation({
     mutationFn: createRequest,
