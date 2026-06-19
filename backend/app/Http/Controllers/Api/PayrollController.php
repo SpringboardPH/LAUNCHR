@@ -195,6 +195,79 @@ class PayrollController extends Controller
                 $metrics['undertime_minutes'] += $details['undertime_minutes'];
             }
 
+            // ── Employee Request Adjustments ─────────────────────────────
+            // Build index of dates already handled by attendance logs
+            $attendanceOtDates   = $logs->filter(fn($l) => $l->status === 'overtime')
+                                        ->mapWithKeys(fn($l) => [Carbon::parse($l->date)->format('Y-m-d') => true]);
+            $attendanceHalfDates = $logs->filter(fn($l) => $l->status === 'half_day')
+                                        ->mapWithKeys(fn($l) => [Carbon::parse($l->date)->format('Y-m-d') => true]);
+
+            // Build a date→undertime_minutes map from logs actually processed
+            $attendanceUndertimeDates = collect();
+            foreach ($logs as $log) {
+                $dateStr = Carbon::parse($log->date)->format('Y-m-d');
+                $date = Carbon::parse($log->date);
+                if ($log->status === 'absent') continue;
+                $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
+                $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
+                $workEnd   = $schedule?->template?->work_end_time   ?? '18:00:00';
+                $workEndMin   = $this->parseTimeToMinutes($workEnd);
+                $workStartMin = $this->parseTimeToMinutes($workStart);
+                if ($workEndMin < $workStartMin) $workEndMin += 1440;
+                $expectedHours = ($workEndMin - $workStartMin) / 60;
+                $det = AttendanceService::calculateDetails(
+                    $log->clock_in_time, $log->clock_out_time, $expectedHours, $workStart
+                );
+                if ($det['undertime_minutes'] > 0) {
+                    $attendanceUndertimeDates[$dateStr] = true;
+                }
+            }
+
+            $approvedRequests = \App\Models\EmployeeRequest::where('employee_id', $employee->id)
+                ->whereIn('request_type', ['overtime', 'half_day', 'undertime'])
+                ->where('status', 'approved')
+                ->get()
+                ->filter(fn($r) => isset($r->meta['date'])
+                    && $r->meta['date'] >= $start
+                    && $r->meta['date'] <= $end);
+
+            $requestOvertimePay      = 0;
+            $requestHalfDayDeduction = 0;
+            $requestUndertimeMinutes = 0;
+
+            foreach ($approvedRequests as $req) {
+                $reqDate = $req->meta['date'];
+
+                if ($req->request_type === 'overtime' && !isset($attendanceOtDates[$reqDate])) {
+                    // No attendance OT for this date — add request OT hours
+                    $startTime = $req->meta['start_time'] ?? null;
+                    $endTime   = $req->meta['end_time']   ?? null;
+                    if ($startTime && $endTime) {
+                        $otHours = Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)) / 60;
+                        $requestOvertimePay += max(0, $otHours) * ($dailyRate * 1.25 / 8);
+                    }
+                }
+
+                if ($req->request_type === 'half_day' && !isset($attendanceHalfDates[$reqDate])) {
+                    // No half_day attendance log for this date — add deduction
+                    $requestHalfDayDeduction += $dailyRate / 2;
+                }
+
+                if ($req->request_type === 'undertime' && !isset($attendanceUndertimeDates[$reqDate])) {
+                    // No undertime captured in attendance for this date — add from request
+                    $departureTime = $req->meta['departure_time'] ?? null;
+                    if ($departureTime) {
+                        $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, Carbon::parse($reqDate));
+                        $scheduledEnd = $schedule?->template?->work_end_time ?? '18:00:00';
+                        $scheduledEndMin  = $this->parseTimeToMinutes($scheduledEnd);
+                        $departureMin     = $this->parseTimeToMinutes($departureTime);
+                        $undertimeMins    = max(0, $scheduledEndMin - $departureMin);
+                        $requestUndertimeMinutes += $undertimeMins;
+                    }
+                }
+            }
+            // ── End Request Adjustments ──────────────────────────────────
+
             // ── Gross Base ───────────────────────────────────────────────
             // Daily employees: paid per actual day worked
             // Monthly employees: base divided by number of pay periods
@@ -216,15 +289,15 @@ class PayrollController extends Controller
             // OT Pay:          daily_rate * 1.25 / 8 * OT hours
             // Rest Day Pay:    daily_rate * 1.30 / 8 * rest day regular hours
             // Rest Day OT Pay: daily_rate * 1.69 / 8 * rest day OT hours
-            $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8);
+            $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_hours'] * ($dailyRate * 1.30 / 8);
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
 
             // ── Deductions ────────────────────────────────────────────────
             $lateDeduction = ($metrics['late_minutes'] / 60) * $hourlyRate;
-            $undertimeDeduction = ($metrics['undertime_minutes'] / 60) * $hourlyRate;
+            $undertimeDeduction = (($metrics['undertime_minutes'] + $requestUndertimeMinutes) / 60) * $hourlyRate;
             $absentDeduction = $metrics['absent_days'] * $dailyRate;
-            $halfDayDeduction = $metrics['half_days'] * ($dailyRate / 2);
+            $halfDayDeduction = $metrics['half_days'] * ($dailyRate / 2) + $requestHalfDayDeduction;
 
             // Gov't mandatory contributions — applied every cutoff
             // (HR deducts these on every payslip, not just end-of-month)
