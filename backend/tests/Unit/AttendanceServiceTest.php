@@ -22,8 +22,8 @@ class AttendanceServiceTest extends TestCase
         $this->assertEquals('late', AttendanceService::calculateStatus('09:30:00', '17:30:00', 8, '09:00:00'));
     }
 
-    public function test_calculate_status_incomplete()
+    public function test_calculate_status_undertime()
     {
-        $this->assertEquals('incomplete', AttendanceService::calculateStatus('09:00:00', '12:00:00', 8, '09:00:00'));
+        $this->assertEquals('undertime', AttendanceService::calculateStatus('09:00:00', '12:00:00', 8, '09:00:00'));
     }
 }
