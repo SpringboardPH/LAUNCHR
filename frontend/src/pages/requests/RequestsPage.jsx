@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { getRequests, approveRequest, rejectRequest, requestKeys } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner } from '../../components/ui/index.jsx'
 import { Check, X, Eye, ClipboardList } from 'lucide-react'
 
 const REQUEST_TYPES = [
@@ -35,8 +35,8 @@ export default function RequestsPage() {
   const [viewRequest, setViewRequest] = useState(null)
   const [rejectModal, setRejectModal] = useState(null) // request id
   const [rejectNotes, setRejectNotes] = useState('')
+  const [approveTarget, setApproveTarget] = useState(null) // request object
   const [approveNotes, setApproveNotes] = useState('')
-  const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -48,7 +48,7 @@ export default function RequestsPage() {
     mutationFn: ({ id, notes }) => approveRequest(id, notes || null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: requestKeys.all })
-      setConfirmConfig(c => ({ ...c, open: false }))
+      setApproveTarget(null)
       setApproveNotes('')
     },
   })
@@ -65,16 +65,8 @@ export default function RequestsPage() {
   const requests = data?.data ?? []
 
   const handleApproveClick = (request) => {
-    const employeeName = `${request.employee?.first_name ?? ''} ${request.employee?.last_name ?? ''}`.trim()
-    const typeName = formatType(request.request_type)
     setApproveNotes('')
-    setConfirmConfig({
-      open: true,
-      title: 'Approve Request',
-      message: `Approve this ${typeName} request from ${employeeName}?`,
-      onConfirm: () => approveMutation.mutate({ id: request.id, notes: approveNotes }),
-      type: 'info',
-    })
+    setApproveTarget(request)
   }
 
   const handleRejectClick = (request) => {
@@ -89,14 +81,50 @@ export default function RequestsPage() {
         description="Review and action employee requests"
       />
 
-      <ConfirmModal
-        open={confirmConfig.open}
-        onClose={() => setConfirmConfig(c => ({ ...c, open: false }))}
-        onConfirm={confirmConfig.onConfirm}
-        title={confirmConfig.title}
-        message={confirmConfig.message}
-        type={confirmConfig.type}
-      />
+      {/* Approve Modal */}
+      <Modal open={Boolean(approveTarget)} onClose={() => {
+        setApproveTarget(null)
+        setApproveNotes('')
+      }} title="Approve Request" size="sm">
+        {approveTarget && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              Approve this {formatType(approveTarget.request_type)} request from {approveTarget.employee?.first_name} {approveTarget.employee?.last_name}?
+            </p>
+            <FormField label="Response Notes (optional)">
+              <textarea
+                className="input h-20 resize-none"
+                value={approveNotes}
+                onChange={e => setApproveNotes(e.target.value)}
+                placeholder="Add optional notes…"
+              />
+            </FormField>
+            {approveMutation.isError && (
+              <p className="text-sm text-red-600 mt-2">
+                {approveMutation.error?.response?.data?.message || 'Failed to approve request'}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setApproveTarget(null)
+                  setApproveNotes('')
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => approveMutation.mutate({ id: approveTarget.id, notes: approveNotes })}
+                disabled={approveMutation.isPending}
+                className="btn-success"
+              >
+                {approveMutation.isPending ? <Spinner size="sm" /> : 'Approve'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
@@ -302,7 +330,9 @@ export default function RequestsPage() {
             />
           </FormField>
           {rejectMutation.isError && (
-            <p className="text-xs text-red-500">{rejectMutation.error?.response?.data?.message}</p>
+            <p className="text-sm text-red-600 mt-2">
+              {rejectMutation.error?.response?.data?.message || 'Failed to reject request'}
+            </p>
           )}
           <div className="flex justify-end gap-2">
             <button onClick={() => setRejectModal(null)} className="btn-secondary">Cancel</button>
