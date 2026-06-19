@@ -26,6 +26,7 @@ class EmployeeRequestController extends Controller
         if (!$employee) {
             return response()->json([
                 'success' => false,
+                'data'    => null,
                 'message' => 'Employee record not found.',
             ], 404);
         }
