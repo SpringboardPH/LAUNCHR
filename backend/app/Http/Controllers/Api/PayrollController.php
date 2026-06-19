@@ -132,6 +132,9 @@ class PayrollController extends Controller
 
             $daysWorkedCount = 0;
 
+            $dateOtHours = [];             // date → OT hours from attendance
+            $attendanceUndertimeDates = []; // dates with attendance undertime > 0
+
             $events = \App\Models\CalendarEvent::whereBetween('event_date', [$start, $end])
                 ->with('type')
                 ->get()
@@ -180,6 +183,15 @@ class PayrollController extends Controller
                 // Only count overtime hours if status is actually 'overtime' (not covered by grace period)
                 $overtimeHours = $log->status === 'overtime' ? $details['overtime_hours'] : 0;
 
+                // Track per-date OT hours for request deduplication
+                if (!$isRestDay && $details['overtime_hours'] > 0) {
+                    $dateOtHours[$dateStr] = ($dateOtHours[$dateStr] ?? 0) + $details['overtime_hours'];
+                }
+                // Track dates with undertime for request deduplication
+                if ($details['undertime_minutes'] > 0) {
+                    $attendanceUndertimeDates[$dateStr] = true;
+                }
+
                 if ($isRestDay) {
                     // Rest day: regular hours and OT hours tracked separately
                     $restRegularHours = max(0, $details['hours_worked'] - $overtimeHours);
@@ -197,31 +209,9 @@ class PayrollController extends Controller
 
             // ── Employee Request Adjustments ─────────────────────────────
             // Build index of dates already handled by attendance logs
-            $attendanceOtDates   = $logs->filter(fn($l) => $l->status === 'overtime')
-                                        ->mapWithKeys(fn($l) => [Carbon::parse($l->date)->format('Y-m-d') => true]);
             $attendanceHalfDates = $logs->filter(fn($l) => $l->status === 'half_day')
                                         ->mapWithKeys(fn($l) => [Carbon::parse($l->date)->format('Y-m-d') => true]);
-
-            // Build a date→undertime_minutes map from logs actually processed
-            $attendanceUndertimeDates = collect();
-            foreach ($logs as $log) {
-                $dateStr = Carbon::parse($log->date)->format('Y-m-d');
-                $date = Carbon::parse($log->date);
-                if ($log->status === 'absent') continue;
-                $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
-                $workEnd   = $schedule?->template?->work_end_time   ?? '18:00:00';
-                $workEndMin   = $this->parseTimeToMinutes($workEnd);
-                $workStartMin = $this->parseTimeToMinutes($workStart);
-                if ($workEndMin < $workStartMin) $workEndMin += 1440;
-                $expectedHours = ($workEndMin - $workStartMin) / 60;
-                $det = AttendanceService::calculateDetails(
-                    $log->clock_in_time, $log->clock_out_time, $expectedHours, $workStart
-                );
-                if ($det['undertime_minutes'] > 0) {
-                    $attendanceUndertimeDates[$dateStr] = true;
-                }
-            }
+            // $dateOtHours and $attendanceUndertimeDates were populated in the first loop above
 
             $approvedRequests = \App\Models\EmployeeRequest::where('employee_id', $employee->id)
                 ->whereIn('request_type', ['overtime', 'half_day', 'undertime'])
@@ -238,13 +228,15 @@ class PayrollController extends Controller
             foreach ($approvedRequests as $req) {
                 $reqDate = $req->meta['date'];
 
-                if ($req->request_type === 'overtime' && !isset($attendanceOtDates[$reqDate])) {
-                    // No attendance OT for this date — add request OT hours
+                if ($req->request_type === 'overtime') {
                     $startTime = $req->meta['start_time'] ?? null;
                     $endTime   = $req->meta['end_time']   ?? null;
                     if ($startTime && $endTime) {
-                        $otHours = Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)) / 60;
-                        $requestOvertimePay += max(0, $otHours) * ($dailyRate * 1.25 / 8);
+                        $reqOtHours    = Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)) / 60;
+                        $attendOtHours = $dateOtHours[$reqDate] ?? 0;
+                        // Add only the delta beyond what attendance already captured
+                        $additionalOtHours = max(0, $reqOtHours - $attendOtHours);
+                        $requestOvertimePay += $additionalOtHours * ($dailyRate * 1.25 / 8);
                     }
                 }
 

@@ -125,6 +125,7 @@ class EmployeeRequestController extends Controller
             if (!$employee || $employeeRequest->employee_id !== $employee->id) {
                 return response()->json([
                     'success' => false,
+                    'data'    => null,
                     'message' => 'Unauthorized',
                 ], 403);
             }
@@ -151,6 +152,7 @@ class EmployeeRequestController extends Controller
         if ($employeeRequest->status !== 'pending') {
             return response()->json([
                 'success' => false,
+                'data'    => null,
                 'message' => 'Only pending requests can be approved',
             ], 422);
         }
@@ -198,6 +200,7 @@ class EmployeeRequestController extends Controller
         if ($employeeRequest->status !== 'pending') {
             return response()->json([
                 'success' => false,
+                'data'    => null,
                 'message' => 'Only pending requests can be rejected',
             ], 422);
         }

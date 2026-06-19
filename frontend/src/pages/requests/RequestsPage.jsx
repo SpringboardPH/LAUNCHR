@@ -12,7 +12,7 @@ const REQUEST_TYPES = [
   { value: 'undertime', label: 'Undertime' },
   { value: 'concern', label: 'Concern' },
   { value: 'schedule_change', label: 'Schedule Change' },
-  { value: 'certificate_of_employment', label: 'Certificate of Employment' },
+  { value: 'coe', label: 'Certificate of Employment' },
   { value: 'other', label: 'Other' },
 ]
 
