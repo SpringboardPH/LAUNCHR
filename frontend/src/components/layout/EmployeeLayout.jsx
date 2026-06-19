@@ -2,7 +2,7 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
 import { getSystemConfig, systemConfigKeys } from '../../api/queries'
-import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff, User, CalendarRange } from 'lucide-react'
+import { LogOut, Menu, X, LayoutDashboard, Clock, CalendarOff, User, CalendarRange, ClipboardList } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/employee/attendance', icon: Clock, label: 'Attendance' },
   { to: '/employee/schedule', icon: CalendarRange, label: 'My Schedule' },
   { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
+  { to: '/employee/requests/new', icon: ClipboardList, label: 'My Requests' },
   { to: '/employee/calendar', icon: CalendarRange, label: 'Company Calendar' },
   { to: '/employee/profile', icon: User, label: 'My Profile' },
 ]

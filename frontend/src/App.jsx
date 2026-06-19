@@ -23,6 +23,8 @@ import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import LeaveRequestFormPage from './pages/employee/LeaveRequestFormPage'
+import RequestFormPage from './pages/employee/RequestFormPage'
+import RequestsPage from './pages/requests/RequestsPage'
 import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
 import EmployeeSchedulePage from './pages/employee/EmployeeSchedulePage'
 import CalendarPage from './pages/calendar/CalendarPage'
@@ -135,6 +137,7 @@ export default function App() {
             <Route path="employees/:id/edit" element={<EmployeeFormPage />} />
             <Route path="attendance" element={<AttendancePage />} />
             <Route path="leaves" element={<LeavePage />} />
+            <Route path="requests" element={<RequestsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
@@ -158,6 +161,7 @@ export default function App() {
             <Route path="attendance" element={<AttendanceClockPage />} />
             <Route path="schedule" element={<EmployeeSchedulePage />} />
             <Route path="leaves/new" element={<LeaveRequestFormPage />} />
+            <Route path="requests/new" element={<RequestFormPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
             <Route path="calendar" element={<CalendarPage readOnly={true} />} />
           </Route>

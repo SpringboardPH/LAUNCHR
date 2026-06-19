@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock, CalendarOff,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList
 } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
@@ -15,6 +15,7 @@ const COMMON_NAV = [
   { to: '/hr/attendance', icon: Clock, label: 'Attendance' },
   { to: '/hr/employee-schedules', icon: CalendarRange, label: 'Schedules' },
   { to: '/hr/leaves', icon: CalendarOff, label: 'Leaves', badge: true },
+  { to: '/hr/requests', icon: ClipboardList, label: 'Requests' },
   { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
   { to: '/hr/payroll', icon: Banknote, label: 'Payroll' },
 ]
@@ -35,6 +36,7 @@ const EMPLOYEE_NAV = [
   { to: '/employee/attendance', icon: Clock, label: 'My Attendance' },
   { to: '/employee/schedule', icon: CalendarRange, label: 'My Schedule' },
   { to: '/employee/leaves/new', icon: CalendarOff, label: 'Request Leave' },
+  { to: '/employee/requests/new', icon: ClipboardList, label: 'My Requests' },
   { to: '/employee/calendar', icon: CalendarRange, label: 'Company Calendar' },
   { to: '/employee/profile', icon: User, label: 'My Profile' },
 ]
