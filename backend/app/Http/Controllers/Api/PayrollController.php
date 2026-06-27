@@ -168,10 +168,6 @@ class PayrollController extends Controller
                     continue;
                 }
 
-                if ($log->status === 'half_day') {
-                    $metrics['half_days']++;
-                    // Still count partial hours but flag separately
-                }
 
                 $details = AttendanceService::calculateDetails(
                     $log->clock_in_time,
@@ -187,8 +183,16 @@ class PayrollController extends Controller
                 if (!$isRestDay && $details['overtime_hours'] > 0) {
                     $dateOtHours[$dateStr] = ($dateOtHours[$dateStr] ?? 0) + $details['overtime_hours'];
                 }
+                // Undertime = time left before scheduled end; zero if grace covered it (completed/overtime)
+                $earlyDepartureMin = 0;
+                if (!in_array($log->status, ['completed', 'overtime'])) {
+                    $workEndMin = $this->parseTimeToMinutes($workEnd);
+                    $clockOutMin = $log->clock_out_time ? $this->parseTimeToMinutes($log->clock_out_time) : $workEndMin;
+                    $earlyDepartureMin = max(0, $workEndMin - $clockOutMin);
+                }
+
                 // Track dates with undertime for request deduplication
-                if ($details['undertime_minutes'] > 0) {
+                if ($earlyDepartureMin > 0) {
                     $attendanceUndertimeDates[$dateStr] = true;
                 }
 
@@ -204,7 +208,7 @@ class PayrollController extends Controller
                 }
 
                 $metrics['late_minutes'] += $details['late_minutes'];
-                $metrics['undertime_minutes'] += $details['undertime_minutes'];
+                $metrics['undertime_minutes'] += $earlyDepartureMin;
             }
 
             // ── Employee Request Adjustments ─────────────────────────────
