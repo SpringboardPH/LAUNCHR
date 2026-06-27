@@ -5,7 +5,7 @@ import {
   getRequests, approveRequest, rejectRequest, requestKeys,
   getLeaves, createLeave, approveLeave, rejectLeave, leaveKeys,
   createRequest,
-  getLeaveTypes, getEmployees, getSystemClock,
+  getLeaveTypes, getEmployees, getSystemClock, getLeaveBalance,
   leaveTypeKeys, employeeKeys, systemClockKeys, dashboardKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
@@ -17,7 +17,6 @@ const REQUEST_TYPES = [
   { value: 'undertime',       label: 'Undertime' },
   { value: 'schedule_change', label: 'Schedule Change' },
   { value: 'coe',             label: 'Certificate of Employment' },
-  { value: 'leave',           label: 'Leave' },
   { value: 'concern',         label: 'Concern' },
 ]
 
@@ -34,7 +33,7 @@ function formatMeta(meta) {
   }))
 }
 
-const EMPTY_FORM = { employee_id: '', type: 'leave', leave_type: '', start_date: '', end_date: '', reason: '', request_type: 'overtime', subject: '', details: '', date: '', start_time: '', end_time: '', half: 'am', departure_time: '' }
+const EMPTY_FORM = { employee_id: '', type: 'request', leave_type: '', start_date: '', end_date: '', reason: '', request_type: 'overtime', subject: '', details: '', date: '', start_time: '', end_time: '', half: 'am', departure_time: '' }
 
 export default function RequestsPage() {
   const [tab, setTab]               = useState('requests')
@@ -73,6 +72,11 @@ export default function RequestsPage() {
   const { data: systemClock } = useQuery({
     queryKey: systemClockKeys.all,
     queryFn: getSystemClock,
+  })
+  const { data: balanceData } = useQuery({
+    queryKey: leaveKeys.balance(form.employee_id || null),
+    queryFn: () => getLeaveBalance(form.employee_id || null),
+    enabled: createModal && form.type === 'leave' && !!form.employee_id,
   })
 
   const isWithinWindow = (createdAt) => {
@@ -115,6 +119,19 @@ export default function RequestsPage() {
   const requests    = reqData?.data ?? []
   const leaves      = leaveData?.data ?? []
 
+  const includeWeekends  = Boolean(balanceData?.policy?.include_weekends)
+  const selectedBalance  = balanceData?.balances?.[form.leave_type]
+  const calculateDays    = (start, end) => {
+    if (!start || !end) return 0
+    const s = new Date(`${start}T00:00:00`)
+    const e = new Date(`${end}T00:00:00`)
+    if (isNaN(s) || isNaN(e) || e < s) return 0
+    let count = 0; const cur = new Date(s)
+    while (cur <= e) { const d = cur.getDay(); if (includeWeekends || (d !== 0 && d !== 6)) count++; cur.setDate(cur.getDate() + 1) }
+    return count
+  }
+  const requestedDays = calculateDays(form.start_date, form.end_date)
+
   useEffect(() => {
     if (!createModal) { setForm(EMPTY_FORM); setCreateError('') }
   }, [createModal])
@@ -135,7 +152,16 @@ export default function RequestsPage() {
       createMutation.mutate({ employee_id: form.employee_id, leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason || null })
     } else {
       if (!form.request_type || !form.subject.trim()) return setCreateError('Request type and subject are required.')
-      createMutation.mutate({ employee_id: form.employee_id, request_type: form.request_type, subject: form.subject, details: form.details || null, meta: null })
+      const t = form.request_type
+      if (['overtime', 'half_day', 'undertime', 'schedule_change'].includes(t) && !form.date) return setCreateError('Date is required for this request type.')
+      if (t === 'overtime' && (!form.start_time || !form.end_time)) return setCreateError('Start and end time are required for overtime.')
+      if (t === 'undertime' && !form.departure_time) return setCreateError('Departure time is required for undertime.')
+      let meta = null
+      if (t === 'overtime')        meta = { date: form.date, start_time: form.start_time, end_time: form.end_time }
+      else if (t === 'half_day')   meta = { date: form.date, half: form.half }
+      else if (t === 'undertime')  meta = { date: form.date, departure_time: form.departure_time }
+      else if (t === 'schedule_change') meta = { date: form.date }
+      createMutation.mutate({ employee_id: form.employee_id, request_type: form.request_type, subject: form.subject, details: form.details || null, meta })
     }
   }
 
@@ -368,7 +394,14 @@ export default function RequestsPage() {
       </Modal>
 
       {/* Create Request modal */}
-      <Modal open={createModal} onClose={() => setCreateModal(false)} title="New Request on Behalf of Employee">
+      <Modal open={createModal} onClose={() => setCreateModal(false)} title="New Request on Behalf of Employee"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setCreateModal(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleCreateSubmit} disabled={createMutation.isPending} className="btn-primary">{createMutation.isPending ? <Spinner size="sm" /> : 'Submit'}</button>
+          </div>
+        }
+      >
         <div className="space-y-4">
           <FormField label="Employee" required>
             <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)} className="input">
@@ -378,8 +411,8 @@ export default function RequestsPage() {
           </FormField>
           <FormField label="Category" required>
             <select value={form.type} onChange={e => f('type', e.target.value)} className="input">
-              <option value="leave">Leave</option>
               <option value="request">Request</option>
+              <option value="leave">Leave</option>
             </select>
           </FormField>
 
@@ -395,6 +428,15 @@ export default function RequestsPage() {
                 <FormField label="Start Date" required><input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} className="input" /></FormField>
                 <FormField label="End Date" required><input type="date" value={form.end_date} onChange={e => f('end_date', e.target.value)} className="input" /></FormField>
               </div>
+              <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600">
+                <p>Requested days: <span className="font-medium text-gray-900">{requestedDays}</span></p>
+                <p>Weekend policy: <span className="font-medium text-gray-900">{includeWeekends ? 'Weekends count' : 'Weekends do not count'}</span></p>
+                <p>Remaining balance after request: <span className="font-medium text-gray-900">
+                  {!selectedBalance ? '—'
+                    : !selectedBalance.requires_balance ? 'Unlimited'
+                    : `${Math.max(0, selectedBalance.remaining - requestedDays)} / ${selectedBalance.remaining}`}
+                </span></p>
+              </div>
               <FormField label="Reason"><textarea value={form.reason} onChange={e => f('reason', e.target.value)} className="input h-16 resize-none" /></FormField>
             </>
           ) : (
@@ -405,6 +447,30 @@ export default function RequestsPage() {
                 </select>
               </FormField>
               <FormField label="Subject" required><input type="text" value={form.subject} onChange={e => f('subject', e.target.value)} className="input" placeholder="Brief subject…" /></FormField>
+              {['overtime', 'half_day', 'undertime', 'schedule_change'].includes(form.request_type) && (
+                <FormField label="Date" required>
+                  <input type="date" value={form.date} onChange={e => f('date', e.target.value)} className="input" />
+                </FormField>
+              )}
+              {form.request_type === 'overtime' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Start Time" required><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} className="input" /></FormField>
+                  <FormField label="End Time" required><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} className="input" /></FormField>
+                </div>
+              )}
+              {form.request_type === 'half_day' && (
+                <FormField label="Half" required>
+                  <select value={form.half} onChange={e => f('half', e.target.value)} className="input">
+                    <option value="am">AM (Morning)</option>
+                    <option value="pm">PM (Afternoon)</option>
+                  </select>
+                </FormField>
+              )}
+              {form.request_type === 'undertime' && (
+                <FormField label="Departure Time" required>
+                  <input type="time" value={form.departure_time} onChange={e => f('departure_time', e.target.value)} className="input" />
+                </FormField>
+              )}
               <FormField label="Details"><textarea value={form.details} onChange={e => f('details', e.target.value)} className="input h-16 resize-none" /></FormField>
             </>
           )}
@@ -415,10 +481,6 @@ export default function RequestsPage() {
               <p className="text-sm text-red-900">{createError}</p>
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-1">
-            <button onClick={() => setCreateModal(false)} className="btn-secondary">Cancel</button>
-            <button onClick={handleCreateSubmit} disabled={createMutation.isPending} className="btn-primary">{createMutation.isPending ? <Spinner size="sm" /> : 'Submit'}</button>
-          </div>
         </div>
       </Modal>
     </div>
