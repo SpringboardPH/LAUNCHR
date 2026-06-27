@@ -363,7 +363,7 @@ export default function AttendancePage() {
   const hasCurrentScheduleByEmployee = new Set(currentSchedules.map((schedule) => schedule.employee_id))
 
   const previousSchedules = activeSchedules
-    .filter((schedule) => parseISO(schedule.end_date) < currentDate)
+    .filter((schedule) => parseISO(schedule.end_date) < currentDate && !schedule.template?.is_temporary)
     .sort((a, b) => parseISO(b.end_date) - parseISO(a.end_date))
 
   const latestPreviousByEmployee = new Map()
