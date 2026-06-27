@@ -50,11 +50,12 @@ class EmployeeSchedule extends Model
             return $activeSchedule;
         }
 
-        // Carry-forward fallback: use the most recent prior active schedule
-        // when no explicit schedule exists for the date.
+        // Carry-forward fallback: use the most recent prior active schedule,
+        // but skip temporary templates — they should not bleed into future weeks.
         return self::where('employee_id', $employeeId)
             ->where('status', 'active')
             ->whereDate('end_date', '<', $dateString)
+            ->whereHas('template', fn ($q) => $q->where('is_temporary', false))
             ->with('template')
             ->orderByDesc('end_date')
             ->orderByDesc('updated_at')
@@ -81,10 +82,12 @@ class EmployeeSchedule extends Model
             return $currentSchedule;
         }
 
-        // Carry forward latest prior active schedule when no explicit current week entry exists.
+        // Carry forward latest prior active schedule when no explicit current week entry exists,
+        // but skip temporary templates — they should not bleed into future weeks.
         return self::where('employee_id', $employeeId)
             ->where('status', 'active')
             ->where('end_date', '<', $weekStart)
+            ->whereHas('template', fn ($q) => $q->where('is_temporary', false))
             ->with('template')
             ->orderByDesc('end_date')
             ->orderByDesc('updated_at')

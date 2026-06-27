@@ -7,6 +7,7 @@ use App\Helpers\SystemClock;
 use App\Models\Employee;
 use App\Models\AttendanceLog;
 use App\Models\LeaveRequest;
+use App\Models\EmployeeRequest;
 use App\Models\PayrollRun;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -27,7 +28,8 @@ class DashboardController extends Controller
         $newHires = Employee::where('status', 'active')
             ->where('hire_date', '>=', $thirtyDaysAgo)
             ->count();
-        $pendingLeaves = LeaveRequest::where('status', 'pending')->count();
+        $pendingLeaves   = LeaveRequest::where('status', 'pending')->count();
+        $pendingRequests = EmployeeRequest::where('status', 'pending')->count();
         $lastPayroll = PayrollRun::orderBy('created_at', 'desc')->first();
 
         // Today's attendance summary in one query
@@ -178,7 +180,8 @@ class DashboardController extends Controller
                     'on_leave_today' => $onLeaveToday,
                     'short_hours_today' => $shortHoursToday,
                     'new_hires_30_days' => $newHires,
-                    'pending_leaves' => $pendingLeaves,
+                    'pending_leaves'   => $pendingLeaves,
+                    'pending_requests' => $pendingRequests,
                     'attendance_rate' => $attendanceRate,
                     'on_time_percent' => $onTimePercent,
                     'last_payroll' => $lastPayroll?->created_at 

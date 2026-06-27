@@ -9,6 +9,7 @@ class ScheduleTemplate extends Model
     protected $fillable = [
         'name',
         'description',
+        'is_temporary',
         'work_days',
         'day_rules',
         'clock_in_start',
@@ -26,6 +27,7 @@ class ScheduleTemplate extends Model
     ];
 
     protected $casts = [
+        'is_temporary' => 'boolean',
         'work_days' => 'array',
         'day_rules' => 'array',
         'late_threshold_minutes' => 'integer',

@@ -18,10 +18,15 @@ class EmployeeRequestController extends Controller
             'subject'      => 'required|string|max:255',
             'details'      => 'nullable|string',
             'meta'         => 'nullable|array',
+            'employee_id'  => 'nullable|exists:employees,id',
         ]);
 
         $user     = $request->user();
         $employee = $user?->employee;
+
+        if ($user->isAdminOrHr() && $request->filled('employee_id')) {
+            $employee = \App\Models\Employee::findOrFail($request->employee_id);
+        }
 
         if (!$employee) {
             return response()->json([

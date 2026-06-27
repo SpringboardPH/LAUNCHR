@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\SystemClock;
 use App\Models\ScheduleTemplate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -126,6 +127,7 @@ class ScheduleTemplateController extends Controller
         return $request->validate([
             'name' => 'required|string|unique:schedule_templates,name' . ($templateId ? ',' . $templateId : ''),
             'description' => 'nullable|string',
+            'is_temporary' => 'nullable|boolean',
             'day_rules' => 'required|array|size:7',
             'day_rules.*.day' => 'required|integer|between:0,6',
             'day_rules.*.enabled' => 'required|boolean',
@@ -138,11 +140,27 @@ class ScheduleTemplateController extends Controller
     }
 
     /**
-     * Get all schedule templates
+     * Get all schedule templates — hides expired temporary templates automatically.
      */
     public function index()
     {
-        $templates = ScheduleTemplate::orderBy('name')->get();
+        $today = SystemClock::today()->toDateString();
+
+        $templates = ScheduleTemplate::where(function ($q) use ($today) {
+            $q->where('is_temporary', false)
+              ->orWhere(function ($q2) use ($today) {
+                  // Temporary: show while it has no assignments yet (just created)
+                  // or still has an active/future assignment
+                  $q2->where('is_temporary', true)
+                     ->where(function ($q3) use ($today) {
+                         $q3->whereDoesntHave('employeeSchedules')
+                            ->orWhereHas('employeeSchedules', fn ($q4) =>
+                                $q4->where('end_date', '>=', $today)->where('status', 'active')
+                            );
+                     });
+              });
+        })->orderBy('name')->get();
+
         return response()->json([
             'success' => true,
             'data' => $templates,

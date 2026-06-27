@@ -119,6 +119,7 @@ const AdminScheduleTemplatesPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    is_temporary: false,
     day_rules: createDefaultDayRules(),
   })
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
@@ -156,6 +157,7 @@ const AdminScheduleTemplatesPage = () => {
     setFormData({
       name: '',
       description: '',
+      is_temporary: false,
       day_rules: createDefaultDayRules(),
     })
     setEditingId(null)
@@ -201,6 +203,7 @@ const AdminScheduleTemplatesPage = () => {
     const payload = {
       name: formData.name,
       description: formData.description,
+      is_temporary: formData.is_temporary,
       day_rules: formData.day_rules.map(rule => ({
         day: rule.day,
         enabled: rule.enabled,
@@ -237,6 +240,7 @@ const AdminScheduleTemplatesPage = () => {
     setFormData({
       name: template.name,
       description: template.description || '',
+      is_temporary: template.is_temporary ?? false,
       day_rules: normalizeTemplateRules(template),
     })
   }
@@ -309,6 +313,19 @@ const AdminScheduleTemplatesPage = () => {
                   rows="4"
                 />
               </div>
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.is_temporary}
+                  onChange={(e) => setFormData({ ...formData, is_temporary: e.target.checked })}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-800">Temporary template</span>
+                  <p className="text-xs text-gray-500 mt-0.5">Used for rolling employee weekly schedule assignments.</p>
+                </div>
+              </label>
 
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
                 <p className="font-medium text-gray-900 text-sm mb-1">Weekly template rules</p>
@@ -451,7 +468,12 @@ const AdminScheduleTemplatesPage = () => {
                 const ruleMap = toRuleMap(template)
                 return (
                 <tr key={template.id} className="hover:bg-gray-50 align-top">
-                  <td className="py-2.5 pr-4 text-sm text-gray-900 font-medium">{template.name}</td>
+                  <td className="py-2.5 pr-4 text-sm text-gray-900 font-medium">
+                    <span>{template.name}</span>
+                    {template.is_temporary && (
+                      <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Temporary</span>
+                    )}
+                  </td>
                   <td className="py-2.5 pr-4 text-sm text-gray-600">{template.description}</td>
                   {WEEK_DAYS.map(dayMeta => {
                     const rule = ruleMap.get(dayMeta.day)

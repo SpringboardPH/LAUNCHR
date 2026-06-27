@@ -17,16 +17,13 @@ import EmployeeListPage from './pages/employees/EmployeeListPage'
 import EmployeeFormPage from './pages/employees/EmployeeFormPage'
 import EmployeeDetailPage from './pages/employees/EmployeeDetailPage'
 import AttendancePage from './pages/attendance/AttendancePage'
-import LeavePage from './pages/leaves/LeavePage'
 import PayrollPage from './pages/payroll/PayrollPage'
 import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
-import LeaveRequestFormPage from './pages/employee/LeaveRequestFormPage'
 import RequestFormPage from './pages/employee/RequestFormPage'
 import RequestsPage from './pages/requests/RequestsPage'
 import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
-import EmployeeSchedulePage from './pages/employee/EmployeeSchedulePage'
 import CalendarPage from './pages/calendar/CalendarPage'
 
 import UserListPage from './pages/admin/UserListPage'
@@ -136,11 +133,12 @@ export default function App() {
             <Route path="employees/:id" element={<EmployeeDetailPage />} />
             <Route path="employees/:id/edit" element={<EmployeeFormPage />} />
             <Route path="attendance" element={<AttendancePage />} />
-            <Route path="leaves" element={<LeavePage />} />
+            <Route path="leaves" element={<Navigate to="/hr/requests" replace />} />
             <Route path="requests" element={<RequestsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
+            <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
             <Route path="calendar" element={<CalendarPage readOnly={false} />} />
           </Route>
           <Route path="/admin" element={<SystemAdminRoute><AppLayout /></SystemAdminRoute>}>
@@ -149,7 +147,7 @@ export default function App() {
             <Route path="attendance-logs" element={<AdminAttendanceLogsPage />} />
             <Route path="configure-leave" element={<ConfigureLeavePage />} />
             <Route path="departments" element={<AdminDepartmentsPage />} />
-            <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
+            <Route path="schedule-templates" element={<Navigate to="/hr/schedule-templates" replace />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/new" element={<UserFormPage />} />
             <Route path="users/:id/edit" element={<UserFormPage />} />
@@ -159,8 +157,7 @@ export default function App() {
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />
             <Route path="attendance" element={<AttendanceClockPage />} />
-            <Route path="schedule" element={<EmployeeSchedulePage />} />
-            <Route path="leaves/new" element={<LeaveRequestFormPage />} />
+            <Route path="leaves/new" element={<Navigate to="/employee/requests/new" replace />} />
             <Route path="requests/new" element={<RequestFormPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
             <Route path="calendar" element={<CalendarPage readOnly={true} />} />
