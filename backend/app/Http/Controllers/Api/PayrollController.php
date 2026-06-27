@@ -131,6 +131,7 @@ class PayrollController extends Controller
             ];
 
             $daysWorkedCount = 0;
+            $countedWorkDates = [];        // dates already counted in daysWorkedCount
 
             $dateOtHours = [];             // date → OT hours from attendance
             $attendanceUndertimeDates = []; // dates with attendance undertime > 0
@@ -205,10 +206,30 @@ class PayrollController extends Controller
                     $metrics['total_hours'] += $details['hours_worked'];
                     $metrics['overtime_hours'] += $overtimeHours;
                     $daysWorkedCount++;
+                    $countedWorkDates[$dateStr] = true;
                 }
 
                 $metrics['late_minutes'] += $details['late_minutes'];
                 $metrics['undertime_minutes'] += $earlyDepartureMin;
+            }
+
+            // Count non-absence holidays on scheduled work days as paid days.
+            // These have no AttendanceLog (employee didn't clock in) so the loop above misses them.
+            $holidayWorkStart = $latestSchedule?->template?->work_start_time ?? '09:00:00';
+            $holidayWorkEnd   = $latestSchedule?->template?->work_end_time   ?? '18:00:00';
+            $holidayStartMin  = $this->parseTimeToMinutes($holidayWorkStart);
+            $holidayEndMin    = $this->parseTimeToMinutes($holidayWorkEnd);
+            if ($holidayEndMin < $holidayStartMin) $holidayEndMin += 1440;
+            $holidayExpectedHours = ($holidayEndMin - $holidayStartMin) / 60;
+
+            foreach ($events as $dateStr => $event) {
+                if ($event->type && !$event->type->counts_as_absence) {
+                    $holidayDate = Carbon::parse($dateStr);
+                    if (in_array($holidayDate->dayOfWeek, $workDays) && !isset($countedWorkDates[$dateStr])) {
+                        $daysWorkedCount++;
+                        $metrics['total_hours'] += $holidayExpectedHours;
+                    }
+                }
             }
 
             // ── Employee Request Adjustments ─────────────────────────────
