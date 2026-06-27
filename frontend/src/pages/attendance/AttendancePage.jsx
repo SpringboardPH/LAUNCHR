@@ -568,7 +568,12 @@ export default function AttendancePage() {
                       <td className="py-2.5 pr-8 text-gray-600 text-sm">
                         {schedule ? (
                           <div className="space-y-0.5">
-                            <div className="font-medium text-gray-800 text-sm">{schedule.template?.name}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-medium text-gray-800 text-sm">{schedule.template?.name}</span>
+                              {schedule.template?.is_temporary && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Temporary</span>
+                              )}
+                            </div>
                             <div className="text-xs text-gray-400">
                               {format(parseISO(schedule.start_date), 'MMM dd')} - {format(parseISO(schedule.end_date), 'MMM dd')}
                             </div>
