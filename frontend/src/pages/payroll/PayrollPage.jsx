@@ -12,7 +12,9 @@ import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/atten
 import ExcelJS from 'exceljs'
 
 export default function PayrollPage() {
-  const [navigatedCutoff, setNavigatedCutoff] = useState(null)
+  const [navigatedCutoff, setNavigatedCutoff] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('payroll_last_cutoff')) } catch { return null }
+  })
   const [selectedPayroll, setSelectedPayroll] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
@@ -69,8 +71,13 @@ export default function PayrollPage() {
 
   const generateMutation = useMutation({
     mutationFn: generatePayroll,
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: payrollKeys.all })
+      // Refresh selectedPayroll if it was part of this generation
+      if (selectedPayroll && Array.isArray(data?.data)) {
+        const updated = data.data.find(p => p.id === selectedPayroll.id)
+        if (updated) setSelectedPayroll(updated)
+      }
     },
   })
 
@@ -318,10 +325,13 @@ export default function PayrollPage() {
         const baseGross = isDaily
           ? (Number(next.base_salary) * Number(next.days_worked || 0))
           : (Number(next.base_salary) / payPeriods)
-        const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
-        const currentGross = baseGross + totalAllowances
-        
-        const earnedGross = currentGross - (getDeduction('Late') + getDeduction('Undertime') + getDeduction('Absent') + getDeduction('Half Day'))
+        // Exclude "Allowance" (undeclared) — off-the-books, not subject to BIR withholding
+        const taxableAllowances = next.allowances
+          .filter(a => a.label !== 'Allowance')
+          .reduce((s, a) => s + Number(a.amount || 0), 0)
+        const taxableGross = baseGross + taxableAllowances
+
+        const earnedGross = taxableGross - (getDeduction('Late') + getDeduction('Undertime') + getDeduction('Absent') + getDeduction('Half Day'))
         const taxableIncome = earnedGross - (getDeduction('SSS EE Contribution') + getDeduction('PhilHealth EE Contribution') + getDeduction('Pag-IBIG EE Contribution'))
         
         const wTaxAmount = Math.round(calculateWTax(taxableIncome) * 100) / 100
@@ -371,8 +381,9 @@ export default function PayrollPage() {
   }
 
   const moveCutoff = (delta) => {
-    if (delta > 0) setNavigatedCutoff(getNextCutoff(currentCutoff, adminSettings))
-    else setNavigatedCutoff(getPrevCutoff(currentCutoff, adminSettings))
+    const next = delta > 0 ? getNextCutoff(currentCutoff, adminSettings) : getPrevCutoff(currentCutoff, adminSettings)
+    localStorage.setItem('payroll_last_cutoff', JSON.stringify(next))
+    setNavigatedCutoff(next)
   }
 
   const togglePaystubSelection = (payrollId) => {
@@ -542,13 +553,13 @@ export default function PayrollPage() {
           'E15': payroll.employee?.phone || payroll.employee?.contact_info || '',
           'E17': scheduleDisplay,
           'E19': payPeriod,
-          'E21': Number(payroll.days_worked) || 0,
+          'E21': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
           'L10': Number(payroll.net_pay) || 0,
           'L13': payroll.employee?.sss_number || '',
           'L15': payroll.employee?.philhealth_number || '',
           'L17': payroll.employee?.pagibig_number || '',
           'L19': payroll.employee?.bank_account_number || payroll.employee?.tin_number || '',
-          'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
+          'F27': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
           'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
           'F29': restDayPayHours ? `${Number(restDayPayHours).toFixed(2)}h` : '0h',
           'F30': restDayOTPayHours ? `${Number(restDayOTPayHours).toFixed(2)}h` : '0h',
@@ -757,10 +768,10 @@ export default function PayrollPage() {
         'L17': payroll.employee?.pagibig_number || '',
         'L19': payroll.employee?.tin_number || '',
         'L21': payroll.employee?.bank_account_number || '',
-        'E21': Number(payroll.days_worked) || 0,
+        'E21': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
 
         // Earnings - Days/Hrs (F column)
-        'F27': payroll.days_worked ? `${payroll.days_worked}d` : '0d',
+        'F27': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
         'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
         'F29': restDayPayHours ? `${Number(restDayPayHours).toFixed(2)}h` : '0h',
         'F30': restDayOTPayHours ? `${Number(restDayOTPayHours).toFixed(2)}h` : '0h',

@@ -303,9 +303,10 @@ class PayrollController extends Controller
             $finalGross = $grossBase + $totalAllowances;
 
             // Withholding Tax Calculation
-            // Taxable Income = Gross - (Late/Undertime/Absent) - Mandatory Contributions
-            $earnedGross = $finalGross - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
-            $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
+            // Taxable base excludes undeclared allowance (off-the-books, not subject to BIR withholding)
+            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay;
+            $earnedTaxableBase = $taxableBase - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
+            $taxableIncome = $earnedTaxableBase - ($sss + $philhealth + $pagibig);
             $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $frequency);
 
             // ── Totals ────────────────────────────────────────────────────
@@ -664,14 +665,17 @@ class PayrollController extends Controller
         }
 
         // Recalculate Withholding Tax
-        $currentGross = $payroll->gross_pay;
+        // Exclude undeclared allowance ("Allowance" label) from taxable base — it's off-the-books
         $payFrequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
 
         $sss = (float)($deductions['SSS EE Contribution'] ?? 0);
         $philhealth = (float)($deductions['PhilHealth EE Contribution'] ?? 0);
         $pagibig = (float)($deductions['Pag-IBIG EE Contribution'] ?? 0);
 
-        $earnedGross = $currentGross - ($deductions['Late'] + $deductions['Undertime'] + ($deductions['Absent'] ?? 0) + ($deductions['Half Day'] ?? 0));
+        $allowances = is_array($payroll->allowances) ? $payroll->allowances : [];
+        $undeclaredAmt = collect($allowances)->where('label', 'Allowance')->sum('amount');
+        $taxableGross = $payroll->gross_pay - $undeclaredAmt;
+        $earnedGross = $taxableGross - ($deductions['Late'] + $deductions['Undertime'] + ($deductions['Absent'] ?? 0) + ($deductions['Half Day'] ?? 0));
         $taxableIncome = $earnedGross - ($sss + $philhealth + $pagibig);
         $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $payFrequency);
         
