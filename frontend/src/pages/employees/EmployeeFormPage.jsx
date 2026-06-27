@@ -126,7 +126,7 @@ export default function EmployeeFormPage() {
         })} 
         className="card p-6 space-y-5"
       >
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="First name" error={errors.first_name?.message} required>
             <input {...register('first_name')} className={`input ${errors.first_name ? 'input-error' : ''}`} />
           </FormField>
@@ -143,7 +143,7 @@ export default function EmployeeFormPage() {
           <input {...register('phone')} className="input" placeholder="+63 9XX XXX XXXX" />
         </FormField>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField label="Position" error={errors.position?.message} required>
             <input {...register('position')} className={`input ${errors.position ? 'input-error' : ''}`} />
           </FormField>

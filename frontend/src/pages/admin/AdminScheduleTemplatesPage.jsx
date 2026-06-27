@@ -452,6 +452,7 @@ const AdminScheduleTemplatesPage = () => {
         {templates.length === 0 ? (
           <p className="py-6 text-center text-gray-400 text-sm">No schedule templates yet</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100">
               <tr>
@@ -516,6 +517,7 @@ const AdminScheduleTemplatesPage = () => {
               )})}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

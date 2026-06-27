@@ -221,7 +221,7 @@ export default function LeaveRequestFormPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Start Date
@@ -295,6 +295,7 @@ export default function LeaveRequestFormPage() {
             {isLoadingLeaves ? (
               <PageSpinner />
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -347,6 +348,7 @@ export default function LeaveRequestFormPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>
@@ -361,7 +363,7 @@ export default function LeaveRequestFormPage() {
       >
         {selectedLeave && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</p>
                 <p className="text-sm font-semibold text-gray-900 capitalize">

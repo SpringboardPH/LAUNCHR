@@ -757,7 +757,7 @@ export default function SystemSettingsPage() {
             </div>
             {payrollFrequency === 'semi_monthly' ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 1 Start Day</label>
                     <input type="number" min="1" max="31" value={p1Start} onChange={(e) => setP1Start(parseInt(e.target.value))} className="input h-10" />
@@ -767,7 +767,7 @@ export default function SystemSettingsPage() {
                     <input type="number" min="1" max="31" value={p1End} onChange={(e) => setP1End(parseInt(e.target.value))} className="input h-10" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period 2 Start Day</label>
                     <input type="number" min="1" max="31" value={p2Start} onChange={(e) => setP2Start(parseInt(e.target.value))} className="input h-10" />
@@ -781,7 +781,7 @@ export default function SystemSettingsPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Period Start Day</label>
                     <input type="number" min="1" max="31" value={pMonthlyStart} onChange={(e) => setPMonthlyStart(parseInt(e.target.value))} className="input h-10" />
@@ -798,6 +798,7 @@ export default function SystemSettingsPage() {
               <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Preview — Next 3 Months</span>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -816,6 +817,7 @@ export default function SystemSettingsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>

@@ -517,15 +517,15 @@ export default function AttendancePage() {
         </button>
         {todayAttendanceExpanded && (todayLoading ? <PageSpinner /> : (
           <div className="animate-in fade-in duration-200 mt-4 space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
               <input
                 type="text"
-                className="input text-sm flex-1 min-w-0"
+                className="input text-sm sm:flex-1"
                 value={todaySearch}
                 onChange={e => setTodaySearch(e.target.value)}
                 placeholder="Search employee…"
               />
-              <select className="input text-sm w-40 shrink-0" value={todayStatusFilter} onChange={e => setTodayStatusFilter(e.target.value)}>
+              <select className="input text-sm sm:w-40 sm:shrink-0" value={todayStatusFilter} onChange={e => setTodayStatusFilter(e.target.value)}>
                 <option value="">All Statuses</option>
                 <option value="working">Working</option>
                 <option value="completed">Done</option>
@@ -534,7 +534,7 @@ export default function AttendancePage() {
                 <option value="not_scheduled">Not Scheduled</option>
               </select>
               {employeeGroups.length > 0 && (
-                <select className="input text-sm w-32 shrink-0" value={todayGroupFilter} onChange={e => setTodayGroupFilter(e.target.value)}>
+                <select className="input text-sm sm:w-32 sm:shrink-0" value={todayGroupFilter} onChange={e => setTodayGroupFilter(e.target.value)}>
                   <option value="">All Groups</option>
                   {employeeGroups.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
@@ -678,18 +678,18 @@ export default function AttendancePage() {
       {/* Attendance log */}
       <div className="card p-5">
         <div className="flex flex-col gap-3 mb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-semibold text-gray-700">Attendance Log</h2>
               <div className="flex items-center bg-gray-100 p-1 rounded-lg">
-                <button 
+                <button
                   onClick={() => setViewMode('list')}
                   title="List View"
                   className={clsx("p-1.5 rounded-md transition-all", viewMode === 'list' ? "bg-white shadow-sm text-brand-600" : "text-gray-400 hover:text-gray-600")}
                 >
                   <List size={16} />
                 </button>
-                <button 
+                <button
                   onClick={() => setViewMode('grid')}
                   title="Grid Visualizer"
                   className={clsx("p-1.5 rounded-md transition-all", viewMode === 'grid' ? "bg-white shadow-sm text-brand-600" : "text-gray-400 hover:text-gray-600")}
@@ -699,34 +699,34 @@ export default function AttendancePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button 
-                type="button" 
-                className="btn-secondary text-xs px-2 py-1" 
+              <button
+                type="button"
+                className="btn-secondary text-xs px-2 py-1"
                 onClick={() => moveCutoff(-1)}
               >
                 Prev
               </button>
-              <span className="text-sm font-medium text-gray-700 min-w-[150px] text-center">
+              <span className="text-sm font-medium text-gray-700 text-center flex-1 sm:flex-none sm:min-w-[150px]">
                 {currentCutoff.label}
               </span>
-              <button 
-                type="button" 
-                className="btn-secondary text-xs px-2 py-1" 
+              <button
+                type="button"
+                className="btn-secondary text-xs px-2 py-1"
                 onClick={() => moveCutoff(1)}
               >
                 Next
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
             <input
               type="text"
-              className="input text-sm flex-1 min-w-0"
+              className="input text-sm sm:flex-1"
               value={monthlyEmployeeSearch}
               onChange={e => setMonthlyEmployeeSearch(e.target.value)}
               placeholder="Search employee…"
             />
-            <select className="input text-sm w-36 shrink-0" value={monthlyStatus} onChange={e => setMonthlyStatus(e.target.value)}>
+            <select className="input text-sm sm:w-36 sm:shrink-0" value={monthlyStatus} onChange={e => setMonthlyStatus(e.target.value)}>
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="working">Working</option>
@@ -737,9 +737,9 @@ export default function AttendancePage() {
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
             </select>
-            <input type="date" className="input text-sm w-36 shrink-0" value={monthlyDate} onChange={e => setMonthlyDate(e.target.value)} />
+            <input type="date" className="input text-sm sm:w-36 sm:shrink-0" value={monthlyDate} onChange={e => setMonthlyDate(e.target.value)} />
             {employeeGroups.length > 0 && (
-              <select className="input text-sm w-32 shrink-0" value={monthlyGroup} onChange={e => setMonthlyGroup(e.target.value)}>
+              <select className="input text-sm sm:w-32 sm:shrink-0" value={monthlyGroup} onChange={e => setMonthlyGroup(e.target.value)}>
                 <option value="">All Groups</option>
                 {employeeGroups.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
@@ -932,7 +932,7 @@ export default function AttendancePage() {
       <Modal open={!!editLog} onClose={() => setEditLog(null)} title="Edit Attendance Log" size="md">
         <form onSubmit={handleEditSubmit}>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Clock In"><input type="time" step="1" className="input" value={editForm.clock_in_time} onChange={e => setEditForm({...editForm, clock_in_time: e.target.value})} /></FormField>
               <FormField label="Clock Out"><input type="time" step="1" className="input" value={editForm.clock_out_time} onChange={e => setEditForm({...editForm, clock_out_time: e.target.value})} /></FormField>
             </div>
@@ -1052,7 +1052,7 @@ export default function AttendancePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Start Date">
               <input
                 type="date"

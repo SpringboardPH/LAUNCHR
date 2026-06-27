@@ -291,6 +291,7 @@ export default function ConfigureLeavePage() {
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-gray-200">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -345,6 +346,7 @@ export default function ConfigureLeavePage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
           {typeError && <p className="text-xs text-red-500 mt-3">{typeError}</p>}
@@ -403,6 +405,7 @@ export default function ConfigureLeavePage() {
 
               {employeeBalanceData?.balances?.length ? (
                 <div className="overflow-hidden rounded-xl border border-gray-200">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
@@ -445,6 +448,7 @@ export default function ConfigureLeavePage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
@@ -480,7 +484,7 @@ export default function ConfigureLeavePage() {
             />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Default days" required>
               <input
                 type="number"

@@ -478,7 +478,7 @@ export default function AdminAttendanceLogsPage() {
               <p><strong>Date:</strong> {editLog?.date ? format(parseISO(editLog.date), 'MMMM dd, yyyy') : '—'}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Clock In">
                 <input
                   type="time"
@@ -688,7 +688,7 @@ export default function AdminAttendanceLogsPage() {
               </FormField>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Clock In Time">
                 <input
                   type="time"

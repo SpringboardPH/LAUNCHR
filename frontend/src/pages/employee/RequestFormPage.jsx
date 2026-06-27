@@ -311,7 +311,7 @@ export default function RequestFormPage() {
                       </select>
                       {errors.leave_type && <p className="text-xs text-red-500 mt-1">{errors.leave_type.message}</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
                         <input type="date" {...register('start_date')} className="input px-2" />
@@ -358,7 +358,7 @@ export default function RequestFormPage() {
                       </div>
                     )}
                     {showStartEndTime && (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">Start Time</label>
                           <input type="time" {...register('start_time')} className="input px-2" />
@@ -422,6 +422,7 @@ export default function RequestFormPage() {
 
             {historyTab === 'requests' ? (
               isLoadingRequests ? <PageSpinner /> : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -458,9 +459,11 @@ export default function RequestFormPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               )
             ) : (
               isLoadingLeaves ? <PageSpinner /> : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -502,6 +505,7 @@ export default function RequestFormPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               )
             )}
           </div>
@@ -513,7 +517,7 @@ export default function RequestFormPage() {
         onClose={() => setSelectedItem(null)} title="Request Details" size="sm">
         {selectedItem?._kind === 'request' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</p>
                 <p className="text-sm font-semibold text-gray-900">
@@ -559,7 +563,7 @@ export default function RequestFormPage() {
         onClose={() => setSelectedItem(null)} title="Leave Request Details" size="sm">
         {selectedItem?._kind === 'leave' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</p>
                 <p className="text-sm font-semibold text-gray-900 capitalize">

@@ -135,6 +135,7 @@ export default function LeavePage() {
 
       {isLoading ? <PageSpinner /> : (
         <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -219,6 +220,7 @@ export default function LeavePage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -226,7 +228,7 @@ export default function LeavePage() {
       <Modal open={Boolean(viewLeave)} onClose={() => setViewLeave(null)} title="Leave Request Details" size="sm">
         {viewLeave && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Employee</p>
                 <p className="text-sm font-semibold text-gray-900">{viewLeave.employee?.first_name} {viewLeave.employee?.last_name}</p>
@@ -303,7 +305,7 @@ export default function LeavePage() {
               ))}
             </select>
           </FormField>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Start date" error={errors.start_date?.message} required>
               <input type="date" {...register('start_date', { required: 'Required' })} className="input" />
             </FormField>

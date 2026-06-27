@@ -218,6 +218,7 @@ export default function RequestsPage() {
       {tab === 'requests' && (
         loadingReq ? <PageSpinner /> : (
           <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>{['Employee', 'Type', 'Subject', 'Filed', 'Status', 'Actions'].map(h => (
@@ -254,6 +255,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )
       )}
@@ -262,6 +264,7 @@ export default function RequestsPage() {
       {tab === 'leaves' && (
         loadingLeave ? <PageSpinner /> : (
           <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>{['Employee', 'Type', 'Dates', 'Days', 'Filed', 'Reason', 'Status', 'Actions'].map(h => (
@@ -306,6 +309,7 @@ export default function RequestsPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         )
       )}
@@ -314,7 +318,7 @@ export default function RequestsPage() {
       <Modal open={Boolean(viewRequest)} onClose={() => setViewRequest(null)} title="Request Details" size="md">
         {viewRequest && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Employee</p><p className="text-sm font-semibold text-gray-900">{viewRequest.employee?.first_name} {viewRequest.employee?.last_name}</p></div>
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p><StatusBadge status={viewRequest.status} /></div>
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type</p><p className="text-sm text-gray-700">{formatType(viewRequest.request_type)}</p></div>
@@ -324,7 +328,7 @@ export default function RequestsPage() {
             {viewRequest.details && <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Details</p><div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm text-gray-700">{viewRequest.details}</div></div>}
             {viewRequest.meta && formatMeta(viewRequest.meta)?.length > 0 && (
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Additional Info</p>
-                <div className="grid grid-cols-2 gap-3">{formatMeta(viewRequest.meta).map(({ label, value }) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{formatMeta(viewRequest.meta).map(({ label, value }) => (
                   <div key={label}><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p><p className="text-sm text-gray-700">{value}</p></div>
                 ))}</div>
               </div>
@@ -340,7 +344,7 @@ export default function RequestsPage() {
       <Modal open={Boolean(viewLeave)} onClose={() => setViewLeave(null)} title="Leave Request Details" size="sm">
         {viewLeave && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Employee</p><p className="text-sm font-semibold text-gray-900">{viewLeave.employee?.first_name} {viewLeave.employee?.last_name}</p></div>
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p><StatusBadge status={viewLeave.status} /></div>
               <div><p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Dates</p><p className="text-sm text-gray-700">{format(new Date(viewLeave.start_date), 'MMM d')} – {format(new Date(viewLeave.end_date), 'MMM d, yyyy')}</p></div>
@@ -424,7 +428,7 @@ export default function RequestsPage() {
                   {activeTypes.map(t => <option key={t.id} value={t.code}>{t.name}</option>)}
                 </select>
               </FormField>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FormField label="Start Date" required><input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} className="input" /></FormField>
                 <FormField label="End Date" required><input type="date" value={form.end_date} onChange={e => f('end_date', e.target.value)} className="input" /></FormField>
               </div>
@@ -453,7 +457,7 @@ export default function RequestsPage() {
                 </FormField>
               )}
               {form.request_type === 'overtime' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="Start Time" required><input type="time" value={form.start_time} onChange={e => f('start_time', e.target.value)} className="input" /></FormField>
                   <FormField label="End Time" required><input type="time" value={form.end_time} onChange={e => f('end_time', e.target.value)} className="input" /></FormField>
                 </div>

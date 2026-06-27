@@ -226,7 +226,7 @@ export default function EmployeeSchedulePage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-2">Select Week</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, ...getWeekRange(baseDate, 0) })}
@@ -324,7 +324,7 @@ export default function EmployeeSchedulePage() {
                     )}
                   </div>
                   
-                  <div className="mt-3 grid grid-cols-2 gap-4 pt-3 border-t border-gray-100">
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-gray-100">
                     <div className="text-[10px]">
                       <p className="text-gray-400 uppercase font-bold tracking-wider">Hours</p>
                       <p className="text-gray-700 font-medium text-sm">

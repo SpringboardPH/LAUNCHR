@@ -428,7 +428,7 @@ export default function CalendarPage({ readOnly = false }) {
               </select>
             </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Start Date" error={errors.event_date?.message} required>
                 <input {...register('event_date')} type="date" className="input" />
               </FormField>

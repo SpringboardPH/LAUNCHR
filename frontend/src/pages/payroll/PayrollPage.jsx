@@ -974,7 +974,7 @@ export default function PayrollPage() {
 
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-gray-700 whitespace-nowrap">Cutoff Details</h3>
               {payrollGroups.length > 0 && (
@@ -988,7 +988,7 @@ export default function PayrollPage() {
                 </select>
               )}
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-center">
               <button
                 disabled={generateMutation.isPending}
                 onClick={() => generateMutation.mutate({

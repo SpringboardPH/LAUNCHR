@@ -134,7 +134,7 @@ export default function AuditLogPage() {
                             <div className="space-y-4">
                               <div className="bg-white p-4 rounded-lg border border-brand-100 shadow-sm">
                                 <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Value Changes</h4>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div>
                                     <p className="text-[10px] font-bold text-red-400 uppercase mb-1">Old Values</p>
                                     <pre className="text-[10px] bg-red-50/50 p-3 rounded border border-red-100 max-h-48 overflow-y-auto font-mono text-gray-700">

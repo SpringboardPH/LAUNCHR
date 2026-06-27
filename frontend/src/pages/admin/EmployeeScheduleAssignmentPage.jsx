@@ -471,6 +471,7 @@ const EmployeeScheduleAssignmentPage = () => {
             {activeTab === 'future' ? 'No future schedules assigned' : 'No current schedules assigned'}
           </p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100">
               <tr>
@@ -515,6 +516,7 @@ const EmployeeScheduleAssignmentPage = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

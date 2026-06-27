@@ -256,7 +256,7 @@ export function ScheduleDisplay({ schedule, compact = false, sysClock = null }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <WindowItem label="Clock In" start={inStart} end={inEnd} icon={Clock} color="text-brand-500" />
         <WindowItem label="Clock Out" start={outStart} end={outEnd} icon={LogOut} color="text-gray-500" />
       </div>
