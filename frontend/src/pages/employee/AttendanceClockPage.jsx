@@ -39,10 +39,8 @@ const calculateHours = (clockInTime, clockOutTime) => {
 
 export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
-  const [isOvertime, setIsOvertime] = useState(false)
   const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
   const [earlyClockInConfirmOpen, setEarlyClockInConfirmOpen] = useState(false)
-  const [overtimeWarningOpen, setOvertimeWarningOpen] = useState(false)
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -175,11 +173,10 @@ export default function AttendanceClockPage() {
     },
   })
   const outMutation = useMutation({
-    mutationFn: ({ confirmEarlyClockOut = false, isOvertimeParam = null } = {}) =>
-      clockOut(notes, null, confirmEarlyClockOut, isOvertimeParam !== null ? isOvertimeParam : isOvertime),
+    mutationFn: ({ confirmEarlyClockOut = false } = {}) =>
+      clockOut(notes, null, confirmEarlyClockOut),
     onSuccess: () => {
       setNotes('')
-      setIsOvertime(false)
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
@@ -194,7 +191,6 @@ export default function AttendanceClockPage() {
 
       setAlertConfig({ open: true, title: 'Clock Out Failed', message: error?.response?.data?.message || 'Failed to clock out', type: 'error' })
       setNotes('')
-      setIsOvertime(false)
       refetch()
     },
   })
@@ -308,26 +304,13 @@ export default function AttendanceClockPage() {
         open={earlyClockOutConfirmOpen}
         onClose={() => setEarlyClockOutConfirmOpen(false)}
         onConfirm={() => {
-          outMutation.mutate({ confirmEarlyClockOut: true, isOvertimeParam: isOvertime })
+          outMutation.mutate({ confirmEarlyClockOut: true })
           setEarlyClockOutConfirmOpen(false)
         }}
         title="Clock Out Early?"
         message="Clock out now even though hours will be counted as incomplete?"
         type="danger"
         confirmLabel="Confirm Clock Out"
-      />
-
-      <ConfirmModal
-        open={overtimeWarningOpen}
-        onClose={() => setOvertimeWarningOpen(false)}
-        onConfirm={() => {
-          setIsOvertime(true)
-          setOvertimeWarningOpen(false)
-        }}
-        title="Overtime Pre-approval Required"
-        message="Note: Overtime must be pre-approved by HR. Failure to do so while still confirming it will be noted by HR."
-        type="warning"
-        confirmLabel="I understand and proceed"
       />
 
       <PageHeader
@@ -424,28 +407,12 @@ export default function AttendanceClockPage() {
               </button>
             ) : !isClockedOut ? (
               <>
-                {window && window.currentMinutes > window.outEnd && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isOvertime) {
-                        setIsOvertime(false)
-                      } else {
-                        setOvertimeWarningOpen(true)
-                      }
-                    }}
-                    className={`btn w-full mb-2 ${isOvertime ? 'bg-purple-600 text-white border-purple-600' : 'btn-outline border-purple-300 text-purple-700 hover:bg-purple-50'}`}
-                  >
-                    <Clock size={16} />
-                    {isOvertime ? '✓ Overtime Selected' : 'Clocking out for overtime?'}
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     if (window && window.currentMinutes < window.outStart) {
                       setEarlyClockOutConfirmOpen(true)
                     } else {
-                      outMutation.mutate({ confirmEarlyClockOut: false, isOvertimeParam: isOvertime })
+                      outMutation.mutate({ confirmEarlyClockOut: false })
                     }
                   }}
                   disabled={outMutation.isPending || !canClockOut}

@@ -61,22 +61,26 @@ class AttendanceService
             return 'completed';
         }
 
-        // Worked more than expected → overtime
         if ($hoursWorked > $expectedHours) {
             return 'overtime';
         }
 
-        // Worked at least half the shift but less than the full expected hours → half_day
-        if ($hoursWorked >= $halfExpected && $hoursWorked < $expectedHours) {
-            return 'half_day';
-        }
-
-        // Worked less than half the shift → undertime
+        // Severely late or left very early — worked less than half the shift
         if ($hoursWorked < $halfExpected) {
             return 'undertime';
         }
 
-        return $lateMinutes > 0 ? 'late' : 'completed';
+        // Late arrival takes precedence over half_day (e.g. arrived late, clocked out at window)
+        if ($lateMinutes > 0) {
+            return 'late';
+        }
+
+        // On time but left early (worked >= half but < full shift)
+        if ($hoursWorked < $expectedHours) {
+            return 'half_day';
+        }
+
+        return 'completed';
     }
 
     /**

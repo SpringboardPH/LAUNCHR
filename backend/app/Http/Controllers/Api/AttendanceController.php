@@ -390,7 +390,6 @@ class AttendanceController extends Controller
             'notes' => 'nullable|string|max:255',
             'employee_id' => 'nullable|exists:employees,id',
             'confirm_early_clock_out' => 'nullable|boolean',
-            'is_overtime' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
@@ -472,8 +471,7 @@ class AttendanceController extends Controller
         }
 
         $confirmEarlyClockOut = (bool) $request->boolean('confirm_early_clock_out');
-        $isOvertime = (bool) $request->boolean('is_overtime');
-        
+
         if ($clockOutMinutes < $earlyThresholdMinutes && !$confirmEarlyClockOut) {
             return response()->json([
                 'success' => false,
@@ -481,9 +479,6 @@ class AttendanceController extends Controller
                 'confirm_required' => true,
             ], 422);
         }
-        
-        // Remove the 6:15 PM strict limit - just allow clock out.
-        // If they checked the 'isOvertime' box, we ensure the status is set accordingly.
         
         // Update with clock out time and calculate status
         $log->clock_out_time = $clockOutTime;
@@ -502,10 +497,6 @@ class AttendanceController extends Controller
                 : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0),
             $dayRule
         );
-
-        if ($isOvertime) {
-            $log->status = 'overtime';
-        }
 
         $log->save();
 

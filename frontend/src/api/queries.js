@@ -69,12 +69,11 @@ export const getMonthlyAttendance = (employeeId, startDate, endDate) =>
 export const clockIn = (notes, employeeId = null) =>
   api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)
 
-export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false, isOvertime = false) =>
+export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false) =>
   api.post('/attendance/clock-out', {
     notes,
     employee_id: employeeId,
     confirm_early_clock_out: confirmEarlyClockOut,
-    is_overtime: isOvertime,
   }).then(r => r.data.data)
 
 export const updateAttendanceLog = (id, data) =>
