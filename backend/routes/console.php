@@ -13,3 +13,6 @@ Schedule::command('attendance:auto-clock-out')->dailyAt('23:59');
 // Mark absent at 00:00 daily (after auto clock-out)
 Schedule::command('attendance:mark-absent')->dailyAt('00:00');
 
+// Delete expired DTR uploads daily
+Schedule::command('dtr:delete-expired')->dailyAt('03:00');
+

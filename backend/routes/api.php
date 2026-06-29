@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTypeController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\EmployeeRequestController;
+use App\Http\Controllers\Api\DtrController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -110,6 +111,17 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payroll cutoff config — needed by employee attendance page, not admin-restricted
     Route::get('/payroll-config', [AdminSettingsController::class, 'getPayrollConfig']);
     
+    // DTR Uploads
+    Route::prefix('dtr')->group(function () {
+        Route::get('/config', [DtrController::class, 'config']);
+        Route::get('/employee-access', [DtrController::class, 'employeeAccess'])->middleware('role:admin,hr');
+        Route::patch('/employee-access/{employeeId}', [DtrController::class, 'toggleEmployeeAccess'])->middleware('role:admin,hr');
+        Route::get('/', [DtrController::class, 'index']);
+        Route::post('/', [DtrController::class, 'store']);
+        Route::get('/{id}/download', [DtrController::class, 'download'])->middleware('role:admin,hr');
+        Route::delete('/{id}', [DtrController::class, 'destroy']);
+    });
+
     // Employee Schedules (Self-service)
     Route::get('/my-schedules', [EmployeeScheduleController::class, 'mySchedules']);
     Route::post('/my-schedules', [EmployeeScheduleController::class, 'setMySchedule']);

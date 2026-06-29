@@ -31,6 +31,8 @@ import UserFormPage from './pages/admin/UserFormPage'
 import SystemSettingsPage from './pages/admin/SystemSettingsPage'
 import AdminCalendarEventTypesPage from './pages/admin/AdminCalendarEventTypesPage'
 import AuditLogPage from './pages/admin/AuditLogPage'
+import DtrManagePage from './pages/admin/DtrManagePage'
+import DtrUploadPage from './pages/employee/DtrUploadPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
@@ -137,6 +139,7 @@ export default function App() {
             <Route path="requests" element={<RequestsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
+            <Route path="dtr" element={<DtrManagePage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />
             <Route path="calendar" element={<CalendarPage readOnly={false} />} />
@@ -159,6 +162,7 @@ export default function App() {
             <Route path="attendance" element={<AttendanceClockPage />} />
             <Route path="leaves/new" element={<Navigate to="/employee/requests/new" replace />} />
             <Route path="requests/new" element={<RequestFormPage />} />
+            <Route path="dtr" element={<DtrUploadPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
             <Route path="calendar" element={<CalendarPage readOnly={true} />} />
           </Route>

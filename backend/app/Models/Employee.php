@@ -34,12 +34,14 @@ class Employee extends Model
         'pagibig_number',
         'tin_number',
         'group',
+        'dtr_upload_enabled',
     ];
 
     protected $casts = [
-        'hire_date' => 'date',
-        'salary' => 'decimal:2',
-        'undeclared_salary' => 'decimal:2',
+        'hire_date'           => 'date',
+        'salary'              => 'decimal:2',
+        'undeclared_salary'   => 'decimal:2',
+        'dtr_upload_enabled'  => 'boolean',
     ];
 
     protected $appends = ['full_name', 'schedule'];

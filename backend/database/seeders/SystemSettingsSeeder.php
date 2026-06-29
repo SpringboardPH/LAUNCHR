@@ -216,6 +216,11 @@ class SystemSettingsSeeder extends Seeder
             ['key' => 'payroll_period2_end_day',   'value' => '10',           'description' => 'Semi-monthly: end day of second period (cross-month: end < start)',         'type' => 'integer'],
             ['key' => 'payroll_monthly_start_day', 'value' => '1',            'description' => 'Monthly: start day of the payroll period',                                  'type' => 'integer'],
             ['key' => 'payroll_monthly_end_day',   'value' => '31',           'description' => 'Monthly: end day of the payroll period (31 = end of month)',                'type' => 'integer'],
+            ['key' => 'dtr_page_enabled',             'value' => 'false',        'description' => 'Whether the DTR upload page is enabled for employees',                    'type' => 'boolean'],
+            ['key' => 'dtr_upload_frequency',         'value' => 'semi_monthly', 'description' => 'DTR upload frequency: semi_monthly or monthly',                              'type' => 'string'],
+            ['key' => 'dtr_per_employee_restriction', 'value' => 'false',        'description' => 'When true, DTR upload availability is controlled per employee',               'type' => 'boolean'],
+            ['key' => 'dtr_cutoff1_day',              'value' => '10',           'description' => 'DTR first cutoff day of month (used when frequency is semi_monthly)',         'type' => 'integer'],
+            ['key' => 'dtr_cutoff2_day',              'value' => '25',           'description' => 'DTR second cutoff day of month (used when frequency is semi_monthly)',        'type' => 'integer'],
         ];
 
         foreach ($settings as $setting) {

@@ -472,3 +472,29 @@ export const approveRequest = (id, responseNotes = null) =>
 
 export const rejectRequest = (id, responseNotes) =>
   api.patch(`/requests/${id}/reject`, { response_notes: responseNotes }).then(r => r.data)
+
+// ─── DTR Uploads ─────────────────────────────────────────────
+export const dtrKeys = {
+  all:            ['dtr'],
+  config:         ['dtr', 'config'],
+  list:           (params) => ['dtr', 'list', params],
+  employeeAccess: ['dtr', 'employee-access'],
+}
+
+export const getDtrConfig = () =>
+  api.get('/dtr/config').then(r => r.data.data)
+
+export const getDtrs = (params = {}) =>
+  api.get('/dtr', { params }).then(r => r.data.data)
+
+export const uploadDtr = (formData) =>
+  api.post('/dtr', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+
+export const deleteDtr = (id) =>
+  api.delete(`/dtr/${id}`).then(r => r.data)
+
+export const getDtrEmployeeAccess = () =>
+  api.get('/dtr/employee-access').then(r => r.data.data)
+
+export const toggleDtrEmployeeAccess = (employeeId, enabled) =>
+  api.patch(`/dtr/employee-access/${employeeId}`, { enabled }).then(r => r.data)

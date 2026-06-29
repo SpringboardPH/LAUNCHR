@@ -2,11 +2,11 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
 import { getSystemConfig, systemConfigKeys } from '../../api/queries'
-import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList } from 'lucide-react'
+import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 
-const NAV = [
+const BASE_NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/employee/attendance', icon: Clock, label: 'Attendance' },
   { to: '/employee/requests/new', icon: ClipboardList, label: 'My Requests' },
@@ -55,7 +55,10 @@ export default function EmployeeLayout() {
           <div className="px-3 py-2">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
           </div>
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {[
+          ...BASE_NAV,
+          ...(systemConfig?.dtr_page_enabled ? [{ to: '/employee/dtr', icon: FileText, label: 'DTR Upload' }] : []),
+        ].map(({ to, icon: Icon, label }) => (
             <a
               key={to} href={to} onClick={(e) => {
                 e.preventDefault()

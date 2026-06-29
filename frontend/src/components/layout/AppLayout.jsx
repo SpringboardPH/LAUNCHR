@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
@@ -22,6 +22,7 @@ const COMMON_NAV = [
     ],
   },
   { to: '/hr/requests', icon: ClipboardList, label: 'Requests', badge: true },
+  { to: '/hr/dtr', icon: FileText, label: 'DTR Management', dtrGated: true },
   { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
   { to: '/hr/payroll', icon: Banknote, label: 'Payroll' },
 ]
@@ -87,6 +88,7 @@ export default function AppLayout() {
   }
 
   const renderNavItem = (item) => {
+    if (item.dtrGated && !systemConfig?.dtr_page_enabled) return null
     if (item.children) {
       const isOpen = openGroups.has(item.label)
       const isGroupActive = item.children.some(c => location.pathname.startsWith(c.to))

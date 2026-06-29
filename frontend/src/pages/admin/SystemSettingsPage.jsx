@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, AlertModal, Spinner } from '../../components/ui/index.jsx'
 import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, deleteLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2 } from 'lucide-react'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2, FileText } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -35,6 +35,11 @@ export default function SystemSettingsPage() {
   const [selectedTemplateFile, setSelectedTemplateFile] = useState(null)
   const [autoClockOut, setAutoClockOut] = useState(false)
   const [requireLoginOtp, setRequireLoginOtp] = useState(false)
+  const [dtrPageEnabled, setDtrPageEnabled] = useState(false)
+  const [dtrUploadFrequency, setDtrUploadFrequency] = useState('semi_monthly')
+  const [dtrPerEmployeeRestriction, setDtrPerEmployeeRestriction] = useState(false)
+  const [dtrCutoff1Day, setDtrCutoff1Day] = useState(10)
+  const [dtrCutoff2Day, setDtrCutoff2Day] = useState(25)
   const [sssTable, setSssTable] = useState('')
   const [withholdingTable, setWithholdingTable] = useState('')
   const [themeColor, setThemeColor] = useState('sienna')
@@ -94,6 +99,14 @@ export default function SystemSettingsPage() {
         setRequireLoginOtp(false)
       }
 
+      const dtrEnabled = settings.find(s => s.key === 'dtr_page_enabled')
+      setDtrPageEnabled(dtrEnabled?.value === 'true' || dtrEnabled?.value === true)
+      setDtrUploadFrequency(settings.find(s => s.key === 'dtr_upload_frequency')?.value ?? 'semi_monthly')
+      const dtrPerEmp = settings.find(s => s.key === 'dtr_per_employee_restriction')
+      setDtrPerEmployeeRestriction(dtrPerEmp?.value === 'true' || dtrPerEmp?.value === true)
+      setDtrCutoff1Day(parseInt(settings.find(s => s.key === 'dtr_cutoff1_day')?.value ?? '10'))
+      setDtrCutoff2Day(parseInt(settings.find(s => s.key === 'dtr_cutoff2_day')?.value ?? '25'))
+
       const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
       if (sssSetting) {
         setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
@@ -151,7 +164,7 @@ export default function SystemSettingsPage() {
   })
 
   const updateSettingMutation = useMutation({
-    mutationFn: async ({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate }) => {
+    mutationFn: async ({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate, dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction }) => {
       const normalizedTime = normalizeTimeValue(time)
       await updateAdminSetting('system_date', date, 'Virtual system date for simulation', 'string')
       await updateAdminSetting('system_time', normalizedTime, 'Virtual system time for simulation', 'string')
@@ -196,8 +209,13 @@ export default function SystemSettingsPage() {
       await updateAdminSetting('payroll_period1_end_day',   p1End,            'Semi-monthly: end day of first period',                      'integer')
       await updateAdminSetting('payroll_period2_start_day', p2Start,          'Semi-monthly: start day of second period',                   'integer')
       await updateAdminSetting('payroll_period2_end_day',   p2End,            'Semi-monthly: end day of second period (31 = end of month)', 'integer')
-      await updateAdminSetting('payroll_monthly_start_day', pMonthlyStart,    'Monthly: start day of the payroll period',                   'integer')
-      await updateAdminSetting('payroll_monthly_end_day',   pMonthlyEnd,      'Monthly: end day of the payroll period (31 = end of month)', 'integer')
+      await updateAdminSetting('payroll_monthly_start_day',       pMonthlyStart,              'Monthly: start day of the payroll period',                         'integer')
+      await updateAdminSetting('payroll_monthly_end_day',         pMonthlyEnd,                'Monthly: end day of the payroll period (31 = end of month)',         'integer')
+      await updateAdminSetting('dtr_page_enabled',                dtrPageEnabled,             'Whether the DTR upload page is enabled for employees',               'boolean')
+      await updateAdminSetting('dtr_upload_frequency',            dtrUploadFrequency,         'DTR upload frequency: semi_monthly or monthly',                       'string')
+      await updateAdminSetting('dtr_per_employee_restriction',    dtrPerEmployeeRestriction,  'When true, DTR upload availability is controlled per employee',       'boolean')
+      await updateAdminSetting('dtr_cutoff1_day',                 dtrCutoff1Day,              'DTR first cutoff day of month (used when frequency is semi_monthly)', 'integer')
+      await updateAdminSetting('dtr_cutoff2_day',                 dtrCutoff2Day,              'DTR second cutoff day of month (used when frequency is semi_monthly)','integer')
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -247,7 +265,7 @@ export default function SystemSettingsPage() {
       title: 'Save System Settings',
       message: 'Are you sure you want to update the settings? This may affect attendance records and payroll calculations.',
       type: 'brand',
-      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate })
+      onConfirm: () => updateSettingMutation.mutate({ ...dateTime, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate, dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction })
     })
   }
 
@@ -287,6 +305,14 @@ export default function SystemSettingsPage() {
         const loginOtpSetting = settings.find(s => s.key === 'login_otp_required')?.value
         setRequireLoginOtp(loginOtpSetting === 'true' || loginOtpSetting === '1')
 
+        const dtrEnabled = settings.find(s => s.key === 'dtr_page_enabled')
+        setDtrPageEnabled(dtrEnabled?.value === 'true' || dtrEnabled?.value === true)
+        setDtrUploadFrequency(settings.find(s => s.key === 'dtr_upload_frequency')?.value ?? 'semi_monthly')
+        const dtrPerEmp = settings.find(s => s.key === 'dtr_per_employee_restriction')
+        setDtrPerEmployeeRestriction(dtrPerEmp?.value === 'true' || dtrPerEmp?.value === true)
+        setDtrCutoff1Day(parseInt(settings.find(s => s.key === 'dtr_cutoff1_day')?.value ?? '10'))
+        setDtrCutoff2Day(parseInt(settings.find(s => s.key === 'dtr_cutoff2_day')?.value ?? '25'))
+
         const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
         if (sssSetting) {
           setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
@@ -325,7 +351,7 @@ export default function SystemSettingsPage() {
         // Update form state so inputs reflect it
         setDateTime({ date, time })
         // Immediately persist — no need to click Save separately
-        updateSettingMutation.mutate({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate })
+        updateSettingMutation.mutate({ date, time, autoClockOut, requireLoginOtp, absentMarkingTime, sssTable, withholdingTable, themeColor, systemName, systemLogo, payrollTemplate, dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction })
       }
     })
   }
@@ -609,6 +635,84 @@ export default function SystemSettingsPage() {
             >
               <div className={`w-4 h-4 rounded-full bg-white transition-transform ${requireLoginOtp ? 'translate-x-6' : ''}`} />
             </button>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <FileText size={18} className="text-brand-600" />
+            <h2 className="text-sm font-semibold text-gray-700">DTR Upload</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Enable DTR Upload Page</p>
+                <p className="text-xs text-gray-500">Allows employees to upload their Daily Time Records.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDtrPageEnabled(!dtrPageEnabled)}
+                className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${dtrPageEnabled ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${dtrPageEnabled ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
+
+            <div className="p-4 border rounded-lg space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Upload Frequency</p>
+                <p className="text-xs text-gray-500">Determines which cutoff periods employees see when uploading.</p>
+              </div>
+              <select
+                value={dtrUploadFrequency}
+                onChange={e => setDtrUploadFrequency(e.target.value)}
+                className="input h-10"
+              >
+                <option value="semi_monthly">Semi-Monthly (two cutoffs per month)</option>
+                <option value="monthly">Monthly</option>
+              </select>
+
+              {dtrUploadFrequency === 'semi_monthly' && (
+                <div className="flex gap-4 pt-1">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">1st Cutoff Day</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      value={dtrCutoff1Day}
+                      onChange={e => setDtrCutoff1Day(parseInt(e.target.value) || 1)}
+                      className="input h-10 w-24"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">2nd Cutoff Day</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={dtrCutoff2Day}
+                      onChange={e => setDtrCutoff2Day(parseInt(e.target.value) || 1)}
+                      className="input h-10 w-24"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Per-Employee Restriction</p>
+                <p className="text-xs text-gray-500">When enabled, DTR upload access can be toggled individually per employee (via DTR Management → Employee Access).</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDtrPerEmployeeRestriction(!dtrPerEmployeeRestriction)}
+                className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${dtrPerEmployeeRestriction ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${dtrPerEmployeeRestriction ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 
