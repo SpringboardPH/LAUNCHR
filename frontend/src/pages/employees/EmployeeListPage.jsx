@@ -9,13 +9,16 @@ export default function EmployeeListPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [group, setGroup] = useState('')
+  const [page, setPage] = useState(1)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const qc = useQueryClient()
   const navigate = useNavigate()
 
+  const resetPage = () => setPage(1)
+
   const { data, isLoading } = useQuery({
-    queryKey: employeeKeys.list({ search, status, group }),
-    queryFn: () => getEmployees({ search, status, ...(group && { group }) }),
+    queryKey: employeeKeys.list({ search, status, group, page }),
+    queryFn: () => getEmployees({ search, status, page, per_page: 20, ...(group && { group }) }),
   })
 
   const { data: groups = [] } = useQuery({
@@ -62,17 +65,17 @@ export default function EmployeeListPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             className="input pl-9" placeholder="Search by name, ID, or email…"
-            value={search} onChange={e => setSearch(e.target.value)}
+            value={search} onChange={e => { setSearch(e.target.value); resetPage() }}
           />
         </div>
-        <select className="input sm:w-40" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="input sm:w-40" value={status} onChange={e => { setStatus(e.target.value); resetPage() }}>
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="terminated">Terminated</option>
         </select>
         {groups.length > 0 && (
-          <select className="input sm:w-40" value={group} onChange={e => setGroup(e.target.value)}>
+          <select className="input sm:w-40" value={group} onChange={e => { setGroup(e.target.value); resetPage() }}>
             <option value="">All groups</option>
             {groups.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
@@ -146,6 +149,36 @@ export default function EmployeeListPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data?.pagination && (
+        <div className="flex items-center justify-end mt-4">
+          <div className="inline-flex items-center bg-gray-100 text-gray-600 text-xs font-medium rounded-full overflow-hidden">
+            <button
+              className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setPage(p => p - 1)}
+              disabled={page <= 1}
+            >
+              ‹ Prev
+            </button>
+            <span className="px-3 py-1.5 border-x border-gray-200">
+              {(() => {
+                const { current_page, per_page, total, last_page } = data.pagination
+                const from = (current_page - 1) * per_page + 1
+                const to = current_page === last_page ? total : current_page * per_page
+                return `${from}–${to} of ${total} employees · Page ${current_page}/${last_page}`
+              })()}
+            </span>
+            <button
+              className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setPage(p => p + 1)}
+              disabled={page >= data.pagination.last_page}
+            >
+              Next ›
+            </button>
           </div>
         </div>
       )}
