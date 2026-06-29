@@ -807,12 +807,24 @@ export default function PayrollPage() {
       const sourceWs = sourceWb.worksheets[0]
 
       const masterWorkbook = new ExcelJS.Workbook()
+      const usedSheetNames = new Set()
 
       for (let i = 0; i < exportablePayrolls.length; i++) {
         const payroll = exportablePayrolls[i]
         const empName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
         const group = payroll.employee?.group?.trim()
-        const sheetName = (group ? `${group} - ${empName}` : empName).substring(0, 31) || `Employee ${i + 1}`
+        const groupAbbr = group ? group.replace(/[^A-Z]/g, '') : ''
+        let base = (groupAbbr ? `${groupAbbr} - ${empName}` : empName) || `Employee ${i + 1}`
+        let sheetName = base.substring(0, 31)
+        if (usedSheetNames.has(sheetName)) {
+          let counter = 2
+          do {
+            const suffix = ` (${counter})`
+            sheetName = base.substring(0, 31 - suffix.length) + suffix
+            counter++
+          } while (usedSheetNames.has(sheetName))
+        }
+        usedSheetNames.add(sheetName)
         const ws = masterWorkbook.addWorksheet(sheetName)
 
         copyTemplateToSheet(sourceWb, sourceWs, masterWorkbook, ws)
