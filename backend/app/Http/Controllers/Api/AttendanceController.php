@@ -288,6 +288,39 @@ class AttendanceController extends Controller
         }
 
         $clockInTime = SystemClock::timeString();
+        $templateType = $schedule?->template?->type ?? 'fixed';
+
+        // Flexi: no window restrictions — employee can clock in any time on a work day
+        if ($templateType === 'flexi') {
+            $log = AttendanceLog::updateOrCreate(
+                ['employee_id' => $employee->id, 'date' => $today->toDateString()],
+                [
+                    'clock_in_time'          => $clockInTime,
+                    'clock_in_notes'         => $request->notes,
+                    'status'                 => 'working',
+                    'schedule_template_id'   => $schedule?->schedule_template_id,
+                    'schedule_template_name' => $schedule?->template?->name,
+                    'schedule_type'          => 'flexi',
+                ]
+            );
+
+            \App\Models\AuditLog::log(
+                'CLOCK_IN',
+                "Employee {$employee->first_name} {$employee->last_name} clocked in at {$clockInTime}",
+                $log,
+                null,
+                [
+                    'employee_id'   => (int) $employee->id,
+                    'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
+                    'clock_in_time' => (string) $clockInTime,
+                    'status'        => 'working',
+                    'date'          => (string) $today->toDateString(),
+                ]
+            );
+
+            return response()->json(['success' => true, 'data' => $log, 'message' => 'Clocked in successfully'], 201);
+        }
+
         $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
         $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
         $clockInGraceEndMinutes = $this->parseTimeToMinutes(self::WORK_START_TIME);
@@ -354,8 +387,9 @@ class AttendanceController extends Controller
                 'clock_in_notes' => $request->notes,
                 'status' => $initialStatus,
                 // Snapshot schedule context so historical logs stay stable.
-                'schedule_template_id' => $schedule?->schedule_template_id,
+                'schedule_template_id'   => $schedule?->schedule_template_id,
                 'schedule_template_name' => $schedule?->template?->name,
+                'schedule_type'          => 'fixed',
             ]
         );
 
@@ -438,6 +472,61 @@ class AttendanceController extends Controller
         }
 
         $clockOutTime = SystemClock::timeString();
+
+        // Flexi: no clock-out window restrictions
+        $scheduleType = $log->schedule_type ?? $schedule?->template?->type ?? 'fixed';
+        if ($scheduleType === 'flexi') {
+            $requiredHours = $schedule?->template?->required_hours_per_day ?? 8;
+
+            $inMin  = $this->parseTimeToMinutes($log->clock_in_time);
+            $outMin = $this->parseTimeToMinutes($clockOutTime);
+            if ($outMin < $inMin) $outMin += 1440;
+            $hoursWorked   = ($outMin - $inMin) / 60;
+            $overtimeHours = max(0, round($hoursWorked - $requiredHours, 2));
+
+            // OT requires HR approval — record as completed, auto-submit a request
+            $flexiStatus = $overtimeHours > 0 ? 'completed' : AttendanceService::calculateFlexiStatus($log->clock_in_time, $clockOutTime, $requiredHours);
+
+            $log->clock_out_time  = $clockOutTime;
+            $log->clock_out_notes = $request->notes;
+            $log->status          = $flexiStatus;
+            $log->save();
+
+            if ($overtimeHours > 0) {
+                \App\Models\EmployeeRequest::create([
+                    'employee_id'  => $employee->id,
+                    'request_type' => 'overtime',
+                    'subject'      => 'Overtime on ' . $log->date->format('M d, Y'),
+                    'details'      => "Clocked out at {$clockOutTime} after working " . round($hoursWorked, 2) . "h (required: {$requiredHours}h). Overtime: {$overtimeHours}h.",
+                    'meta'         => [
+                        'attendance_log_id' => $log->id,
+                        'overtime_hours'    => $overtimeHours,
+                        'hours_worked'      => round($hoursWorked, 2),
+                        'required_hours'    => $requiredHours,
+                        'date'              => $log->date->toDateString(),
+                    ],
+                    'status' => 'pending',
+                ]);
+            }
+
+            \App\Models\AuditLog::log(
+                'CLOCK_OUT',
+                "Employee {$employee->first_name} {$employee->last_name} clocked out at {$clockOutTime}",
+                $log,
+                ['clock_out_time' => null, 'status' => $log->getOriginal('status')],
+                [
+                    'employee_id'    => (int) $employee->id,
+                    'employee_name'  => (string) ($employee->first_name . ' ' . $employee->last_name),
+                    'clock_in_time'  => (string) $log->clock_in_time,
+                    'clock_out_time' => (string) $clockOutTime,
+                    'status'         => (string) $log->status,
+                    'date'           => (string) $log->date->toDateString(),
+                ]
+            );
+
+            return response()->json(['success' => true, 'data' => $log, 'message' => 'Clocked out successfully']);
+        }
+
         $clockOutMinutes = $this->parseTimeToMinutes($clockOutTime);
         $workEndTime = self::WORK_END_TIME;
         $earlyThresholdMinutes = $this->parseTimeToMinutes(self::WORK_END_TIME);

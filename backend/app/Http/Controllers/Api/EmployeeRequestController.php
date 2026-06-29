@@ -168,6 +168,14 @@ class EmployeeRequestController extends Controller
             'response_notes' => $request->response_notes,
         ]);
 
+        // If this is a flexi OT request, promote the attendance log to 'overtime'
+        if ($employeeRequest->request_type === 'overtime') {
+            $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
+            if ($logId) {
+                \App\Models\AttendanceLog::where('id', $logId)->update(['status' => 'overtime']);
+            }
+        }
+
         \App\Models\AuditLog::log(
             'REQUEST_APPROVED',
             "Employee request approved for {$employeeRequest->employee->first_name} {$employeeRequest->employee->last_name} ({$employeeRequest->request_type}): {$employeeRequest->subject}",
@@ -215,6 +223,14 @@ class EmployeeRequestController extends Controller
             'approver_id'    => $request->user()->id,
             'response_notes' => $request->response_notes,
         ]);
+
+        // Ensure the attendance log stays at 'completed' (not overtime) when OT is rejected
+        if ($employeeRequest->request_type === 'overtime') {
+            $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
+            if ($logId) {
+                \App\Models\AttendanceLog::where('id', $logId)->where('status', 'overtime')->update(['status' => 'completed']);
+            }
+        }
 
         \App\Models\AuditLog::log(
             'REQUEST_REJECTED',

@@ -339,6 +339,34 @@ export default function AttendanceClockPage() {
                 {isOnLeave ? 'On Approved Leave' : !isClockedIn ? 'Ready to Clock In' : (isClockedOut ? 'Shift Completed' : 'Time Elapsed')}
               </p>
               <p className="text-xs text-gray-500">{displayDateShort}</p>
+
+              {window?.isFlexi && (() => {
+                const required = window.requiredHours ?? 8
+                const [th, tm, ts] = timerDisplay.split(':').map(Number)
+                const elapsedHours = th + tm / 60 + (ts || 0) / 3600
+                const pct = Math.min(100, Math.round((elapsedHours / required) * 100))
+                const done = isClockedIn && elapsedHours >= required
+                return (
+                  <div className="mt-3 text-center">
+                    <p className="text-xs text-gray-400 mb-1.5">
+                      {isClockedIn
+                        ? done
+                          ? <span className="text-green-600 font-medium">✓ {required}h requirement met</span>
+                          : <span>{Math.floor(elapsedHours)}h {Math.round((elapsedHours % 1) * 60)}m / {required}h required</span>
+                        : <span>Required today: <span className="font-semibold text-gray-600">{required}h</span></span>
+                      }
+                    </p>
+                    {isClockedIn && !isClockedOut && (
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${done ? 'bg-green-500' : 'bg-brand-500'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Status Display */}

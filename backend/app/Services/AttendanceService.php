@@ -93,6 +93,28 @@ class AttendanceService
     }
 
     /**
+     * Calculate attendance status for flexi schedules (no fixed start/end time).
+     * Status is purely based on hours worked vs required hours.
+     */
+    public static function calculateFlexiStatus(?string $clockIn, ?string $clockOut, int $requiredHours): string
+    {
+        if (!$clockIn) return 'absent';
+        if (!$clockOut) return 'working';
+
+        $inMin  = self::parseTimeToMinutes($clockIn);
+        $outMin = self::parseTimeToMinutes($clockOut);
+        if ($outMin < $inMin) $outMin += 1440;
+
+        $hoursWorked = ($outMin - $inMin) / 60;
+
+        if ($hoursWorked >= $requiredHours) {
+            return $hoursWorked > $requiredHours ? 'overtime' : 'completed';
+        }
+
+        return $hoursWorked >= ($requiredHours / 2) ? 'half_day' : 'undertime';
+    }
+
+    /**
      * Calculate detailed metrics for payroll.
      */
     public static function calculateDetails(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): array

@@ -120,6 +120,8 @@ const AdminScheduleTemplatesPage = () => {
     name: '',
     description: '',
     is_temporary: false,
+    type: 'fixed',
+    required_hours_per_day: 8,
     day_rules: createDefaultDayRules(),
   })
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
@@ -158,6 +160,8 @@ const AdminScheduleTemplatesPage = () => {
       name: '',
       description: '',
       is_temporary: false,
+      type: 'fixed',
+      required_hours_per_day: 8,
       day_rules: createDefaultDayRules(),
     })
     setEditingId(null)
@@ -180,52 +184,73 @@ const AdminScheduleTemplatesPage = () => {
       return
     }
 
-    const hasIncompleteRules = enabledRules.some(
-      rule => !rule.clock_in || !rule.clock_out
-    )
-    if (hasIncompleteRules) {
-      setAlert({ type: 'warning', message: 'Every active day must include both clock in and clock out time' })
-      return
+    const isFlexi = formData.type === 'flexi'
+
+    if (!isFlexi) {
+      const hasIncompleteRules = enabledRules.some(rule => !rule.clock_in || !rule.clock_out)
+      if (hasIncompleteRules) {
+        setAlert({ type: 'warning', message: 'Every active day must include both clock in and clock out time' })
+        return
+      }
     }
 
-    const firstRule = enabledRules[0]
-    const graceMinutes = Number.isFinite(Number(firstRule.grace_minutes))
-      ? Number(firstRule.grace_minutes)
-      : 15
-    const clockInWindow = firstRule.grace_enabled
-      ? applyGraceWindow(firstRule.clock_in, firstRule.grace_type, graceMinutes)
-      : { start: firstRule.clock_in, end: firstRule.clock_in }
-    const clockOutWindow = firstRule.grace_enabled
-      ? applyGraceWindow(firstRule.clock_out, firstRule.grace_type, graceMinutes)
-      : { start: firstRule.clock_out, end: firstRule.clock_out }
-    const hoursPerDay = calculateHours(firstRule.clock_in, firstRule.clock_out)
+    let payload
+    if (isFlexi) {
+      payload = {
+        type: 'flexi',
+        name: formData.name,
+        description: formData.description,
+        is_temporary: formData.is_temporary,
+        required_hours_per_day: Number(formData.required_hours_per_day) || 8,
+        day_rules: formData.day_rules.map(rule => ({
+          day: rule.day,
+          enabled: rule.enabled,
+          clock_in: null,
+          clock_out: null,
+          grace_enabled: false,
+          grace_type: '-/+',
+          grace_minutes: 15,
+        })),
+      }
+    } else {
+      const firstRule = enabledRules[0]
+      const graceMinutes = Number.isFinite(Number(firstRule.grace_minutes)) ? Number(firstRule.grace_minutes) : 15
+      const clockInWindow = firstRule.grace_enabled
+        ? applyGraceWindow(firstRule.clock_in, firstRule.grace_type, graceMinutes)
+        : { start: firstRule.clock_in, end: firstRule.clock_in }
+      const clockOutWindow = firstRule.grace_enabled
+        ? applyGraceWindow(firstRule.clock_out, firstRule.grace_type, graceMinutes)
+        : { start: firstRule.clock_out, end: firstRule.clock_out }
+      const hoursPerDay = calculateHours(firstRule.clock_in, firstRule.clock_out)
 
-    const payload = {
-      name: formData.name,
-      description: formData.description,
-      is_temporary: formData.is_temporary,
-      day_rules: formData.day_rules.map(rule => ({
-        day: rule.day,
-        enabled: rule.enabled,
-        clock_in: rule.enabled ? toApiTime(rule.clock_in) : null,
-        clock_out: rule.enabled ? toApiTime(rule.clock_out) : null,
-        grace_enabled: rule.enabled ? Boolean(rule.grace_enabled) : false,
-        grace_type: rule.grace_type,
-        grace_minutes: Number.isFinite(Number(rule.grace_minutes)) ? Number(rule.grace_minutes) : 15,
-      })),
-      work_days: enabledRules.map(rule => rule.day).sort((a, b) => a - b),
-      clock_in_start: toApiTime(clockInWindow.start),
-      clock_in_end: toApiTime(clockInWindow.end),
-      clock_out_start: toApiTime(clockOutWindow.start),
-      clock_out_end: toApiTime(clockOutWindow.end),
-      start_time: toApiTime(firstRule.clock_in),
-      end_time: toApiTime(firstRule.clock_out),
-      work_start_time: toApiTime(firstRule.clock_in),
-      work_end_time: toApiTime(firstRule.clock_out),
-      late_threshold_minutes: 0,
-      required_hours_per_day: hoursPerDay,
-      overtime_threshold_hours: hoursPerDay,
-      expected_hours_per_day: hoursPerDay,
+      payload = {
+        type: 'fixed',
+        name: formData.name,
+        description: formData.description,
+        is_temporary: formData.is_temporary,
+        day_rules: formData.day_rules.map(rule => ({
+          day: rule.day,
+          enabled: rule.enabled,
+          clock_in: rule.enabled ? toApiTime(rule.clock_in) : null,
+          clock_out: rule.enabled ? toApiTime(rule.clock_out) : null,
+          grace_enabled: rule.enabled ? Boolean(rule.grace_enabled) : false,
+          grace_type: rule.grace_type,
+          grace_minutes: Number.isFinite(Number(rule.grace_minutes)) ? Number(rule.grace_minutes) : 15,
+        })),
+        work_days: enabledRules.map(rule => rule.day).sort((a, b) => a - b),
+        clock_in_start: toApiTime(clockInWindow.start),
+        clock_in_end: toApiTime(clockInWindow.end),
+        clock_out_start: toApiTime(clockOutWindow.start),
+        clock_out_end: toApiTime(clockOutWindow.end),
+        start_time: toApiTime(firstRule.clock_in),
+        end_time: toApiTime(firstRule.clock_out),
+        work_start_time: toApiTime(firstRule.clock_in),
+        work_end_time: toApiTime(firstRule.clock_out),
+        late_threshold_minutes: 0,
+        required_hours_per_day: hoursPerDay,
+        overtime_threshold_hours: hoursPerDay,
+        expected_hours_per_day: hoursPerDay,
+      }
     }
 
     if (editingId) {
@@ -241,6 +266,8 @@ const AdminScheduleTemplatesPage = () => {
       name: template.name,
       description: template.description || '',
       is_temporary: template.is_temporary ?? false,
+      type: template.type ?? 'fixed',
+      required_hours_per_day: template.required_hours_per_day ?? 8,
       day_rules: normalizeTemplateRules(template),
     })
   }
@@ -314,6 +341,43 @@ const AdminScheduleTemplatesPage = () => {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Schedule Type</label>
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+                  {['fixed', 'flexi'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setFormData(f => ({ ...f, type: t }))}
+                      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${
+                        formData.type === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {t === 'fixed' ? 'Fixed Schedule' : 'Flexi Schedule'}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {formData.type === 'flexi'
+                    ? 'Employees can clock in/out at any time — status is based on total hours worked.'
+                    : 'Employees have fixed clock-in/out windows per day.'}
+                </p>
+              </div>
+
+              {formData.type === 'flexi' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Required Hours Per Day</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={formData.required_hours_per_day}
+                    onChange={(e) => setFormData(f => ({ ...f, required_hours_per_day: Number(e.target.value) || 8 }))}
+                    className="input w-28"
+                  />
+                </div>
+              )}
+
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -330,7 +394,9 @@ const AdminScheduleTemplatesPage = () => {
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
                 <p className="font-medium text-gray-900 text-sm mb-1">Weekly template rules</p>
                 <p className="text-xs leading-5">
-                  Enable only the days that should be working days. For each active day, set the clock-in/out time and optionally add a grace rule.
+                  {formData.type === 'flexi'
+                    ? 'Enable the days that are working days. Clock-in/out times are not required for flexi schedules.'
+                    : 'Enable only the days that should be working days. For each active day, set the clock-in/out time and optionally add a grace rule.'}
                 </p>
               </div>
             </div>
@@ -357,7 +423,7 @@ const AdminScheduleTemplatesPage = () => {
                       {!rule.enabled && <span className="text-xs text-gray-400">Off</span>}
                     </div>
 
-                    {rule.enabled && (
+                    {rule.enabled && formData.type !== 'flexi' && (
                       <div className="grid md:grid-cols-4 gap-3 mt-2.5">
                         <div>
                           <label className="block text-xs font-medium text-gray-500 mb-1">Clock In</label>
@@ -471,6 +537,9 @@ const AdminScheduleTemplatesPage = () => {
                 <tr key={template.id} className="hover:bg-gray-50 align-top">
                   <td className="py-2.5 pr-4 text-sm text-gray-900 font-medium">
                     <span>{template.name}</span>
+                    {template.type === 'flexi' && (
+                      <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Flexi</span>
+                    )}
                     {template.is_temporary && (
                       <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Temporary</span>
                     )}
@@ -481,13 +550,17 @@ const AdminScheduleTemplatesPage = () => {
                     return (
                       <td key={dayMeta.day} className="py-2.5 pr-3">
                         {rule?.enabled ? (
-                          <div className="text-xs text-gray-600 leading-4">
-                            <div>In {rule.clock_in}</div>
-                            <div>Out {rule.clock_out}</div>
-                            <div>
-                              G {rule.grace_enabled ? `${rule.grace_type} ${rule.grace_minutes ?? 15}m` : 'Off'}
+                          template.type === 'flexi' ? (
+                            <span className="text-xs text-blue-500">On</span>
+                          ) : (
+                            <div className="text-xs text-gray-600 leading-4">
+                              <div>In {rule.clock_in}</div>
+                              <div>Out {rule.clock_out}</div>
+                              <div>
+                                G {rule.grace_enabled ? `${rule.grace_type} ${rule.grace_minutes ?? 15}m` : 'Off'}
+                              </div>
                             </div>
-                          </div>
+                          )
                         ) : (
                           <span className="text-xs text-gray-300">Off</span>
                         )}

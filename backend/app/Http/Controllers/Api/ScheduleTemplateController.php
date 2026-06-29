@@ -69,6 +69,8 @@ class ScheduleTemplateController extends Controller
 
     private function derivePayloadFromDayRules(array $validated): array
     {
+        $type = $validated['type'] ?? 'fixed';
+
         $enabledRules = collect($validated['day_rules'])
             ->filter(fn ($rule) => !empty($rule['enabled']))
             ->values();
@@ -78,6 +80,34 @@ class ScheduleTemplateController extends Controller
                 'success' => false,
                 'message' => 'At least one active day is required.',
             ], 422));
+        }
+
+        $enabledDays = $enabledRules
+            ->pluck('day')
+            ->map(fn ($day) => (int) $day)
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($type === 'flexi') {
+            $hoursPerDay = (int) ($validated['required_hours_per_day'] ?? 8);
+            return [
+                ...$validated,
+                'type' => 'flexi',
+                'work_days' => $enabledDays,
+                'clock_in_start' => null,
+                'clock_in_end' => null,
+                'clock_out_start' => null,
+                'clock_out_end' => null,
+                'start_time' => null,
+                'end_time' => null,
+                'work_start_time' => null,
+                'work_end_time' => null,
+                'late_threshold_minutes' => 0,
+                'required_hours_per_day' => $hoursPerDay,
+                'overtime_threshold_hours' => $hoursPerDay,
+                'expected_hours_per_day' => $hoursPerDay,
+            ];
         }
 
         foreach ($enabledRules as $rule) {
@@ -97,15 +127,9 @@ class ScheduleTemplateController extends Controller
         $clockOutWindow = $this->applyGraceWindow($first['clock_out'], $graceType, $graceMinutes, $graceEnabled);
         $hoursPerDay = $this->calculateHoursPerDay($first['clock_in'], $first['clock_out']);
 
-        $enabledDays = $enabledRules
-            ->pluck('day')
-            ->map(fn ($day) => (int) $day)
-            ->sort()
-            ->values()
-            ->all();
-
         return [
             ...$validated,
+            'type' => 'fixed',
             'work_days' => $enabledDays,
             'clock_in_start' => $clockInWindow['start'],
             'clock_in_end' => $clockInWindow['end'],
@@ -128,6 +152,8 @@ class ScheduleTemplateController extends Controller
             'name' => 'required|string|unique:schedule_templates,name' . ($templateId ? ',' . $templateId : ''),
             'description' => 'nullable|string',
             'is_temporary' => 'nullable|boolean',
+            'type' => 'nullable|in:fixed,flexi',
+            'required_hours_per_day' => 'nullable|integer|min:1|max:24',
             'day_rules' => 'required|array|size:7',
             'day_rules.*.day' => 'required|integer|between:0,6',
             'day_rules.*.enabled' => 'required|boolean',

@@ -171,6 +171,31 @@ export const getClockWindow = (schedule, sysClock = null) => {
     }
   }
 
+  // Flexi schedule: employee can clock in/out any time on an enabled work day
+  if (template.type === 'flexi') {
+    const isWorkDay = dayRule?.enabled ?? false
+    if (!isWorkDay) {
+      return { isInactiveDay: true, currentMinutes, workStart: 'Flexi', workEnd: 'Flexi', formatTime }
+    }
+    return {
+      inStart: 0,
+      inEnd: 1439,
+      outStart: 0,
+      outEnd: 1439,
+      workStart: 'Flexi',
+      workEnd: 'Flexi',
+      workStartMinutes: 0,
+      workEndMinutes: 1439,
+      normalInStart: 0,
+      currentMinutes,
+      isWithinInWindow: true,
+      isWithinOutWindow: true,
+      isFlexi: true,
+      requiredHours: template.required_hours_per_day ?? 8,
+      formatTime,
+    }
+  }
+
   let inStart, inEnd, outStart, outEnd
   let workStart = template.work_start_time?.substring(0, 5)
   let workEnd = template.work_end_time?.substring(0, 5)
