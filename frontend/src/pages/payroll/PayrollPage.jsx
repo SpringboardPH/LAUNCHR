@@ -609,6 +609,9 @@ export default function PayrollPage() {
           }
         })
 
+        // Protect sheet before sending — prevents employee from editing the paystub
+        worksheet.protect('', { selectLockedCells: true, selectUnlockedCells: true })
+
         // Generate blob and add to FormData
         const buffer = await workbook.xlsx.writeBuffer()
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -627,212 +630,220 @@ export default function PayrollPage() {
   const finalizedPaystubs = payrolls.filter(p => p.status === 'finalized')
   const exportablePayrolls = payrolls.filter(p => p.status === 'finalized' || p.status === 'paid')
 
-  const handleBatchExportCsv = () => {
+  // Builds the cell map and currency cell list for a payroll record
+  const buildPaystubCellMap = (payroll) => {
+    const employeeName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
+    const payPeriod = `${format(parseISO(payroll.cutoff_start), 'MMM dd, yyyy')} - ${format(parseISO(payroll.cutoff_end), 'MMM dd, yyyy')}`
+    const totalDeductions = (payroll.gross_pay || 0) - (payroll.net_pay || 0)
+
+    const sched = payroll.employee?.schedule
+    const scheduleDisplay = sched
+      ? (typeof sched === 'object'
+          ? (sched.days && sched.start_time && sched.end_time
+              ? `${sched.days} (${sched.start_time} - ${sched.end_time})`
+              : sched.name || '')
+          : sched)
+      : ''
+
+    const getE = (label) => {
+      if (!payroll.allowances) return 0
+      if (Array.isArray(payroll.allowances)) return Number(payroll.allowances.find(a => a?.label === label)?.amount || 0)
+      return Number(payroll.allowances[label] || 0)
+    }
+    const getD = (label) => {
+      if (!payroll.deductions) return 0
+      if (Array.isArray(payroll.deductions)) return Number(payroll.deductions.find(d => d?.label === label)?.amount || 0)
+      return Number(payroll.deductions[label] || 0)
+    }
+
+    const dRate = Number(payroll.daily_rate) || 0
+    const hRate = dRate / 8
+    const totalAllowances = payroll.allowances?.reduce((s, a) => s + Number(a.amount || 0), 0) || 0
+    const basicIncome   = payroll.gross_pay - totalAllowances
+    const otPay         = getE('Overtime Pay')
+    const rdPay         = getE('Rest Day Pay')
+    const rdOTPay       = getE('Rest Day OT Pay')
+    const nightDiff     = getE('Night Differential')
+    const specialHol    = getE('Special Holiday')
+    const legalHol      = getE('Legal Holiday')
+    const absentAmt     = getD('Absent')
+    const halfDayAmt    = getD('Half Day')
+
+    const hardcodedLabels = ['overtime pay','rest day pay','rest day ot pay','night differential','special holiday','legal holiday','incentives/others','13th month pay']
+    const generalAllowancesAmt = (payroll.allowances || []).filter(a => !hardcodedLabels.includes(a.label?.trim().toLowerCase())).reduce((s, a) => s + Number(a.amount || 0), 0)
+
+    const standardDeductionLabels = ['Late','Undertime','Absent','Half Day','SSS EE Contribution','PhilHealth EE Contribution','Pag-IBIG EE Contribution','SSS Loan','Pag-IBIG Loan','Cash Advance/Others','Withholding Tax']
+    const customDeductionsAmt = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount }))).filter(d => !standardDeductionLabels.includes(d.label)).reduce((s, d) => s + Number(d.amount || 0), 0)
+
+    const fieldsMap = {
+      'E13': employeeName,
+      'E15': payroll.employee?.phone || payroll.employee?.contact_info || '',
+      'E17': scheduleDisplay,
+      'E19': payPeriod,
+      'E21': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
+      'L10': Number(payroll.net_pay) || 0,
+      'L13': payroll.employee?.sss_number || '',
+      'L15': payroll.employee?.philhealth_number || '',
+      'L17': payroll.employee?.pagibig_number || '',
+      'L19': payroll.employee?.tin_number || '',
+      'L21': payroll.employee?.bank_account_number || '',
+      'F27': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
+      'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
+      'F29': rdPay > 0 && hRate > 0 ? `${(rdPay / (hRate * 1.30)).toFixed(2)}h` : '0h',
+      'F30': rdOTPay > 0 && hRate > 0 ? `${(rdOTPay / (hRate * 1.69)).toFixed(2)}h` : '0h',
+      'F31': nightDiff > 0 && hRate > 0 ? `${(nightDiff / (hRate * 0.10)).toFixed(2)}h` : '0h',
+      'F32': specialHol > 0 && hRate > 0 ? `${(specialHol / (hRate * 0.30)).toFixed(2)}h` : '0h',
+      'F33': legalHol > 0 && hRate > 0 ? `${(legalHol / (hRate * 1.00)).toFixed(2)}h` : '0h',
+      'G27': Number(basicIncome) || 0,
+      'G28': Number(otPay) || 0,
+      'G29': Number(rdPay) || 0,
+      'G30': Number(rdOTPay) || 0,
+      'G31': Number(nightDiff) || 0,
+      'G32': Number(specialHol) || 0,
+      'G33': Number(legalHol) || 0,
+      'G34': Number(getE('13th Month Pay')) || 0,
+      'G35': Number(generalAllowancesAmt) || 0,
+      'G36': Number(getE('Incentives/Others')) || 0,
+      'G39': Number(payroll.gross_pay) || 0,
+      'N27': (payroll.late_minutes || 0) + (payroll.undertime_minutes || 0) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
+      'N28': absentAmt > 0 && dRate > 0 ? `${(absentAmt / dRate).toFixed(2)}d` : '0d',
+      'N29': halfDayAmt > 0 && dRate > 0 ? `${(halfDayAmt / (dRate / 2)).toFixed(2)}d` : '0d',
+      'O27': Number(getD('Late') + getD('Undertime')) || 0,
+      'O28': Number(getD('Absent')) || 0,
+      'O29': Number(getD('Half Day')) || 0,
+      'O30': Number(getD('SSS EE Contribution')) || 0,
+      'O31': Number(getD('PhilHealth EE Contribution')) || 0,
+      'O32': Number(getD('Pag-IBIG EE Contribution')) || 0,
+      'O33': Number(getD('Withholding Tax')) || 0,
+      'O34': Number(getD('SSS Loan')) || 0,
+      'O35': Number(getD('Pag-IBIG Loan')) || 0,
+      'O36': Number(getD('Cash Advance/Others')) + Number(customDeductionsAmt) || 0,
+      'O39': Number(totalDeductions) || 0,
+      'O40': Number(payroll.net_pay) || 0,
+    }
+
+    const currencyCells = ['L10','G27','G28','G29','G30','G31','G32','G33','G34','G35','G36','G39','O27','O28','O29','O30','O31','O32','O33','O34','O35','O36','O39','O40']
+
+    return { fieldsMap, currencyCells }
+  }
+
+  // Applies cell map to a worksheet (in-place)
+  const applyPaystubData = (worksheet, payroll) => {
+    const { fieldsMap, currencyCells } = buildPaystubCellMap(payroll)
+    Object.entries(fieldsMap).forEach(([cell, value]) => {
+      const cellRef = worksheet.getCell(cell)
+      if (!cellRef) return
+      cellRef.value = value
+      if (currencyCells.includes(cell)) cellRef.numFmt = '"₱"#,##0.00;-"₱"#,##0.00'
+    })
+  }
+
+  // Fetches the paystub template ArrayBuffer (called once per export operation)
+  const fetchPaystubTemplate = async () => {
+    const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
+    const res = await fetch(`${apiBaseUrl}/api/payroll-template`, {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('hr_token')}` }
+    })
+    return res.arrayBuffer()
+  }
+
+  // Copies template structure (columns, merges, rows+styles, images) into a fresh worksheet
+  const copyTemplateToSheet = (sourceWb, sourceWs, targetWb, targetWs) => {
+    // Sheet-level properties (default row height, tab color, etc.)
+    if (sourceWs.properties) targetWs.properties = { ...sourceWs.properties }
+    if (sourceWs.pageSetup) targetWs.pageSetup = { ...sourceWs.pageSetup }
+    if (sourceWs.views?.length) targetWs.views = JSON.parse(JSON.stringify(sourceWs.views))
+
+    // Columns: width + column-level style
+    sourceWs.columns.forEach((col, idx) => {
+      const targetCol = targetWs.getColumn(idx + 1)
+      if (col.width) targetCol.width = col.width
+      if (col.style) targetCol.style = JSON.parse(JSON.stringify(col.style))
+      if (col.hidden) targetCol.hidden = col.hidden
+    })
+
+    // Merged regions: values are {top,left,bottom,right} row/col numbers
+    Object.values(sourceWs._merges || {}).forEach(merge => {
+      try { targetWs.mergeCells(merge.top, merge.left, merge.bottom, merge.right) } catch (_) {}
+    })
+
+    // Rows: height + per-cell style (do NOT set row.style — it resets merged cells)
+    sourceWs.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+      const targetRow = targetWs.getRow(rowNumber)
+      if (row.height) targetRow.height = row.height
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const targetCell = targetRow.getCell(colNumber)
+        targetCell.value = cell.value
+        if (cell.style) targetCell.style = JSON.parse(JSON.stringify(cell.style))
+      })
+      targetRow.commit()
+    })
+
+    // Images (logos, etc.) — look up buffer in source workbook's _media array
+    try {
+      const wsImages = sourceWs.getImages()
+      wsImages.forEach(img => {
+        const sourceMedia = sourceWb.media[img.imageId]
+        if (!sourceMedia?.buffer) return
+        const newImageId = targetWb.addImage({
+          buffer: sourceMedia.buffer,
+          extension: sourceMedia.extension,
+        })
+        targetWs.addImage(newImageId, img.range)
+      })
+    } catch (err) {
+      console.error('Image copy failed:', err)
+    }
+  }
+
+  const handleBatchExportExcel = async () => {
     if (exportablePayrolls.length === 0) return
+    try {
+      const templateBuffer = await fetchPaystubTemplate()
 
-    const headers = ['Account Name', 'Bank Account Number', 'Amount', 'Remarks']
-    const rows = exportablePayrolls.map(p => [
-      `"${((p.employee?.first_name || '') + ' ' + (p.employee?.last_name || '')).trim()}"`,
-      p.employee?.bank_account_number ? `\t${p.employee.bank_account_number.toString().split('.')[0]}` : '',
-      p.net_pay,
-      `"Payroll"`
-    ])
+      // Load template once as the copy source
+      const sourceWb = new ExcelJS.Workbook()
+      await sourceWb.xlsx.load(templateBuffer)
+      const sourceWs = sourceWb.worksheets[0]
 
+      const masterWorkbook = new ExcelJS.Workbook()
 
+      for (let i = 0; i < exportablePayrolls.length; i++) {
+        const payroll = exportablePayrolls[i]
+        const sheetName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim().substring(0, 31) || `Employee ${i + 1}`
+        const ws = masterWorkbook.addWorksheet(sheetName)
 
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n")
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute("download", `${currentCutoff.label.replace(/ /g, '_')}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+        copyTemplateToSheet(sourceWb, sourceWs, masterWorkbook, ws)
+        applyPaystubData(ws, payroll)
+        ws.protect('', { selectLockedCells: true, selectUnlockedCells: true })
+      }
+
+      const buffer = await masterWorkbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `paystubs-${currentCutoff.label.replace(/ /g, '_')}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Batch export error:', error)
+      setAlert({ type: 'error', message: 'Failed to export paystubs. Please try again.' })
+    }
   }
 
   const exportPayrollToExcel = async (payroll) => {
     try {
-      // Fetch the template file via API
-      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/api$/, '')
-      const templateUrl = `${apiBaseUrl}/api/payroll-template`
-      
-      const response = await fetch(templateUrl, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('hr_token')}`
-        }
-      })
-      const arrayBuffer = await response.arrayBuffer()
-      
-      // Load template into workbook
+      const templateBuffer = await fetchPaystubTemplate()
       const workbook = new ExcelJS.Workbook()
-      await workbook.xlsx.load(arrayBuffer)
-      
-      // Get the first worksheet
+      await workbook.xlsx.load(templateBuffer)
       const worksheet = workbook.worksheets[0]
 
-      // Build employee details
-      const employeeName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
-      const payPeriod = `${format(parseISO(payroll.cutoff_start), 'MMM dd, yyyy')} - ${format(parseISO(payroll.cutoff_end), 'MMM dd, yyyy')}`
-      const totalDeductions = (payroll.gross_pay || 0) - (payroll.net_pay || 0)
-      
-      // Get schedule from schedule template (e.g., "Monday to Friday (9 AM - 6 PM)")
-      const getScheduleDisplay = () => {
-        if (!payroll.employee?.schedule) return ''
-        const sched = payroll.employee.schedule
-        
-        // If it's an object with properties
-        if (typeof sched === 'object') {
-          const { days, start_time, end_time } = sched
-          if (days && start_time && end_time) {
-            return `${days} (${start_time} - ${end_time})`
-          }
-          return sched.name || ''
-        }
-        // If it's a string, return as-is
-        return sched
-      }
-      
-      const scheduleDisplay = getScheduleDisplay()
+      applyPaystubData(worksheet, payroll)
+      worksheet.protect('', { selectLockedCells: true, selectUnlockedCells: true })
 
-      // Extract earnings from allowances array
-      const getEarningsAmount = (label) => {
-        if (!payroll.allowances) return 0
-        if (Array.isArray(payroll.allowances)) {
-          const earning = payroll.allowances.find(a => a?.label === label)
-          return earning?.amount ? Number(earning.amount) : 0
-        }
-        // If it's an object
-        return payroll.allowances[label] ? Number(payroll.allowances[label]) : 0
-      }
-
-      // Extract deductions from deductions object/array
-      const getDeductionAmount = (label) => {
-        if (!payroll.deductions) return 0
-        if (Array.isArray(payroll.deductions)) {
-          const deduction = payroll.deductions.find(d => d?.label === label)
-          return deduction?.amount ? Number(deduction.amount) : 0
-        }
-        // If it's an object
-        return payroll.deductions[label] ? Number(payroll.deductions[label]) : 0
-      }
-
-      const totalAllowancesAmount = payroll.allowances?.reduce((sum, a) => sum + Number(a.amount || 0), 0) || 0
-      const basicIncomeAmount = payroll.gross_pay - totalAllowancesAmount
-      const overtimeAmount = getEarningsAmount('Overtime Pay')
-      const restDayPayAmount = getEarningsAmount('Rest Day Pay')
-      const restDayOTPayAmount = getEarningsAmount('Rest Day OT Pay')
-
-      const dRate = Number(payroll.daily_rate) || 0
-      const hRate = dRate / 8
-
-      const restDayPayHours = restDayPayAmount > 0 && hRate > 0 ? restDayPayAmount / (hRate * 1.30) : 0
-      const restDayOTPayHours = restDayOTPayAmount > 0 && hRate > 0 ? restDayOTPayAmount / (hRate * 1.69) : 0
-
-      const nightDiffAmount = getEarningsAmount('Night Differential')
-      const nightDiffHours = nightDiffAmount > 0 && hRate > 0 ? nightDiffAmount / (hRate * 0.10) : 0
-
-      const specialHolidayAmount = getEarningsAmount('Special Holiday')
-      const specialHolidayHours = specialHolidayAmount > 0 && hRate > 0 ? specialHolidayAmount / (hRate * 0.30) : 0
-
-      const legalHolidayAmount = getEarningsAmount('Legal Holiday')
-      const legalHolidayHours = legalHolidayAmount > 0 && hRate > 0 ? legalHolidayAmount / (hRate * 1.00) : 0
-
-      const absentAmount = getDeductionAmount('Absent')
-      const absentDays = absentAmount > 0 && dRate > 0 ? absentAmount / dRate : 0
-
-      const halfDayAmount = getDeductionAmount('Half Day')
-      const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
-
-      // Calculate general allowances: Exclude hardcoded earnings AND the specific custom earning
-      const generalAllowances = payroll.allowances?.filter(a => {
-        const label = a.label?.trim().toLowerCase()
-        return !['overtime pay', 'rest day pay', 'rest day ot pay', 'night differential', 'special holiday', 'legal holiday', 'incentives/others', '13th month pay'].includes(label)
-      }) || []
-      const generalAllowancesAmount = generalAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
-
-      const otherDeductions = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount })))?.filter(d => !['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'SSS Loan', 'Pag-IBIG Loan', 'Cash Advance/Others', 'Withholding Tax'].includes(d.label)) || []
-      const customDeductionsAmount = otherDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0)
-
-      // Map payroll data to template cells
-      const fieldsMap = {
-        // Employee Details
-        'E13': employeeName,
-        'E15': payroll.employee?.phone || payroll.employee?.contact_info || '', // Phone number
-        'E17': scheduleDisplay, // Schedule from template (e.g., Monday to Friday (9 AM - 6 PM))
-        'E19': payPeriod,
-        'L10': Number(payroll.net_pay) || 0,
-        'L13': payroll.employee?.sss_number || '',
-        'L15': payroll.employee?.philhealth_number || '',
-        'L17': payroll.employee?.pagibig_number || '',
-        'L19': payroll.employee?.tin_number || '',
-        'L21': payroll.employee?.bank_account_number || '',
-        'E21': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
-
-        // Earnings - Days/Hrs (F column)
-        'F27': payroll.days_worked ? `${payroll.days_worked} days` : '0 days',
-        'F28': payroll.overtime_hours ? `${payroll.overtime_hours}h` : '0h',
-        'F29': restDayPayHours ? `${Number(restDayPayHours).toFixed(2)}h` : '0h',
-        'F30': restDayOTPayHours ? `${Number(restDayOTPayHours).toFixed(2)}h` : '0h',
-        'F31': nightDiffHours ? `${Number(nightDiffHours).toFixed(2)}h` : '0h',
-        'F32': specialHolidayHours ? `${Number(specialHolidayHours).toFixed(2)}h` : '0h',
-        'F33': legalHolidayHours ? `${Number(legalHolidayHours).toFixed(2)}h` : '0h',
-        
-        // Earnings - Amount (G column)
-        'G27': Number(basicIncomeAmount) || 0,
-        'G28': Number(overtimeAmount) || 0,
-        'G29': Number(restDayPayAmount) || 0,
-        'G30': Number(restDayOTPayAmount) || 0,
-        'G31': Number(nightDiffAmount) || 0,
-        'G32': Number(specialHolidayAmount) || 0,
-        'G33': Number(legalHolidayAmount) || 0,
-        'G34': Number(getEarningsAmount('13th Month Pay')) || 0, // 13th Month Pay
-        'G35': Number(generalAllowancesAmount) || 0, // General Allowances
-        'G36': Number(getEarningsAmount('Incentives/Others')) || 0, // Incentives/Others Amount
-        'G39': Number(payroll.gross_pay) || 0,
-        
-        // Deductions - Days/Hrs (N column)
-        'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
-        'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
-        'N29': halfDayDays ? `${Number(halfDayDays).toFixed(2)}d` : '0d',
-        
-        // Deductions - Amount (O column)
-        'O27': Number(getDeductionAmount('Late') + getDeductionAmount('Undertime')) || 0,
-        'O28': Number(getDeductionAmount('Absent')) || 0,
-        'O29': Number(getDeductionAmount('Half Day')) || 0,
-        'O30': Number(getDeductionAmount('SSS EE Contribution')) || 0,
-        'O31': Number(getDeductionAmount('PhilHealth EE Contribution')) || 0,
-        'O32': Number(getDeductionAmount('Pag-IBIG EE Contribution')) || 0,
-        'O33': Number(getDeductionAmount('Withholding Tax')) || 0,
-        'O34': Number(getDeductionAmount('SSS Loan')) || 0,
-        'O35': Number(getDeductionAmount('Pag-IBIG Loan')) || 0,
-        'O36': Number(getDeductionAmount('Cash Advance/Others')) + Number(customDeductionsAmount) || 0,
-        'O39': Number(totalDeductions) || 0,
-        'O40': Number(payroll.net_pay) || 0,
-      }
-
-      // Currency cells that need Philippine peso formatting
-      const currencyCells = [
-        'L10', // Net Pay
-        'G27', 'G28', 'G29', 'G30', 'G31', 'G32', 'G33', 'G34', 'G35', 'G36', 'G39', // Earnings amounts
-        'O27', 'O28', 'O29', 'O30', 'O31', 'O32', 'O33', 'O34', 'O35', 'O36', 'O39', 'O40' // Deductions amounts
-      ]
-
-      // Apply data to template cells
-      Object.entries(fieldsMap).forEach(([cell, value]) => {
-        const cellRef = worksheet.getCell(cell)
-        if (cellRef) {
-          cellRef.value = value
-          
-          // Format currency cells as Philippine peso
-          if (currencyCells.includes(cell)) {
-            cellRef.numFmt = '"₱"#,##0.00;-"₱"#,##0.00'
-          }
-        }
-      })
-
-      // Generate file
       const buffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url = window.URL.createObjectURL(blob)
@@ -1002,11 +1013,11 @@ export default function PayrollPage() {
               </button>
               <button
                 disabled={exportablePayrolls.length === 0}
-                onClick={handleBatchExportCsv}
+                onClick={handleBatchExportExcel}
                 className="btn-primary py-2 text-xs whitespace-nowrap bg-green-600 hover:bg-green-700 border-green-600"
                 title={exportablePayrolls.length === 0 ? 'No finalized or paid payrolls to export' : ''}
               >
-                <Download size={14} /> Batch Export CSV
+                <Download size={14} /> Export All Paystubs
               </button>
               <button
                 disabled={finalizedPaystubs.length === 0 || sendPaystubsMutation.isPending}
