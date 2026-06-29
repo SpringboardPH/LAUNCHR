@@ -157,16 +157,7 @@ class PayrollController extends Controller
                 $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
-                $workEnd = $schedule?->template?->work_end_time ?? '18:00:00';
-                
-                // Calculate expected hours dynamically from work times
-                $workStartMin = $this->parseTimeToMinutes($workStart);
-                $workEndMin = $this->parseTimeToMinutes($workEnd);
-                if ($workEndMin < $workStartMin) {
-                    $workEndMin += 1440; // Handle overnight shifts
-                }
-                $expectedHours = ($workEndMin - $workStartMin) / 60;
+                $isFlexiSchedule = ($log->schedule_type ?? $schedule?->template?->type ?? 'fixed') === 'flexi';
 
                 // Track absences and half days for deduction purposes
                 if ($log->status === 'absent') {
@@ -191,13 +182,43 @@ class PayrollController extends Controller
                     continue;
                 }
 
+                if ($isFlexiSchedule) {
+                    $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
+                    $details = AttendanceService::calculateFlexiDetails(
+                        $log->clock_in_time,
+                        $log->clock_out_time,
+                        $expectedHours
+                    );
+                    // Flexi has no fixed end time — undertime is purely hours-based
+                    $earlyDepartureMin = in_array($log->status, ['completed', 'overtime'])
+                        ? 0
+                        : $details['undertime_minutes'];
+                } else {
+                    $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
+                    $workEnd   = $schedule?->template?->work_end_time   ?? '18:00:00';
 
-                $details = AttendanceService::calculateDetails(
-                    $log->clock_in_time,
-                    $log->clock_out_time,
-                    $expectedHours,
-                    $workStart
-                );
+                    $workStartMin = $this->parseTimeToMinutes($workStart);
+                    $workEndMin   = $this->parseTimeToMinutes($workEnd);
+                    if ($workEndMin < $workStartMin) {
+                        $workEndMin += 1440;
+                    }
+                    $expectedHours = ($workEndMin - $workStartMin) / 60;
+
+                    $details = AttendanceService::calculateDetails(
+                        $log->clock_in_time,
+                        $log->clock_out_time,
+                        $expectedHours,
+                        $workStart
+                    );
+
+                    $earlyDepartureMin = 0;
+                    if (!in_array($log->status, ['completed', 'overtime'])) {
+                        $clockOutMin = $log->clock_out_time
+                            ? $this->parseTimeToMinutes($log->clock_out_time)
+                            : $this->parseTimeToMinutes($workEnd);
+                        $earlyDepartureMin = max(0, $this->parseTimeToMinutes($workEnd) - $clockOutMin);
+                    }
+                }
 
                 // Only count overtime hours if status is actually 'overtime' (not covered by grace period)
                 $overtimeHours = $log->status === 'overtime' ? $details['overtime_hours'] : 0;
@@ -205,13 +226,6 @@ class PayrollController extends Controller
                 // Track per-date OT hours for request deduplication
                 if (!$isRestDay && $details['overtime_hours'] > 0) {
                     $dateOtHours[$dateStr] = ($dateOtHours[$dateStr] ?? 0) + $details['overtime_hours'];
-                }
-                // Undertime = time left before scheduled end; zero if grace covered it (completed/overtime)
-                $earlyDepartureMin = 0;
-                if (!in_array($log->status, ['completed', 'overtime'])) {
-                    $workEndMin = $this->parseTimeToMinutes($workEnd);
-                    $clockOutMin = $log->clock_out_time ? $this->parseTimeToMinutes($log->clock_out_time) : $workEndMin;
-                    $earlyDepartureMin = max(0, $workEndMin - $clockOutMin);
                 }
 
                 // Track dates with undertime for request deduplication
@@ -237,12 +251,17 @@ class PayrollController extends Controller
 
             // Count non-absence holidays on scheduled work days as paid days.
             // These have no AttendanceLog (employee didn't clock in) so the loop above misses them.
-            $holidayWorkStart = $latestSchedule?->template?->work_start_time ?? '09:00:00';
-            $holidayWorkEnd   = $latestSchedule?->template?->work_end_time   ?? '18:00:00';
-            $holidayStartMin  = $this->parseTimeToMinutes($holidayWorkStart);
-            $holidayEndMin    = $this->parseTimeToMinutes($holidayWorkEnd);
-            if ($holidayEndMin < $holidayStartMin) $holidayEndMin += 1440;
-            $holidayExpectedHours = ($holidayEndMin - $holidayStartMin) / 60;
+            $isLatestFlexiSchedule = ($latestSchedule?->template?->type ?? 'fixed') === 'flexi';
+            if ($isLatestFlexiSchedule) {
+                $holidayExpectedHours = $latestSchedule?->template?->required_hours_per_day ?? 8;
+            } else {
+                $holidayWorkStart = $latestSchedule?->template?->work_start_time ?? '09:00:00';
+                $holidayWorkEnd   = $latestSchedule?->template?->work_end_time   ?? '18:00:00';
+                $holidayStartMin  = $this->parseTimeToMinutes($holidayWorkStart);
+                $holidayEndMin    = $this->parseTimeToMinutes($holidayWorkEnd);
+                if ($holidayEndMin < $holidayStartMin) $holidayEndMin += 1440;
+                $holidayExpectedHours = ($holidayEndMin - $holidayStartMin) / 60;
+            }
 
             foreach ($events as $dateStr => $event) {
                 if ($event->type && !$event->type->counts_as_absence) {

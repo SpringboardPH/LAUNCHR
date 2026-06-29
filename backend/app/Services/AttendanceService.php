@@ -115,6 +115,39 @@ class AttendanceService
     }
 
     /**
+     * Calculate detailed metrics for payroll on flexi schedules (no fixed start/end time).
+     */
+    public static function calculateFlexiDetails(?string $clockIn, ?string $clockOut, int $requiredHours): array
+    {
+        if (!$clockIn || !$clockOut) {
+            return [
+                'hours_worked'      => 0,
+                'overtime_hours'    => 0,
+                'late_minutes'      => 0,
+                'undertime_minutes' => 0,
+                'status'            => $clockIn ? 'working' : 'absent'
+            ];
+        }
+
+        $inMin  = self::parseTimeToMinutes($clockIn);
+        $outMin = self::parseTimeToMinutes($clockOut);
+        if ($outMin < $inMin) $outMin += 1440;
+
+        $minutesWorked = $outMin - $inMin;
+        $hoursWorked   = $minutesWorked / 60;
+        $overtimeHours = max(0, $hoursWorked - $requiredHours);
+        $undertimeMin  = max(0, ($requiredHours * 60) - $minutesWorked);
+
+        return [
+            'hours_worked'      => $hoursWorked,
+            'overtime_hours'    => $overtimeHours,
+            'late_minutes'      => 0,
+            'undertime_minutes' => $undertimeMin,
+            'status'            => self::calculateFlexiStatus($clockIn, $clockOut, $requiredHours)
+        ];
+    }
+
+    /**
      * Calculate detailed metrics for payroll.
      */
     public static function calculateDetails(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart): array

@@ -56,6 +56,10 @@ export default function AttendancePage() {
     onConfirm: () => {},
   })
   
+  const [todayPage, setTodayPage] = useState(1)
+  const [logPage, setLogPage] = useState(1)
+  const PAGE_SIZE = 20
+
   const [alert, setAlert] = useState(null)
   const qc = useQueryClient()
 
@@ -394,6 +398,10 @@ export default function AttendancePage() {
     else setNavigatedCutoff(getPrevCutoff(currentCutoff, adminSettings))
   }
 
+  // Reset pages when filters change
+  useEffect(() => { setTodayPage(1) }, [todaySearch, todayStatusFilter, todayGroupFilter])
+  useEffect(() => { setLogPage(1) }, [monthlyEmployeeSearch, monthlyStatus, monthlyDate, monthlyGroup, currentCutoff.startDate])
+
   const getClockedIn = (empId) => todayLogsArray.find(l => l.employee_id === empId)
   const getScheduleForEmployee = (empId) => resolvedCurrentSchedules.find(s => s.employee_id === empId)
 
@@ -558,7 +566,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filteredTodayEmployees.map(emp => {
+                {filteredTodayEmployees.slice((todayPage - 1) * PAGE_SIZE, todayPage * PAGE_SIZE).map(emp => {
                   const log = getClockedIn(emp.id)
                   const schedule = getScheduleForEmployee(emp.id)
                   return (
@@ -674,6 +682,17 @@ export default function AttendancePage() {
               </tbody>
             </table>
             </div>
+            {filteredTodayEmployees.length > PAGE_SIZE && (
+              <div className="flex items-center justify-end mt-4">
+                <div className="inline-flex items-center bg-gray-100 text-gray-600 text-xs font-medium rounded-full overflow-hidden">
+                  <button className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" onClick={() => setTodayPage(p => p - 1)} disabled={todayPage <= 1}>‹ Prev</button>
+                  <span className="px-3 py-1.5 border-x border-gray-200">
+                    {(todayPage - 1) * PAGE_SIZE + 1}–{Math.min(todayPage * PAGE_SIZE, filteredTodayEmployees.length)} of {filteredTodayEmployees.length} · Page {todayPage}/{Math.ceil(filteredTodayEmployees.length / PAGE_SIZE)}
+                  </span>
+                  <button className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" onClick={() => setTodayPage(p => p + 1)} disabled={todayPage >= Math.ceil(filteredTodayEmployees.length / PAGE_SIZE)}>Next ›</button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -776,7 +795,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {logs.map(log => (
+                {logs.slice((logPage - 1) * PAGE_SIZE, logPage * PAGE_SIZE).map(log => (
                   <tr key={log.id} className="hover:bg-gray-50">
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">{format(parseISO(log.date), 'MMM dd, yyyy')}</td>
                     <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
@@ -826,6 +845,17 @@ export default function AttendancePage() {
                 )}
               </tbody>
             </table>
+            {logs.length > PAGE_SIZE && (
+              <div className="flex items-center justify-end mt-4">
+                <div className="inline-flex items-center bg-gray-100 text-gray-600 text-xs font-medium rounded-full overflow-hidden">
+                  <button className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" onClick={() => setLogPage(p => p - 1)} disabled={logPage <= 1}>‹ Prev</button>
+                  <span className="px-3 py-1.5 border-x border-gray-200">
+                    {(logPage - 1) * PAGE_SIZE + 1}–{Math.min(logPage * PAGE_SIZE, logs.length)} of {logs.length} · Page {logPage}/{Math.ceil(logs.length / PAGE_SIZE)}
+                  </span>
+                  <button className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" onClick={() => setLogPage(p => p + 1)} disabled={logPage >= Math.ceil(logs.length / PAGE_SIZE)}>Next ›</button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Grid Visualizer */
