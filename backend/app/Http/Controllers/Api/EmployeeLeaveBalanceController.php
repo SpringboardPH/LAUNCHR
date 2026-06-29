@@ -70,7 +70,9 @@ class EmployeeLeaveBalanceController extends Controller
 
         $balances = $types->map(function (LeaveType $leaveType) use ($employee, $cycle, $overrides) {
             $override = $overrides->get($leaveType->id);
-            $effectiveDays = $override ? (int) $override->allocated_days : (int) $leaveType->default_days;
+            $allocatedDays = $override ? (int) $override->allocated_days : (int) $leaveType->default_days;
+            $carryoverDays = $override ? (int) $override->carryover_days : 0;
+            $effectiveDays = $allocatedDays + $carryoverDays;
             $usedDays = $this->usedDays($employee, $leaveType, $cycle['start'], $cycle['end']);
 
             return [
@@ -81,14 +83,18 @@ class EmployeeLeaveBalanceController extends Controller
                     'description' => $leaveType->description,
                     'default_days' => (int) $leaveType->default_days,
                     'requires_balance' => (bool) $leaveType->requires_balance,
+                    'is_paid' => (bool) ($leaveType->is_paid ?? true),
                     'is_active' => (bool) $leaveType->is_active,
                 ],
                 'override' => $override ? [
                     'id' => $override->id,
                     'allocated_days' => (int) $override->allocated_days,
+                    'carryover_days' => (int) $override->carryover_days,
                     'is_active' => (bool) $override->is_active,
                     'notes' => $override->notes,
                 ] : null,
+                'allocated' => $allocatedDays,
+                'carryover' => $carryoverDays,
                 'total' => $effectiveDays,
                 'used' => $usedDays,
                 'remaining' => max(0, $effectiveDays - $usedDays),
@@ -119,6 +125,7 @@ class EmployeeLeaveBalanceController extends Controller
     {
         $validated = $request->validate([
             'allocated_days' => 'required|integer|min:0|max:365',
+            'carryover_days' => 'sometimes|integer|min:-365|max:365',
             'is_active' => 'sometimes|boolean',
             'notes' => 'nullable|string|max:1000',
         ]);
@@ -130,6 +137,7 @@ class EmployeeLeaveBalanceController extends Controller
             ],
             [
                 'allocated_days' => $validated['allocated_days'],
+                'carryover_days' => $validated['carryover_days'] ?? 0,
                 'is_active' => $request->boolean('is_active', true),
                 'notes' => $validated['notes'] ?? null,
             ]

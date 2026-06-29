@@ -19,6 +19,7 @@ import {
   getSystemClock,
   getEmployeeLeaveBalances,
   upsertEmployeeLeaveBalance,
+  resetEmployeeLeaveBalance,
 } from '../../api/queries'
 
 const EMPTY_TYPE_FORM = {
@@ -26,6 +27,7 @@ const EMPTY_TYPE_FORM = {
   description: '',
   default_days: 0,
   requires_balance: true,
+  is_paid: true,
   is_active: true,
 }
 
@@ -43,6 +45,7 @@ export default function ConfigureLeavePage() {
     leaveTypeId: '',
     leaveTypeName: '',
     allocated_days: 0,
+    carryover_days: 0,
     notes: '',
     is_active: true,
   })
@@ -134,13 +137,7 @@ export default function ConfigureLeavePage() {
     mutationFn: (payload) => upsertEmployeeLeaveBalance(selectedEmployeeId, payload.leaveTypeId, payload),
     onSuccess: () => {
       setBalanceModalOpen(false)
-      setBalanceForm({
-        leaveTypeId: '',
-        leaveTypeName: '',
-        allocated_days: 0,
-        notes: '',
-        is_active: true,
-      })
+      setBalanceForm({ leaveTypeId: '', leaveTypeName: '', allocated_days: 0, carryover_days: 0, notes: '', is_active: true })
       setBalanceError('')
       qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId) })
       qc.invalidateQueries({ queryKey: leaveKeys.balance(selectedEmployeeId) })
@@ -148,6 +145,15 @@ export default function ConfigureLeavePage() {
     },
     onError: (error) => {
       setBalanceError(error?.response?.data?.message || 'Unable to save employee balance')
+    },
+  })
+
+  const resetBalanceMutation = useMutation({
+    mutationFn: ({ leaveTypeId }) => resetEmployeeLeaveBalance(selectedEmployeeId, leaveTypeId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.detail(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance(selectedEmployeeId) })
+      qc.invalidateQueries({ queryKey: leaveKeys.balance() })
     },
   })
 
@@ -159,6 +165,7 @@ export default function ConfigureLeavePage() {
         description: leaveType.description || '',
         default_days: leaveType.default_days,
         requires_balance: Boolean(leaveType.requires_balance),
+        is_paid: Boolean(leaveType.is_paid ?? true),
         is_active: Boolean(leaveType.is_active),
       })
     } else {
@@ -175,6 +182,7 @@ export default function ConfigureLeavePage() {
       leaveTypeId: balanceRow.leave_type.id,
       leaveTypeName: balanceRow.leave_type.name,
       allocated_days: balanceRow.override?.allocated_days ?? balanceRow.leave_type.default_days,
+      carryover_days: balanceRow.override?.carryover_days ?? 0,
       notes: balanceRow.override?.notes ?? '',
       is_active: balanceRow.override ? Boolean(balanceRow.override.is_active) : true,
     })
@@ -190,6 +198,7 @@ export default function ConfigureLeavePage() {
       description: typeForm.description,
       default_days: Number(typeForm.default_days),
       requires_balance: Boolean(typeForm.requires_balance),
+      is_paid: Boolean(typeForm.is_paid),
       is_active: Boolean(typeForm.is_active),
     })
   }
@@ -205,6 +214,7 @@ export default function ConfigureLeavePage() {
     saveBalanceMutation.mutate({
       leaveTypeId: balanceForm.leaveTypeId,
       allocated_days: Number(balanceForm.allocated_days),
+      carryover_days: Number(balanceForm.carryover_days),
       notes: balanceForm.notes,
       is_active: balanceForm.is_active,
     })
@@ -295,7 +305,7 @@ export default function ConfigureLeavePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    {['Name', 'Code', 'Default Days', 'Balance Rule', 'Status', 'Actions'].map((heading) => (
+                    {['Name', 'Code', 'Default Days', 'Balance Rule', 'Paid Leave', 'Status', 'Actions'].map((heading) => (
                       <th key={heading} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                         {heading}
                       </th>
@@ -312,6 +322,11 @@ export default function ConfigureLeavePage() {
                       <td className="px-4 py-3 text-gray-500 text-xs font-mono">{leaveType.code}</td>
                       <td className="px-4 py-3 text-gray-700">{leaveType.default_days}</td>
                       <td className="px-4 py-3 text-gray-700">{leaveType.requires_balance ? 'Counts against balance' : 'Does not require balance'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`badge-${(leaveType.is_paid ?? true) ? 'green' : 'gray'}`}>
+                          {(leaveType.is_paid ?? true) ? 'Paid' : 'Unpaid'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3"><StatusBadge status={leaveType.is_active ? 'active' : 'inactive'} /></td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
@@ -339,7 +354,7 @@ export default function ConfigureLeavePage() {
 
                   {leaveTypes.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-10 text-center text-sm text-gray-400">
+                      <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
                         No leave types configured yet.
                       </td>
                     </tr>
@@ -409,7 +424,7 @@ export default function ConfigureLeavePage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {['Type', 'Default', 'Override', 'Used', 'Remaining', 'Status', 'Actions'].map((heading) => (
+                        {['Type', 'Allocated', 'Carryover', 'Total', 'Used', 'Remaining', 'Override', 'Actions'].map((heading) => (
                           <th key={heading} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
                             {heading}
                           </th>
@@ -423,14 +438,33 @@ export default function ConfigureLeavePage() {
                             <div className="font-medium text-gray-900">{balanceRow.leave_type.name}</div>
                             <p className="text-xs text-gray-500 mt-0.5">{balanceRow.leave_type.code}</p>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{balanceRow.leave_type.default_days}</td>
                           <td className="px-4 py-3 text-gray-700">
-                            {balanceRow.override?.is_active ? balanceRow.override.allocated_days : 'Uses default'}
+                            {balanceRow.allocated}
+                            {!balanceRow.override && <span className="text-xs text-gray-400 ml-1">(default)</span>}
                           </td>
+                          <td className="px-4 py-3 text-gray-700">
+                            {balanceRow.carryover > 0
+                              ? <span className="text-green-700 font-medium">+{balanceRow.carryover}</span>
+                              : balanceRow.carryover < 0
+                                ? <span className="text-red-600 font-medium">{balanceRow.carryover}</span>
+                                : <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-gray-900">{balanceRow.total}</td>
                           <td className="px-4 py-3 text-gray-700">{balanceRow.used}</td>
-                          <td className="px-4 py-3 text-gray-700">{balanceRow.remaining}</td>
                           <td className="px-4 py-3">
-                            <StatusBadge status={(balanceRow.override && !balanceRow.override.is_active) ? 'inactive' : 'active'} />
+                            <span className={`font-semibold ${balanceRow.remaining === 0 ? 'text-red-600' : balanceRow.remaining <= 2 ? 'text-amber-600' : 'text-green-700'}`}>
+                              {balanceRow.remaining}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              {balanceRow.override
+                                ? <span className="badge-blue">Custom</span>
+                                : <span className="badge-gray">Default</span>}
+                              {balanceRow.override && (
+                                <StatusBadge status={balanceRow.override.is_active ? 'active' : 'inactive'} />
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-2">
@@ -438,10 +472,27 @@ export default function ConfigureLeavePage() {
                                 type="button"
                                 onClick={() => openBalanceModal(balanceRow)}
                                 className="btn-ghost p-1.5 text-brand-600 hover:bg-brand-50"
-                                title="Edit"
+                                title="Edit override"
                               >
                                 <Edit2 size={14} />
                               </button>
+                              {balanceRow.override && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmConfig({
+                                    open: true,
+                                    title: 'Reset to Default',
+                                    message: `Reset ${balanceRow.leave_type.name} for this employee back to the type default (${balanceRow.leave_type.default_days} days)? This removes any override, carryover, and notes.`,
+                                    onConfirm: () => resetBalanceMutation.mutate({ leaveTypeId: balanceRow.leave_type.id }),
+                                    type: 'danger',
+                                  })}
+                                  disabled={resetBalanceMutation.isPending}
+                                  className="btn-ghost p-1.5 text-red-500 hover:bg-red-50"
+                                  title="Reset to default"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -496,6 +547,15 @@ export default function ConfigureLeavePage() {
             </FormField>
             <div className="space-y-3 rounded-lg border border-gray-200 p-4">
               <label className="flex items-center justify-between gap-3 text-sm text-gray-700">
+                <span>Paid leave</span>
+                <input
+                  type="checkbox"
+                  checked={typeForm.is_paid}
+                  onChange={(event) => setTypeForm((current) => ({ ...current, is_paid: event.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3 text-sm text-gray-700">
                 <span>Requires balance</span>
                 <input
                   type="checkbox"
@@ -534,15 +594,29 @@ export default function ConfigureLeavePage() {
         size="sm"
       >
         <form onSubmit={handleBalanceSubmit} className="space-y-4">
-          <FormField label="Allocated days" required>
-            <input
-              type="number"
-              min="0"
-              value={balanceForm.allocated_days}
-              onChange={(event) => setBalanceForm((current) => ({ ...current, allocated_days: event.target.value }))}
-              className="input"
-            />
-          </FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Allocated days" required>
+              <input
+                type="number"
+                min="0"
+                max="365"
+                value={balanceForm.allocated_days}
+                onChange={(event) => setBalanceForm((current) => ({ ...current, allocated_days: event.target.value }))}
+                className="input"
+              />
+            </FormField>
+            <FormField label="Carryover days">
+              <input
+                type="number"
+                min="-365"
+                max="365"
+                value={balanceForm.carryover_days}
+                onChange={(event) => setBalanceForm((current) => ({ ...current, carryover_days: event.target.value }))}
+                className="input"
+              />
+            </FormField>
+          </div>
+          <p className="text-xs text-gray-500 -mt-2">Total = allocated + carryover. Carryover can be negative to reduce balance.</p>
 
           <FormField label="Notes">
             <textarea
@@ -555,10 +629,8 @@ export default function ConfigureLeavePage() {
 
           <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-700">
             <div>
-              <span className="font-medium">Active override</span>
-              <p className="text-xs text-gray-500 mt-1">
-                On: use employee-specific allocated days. Off: use leave type default days.
-              </p>
+              <span className="font-medium">Enabled for this employee</span>
+              <p className="text-xs text-gray-500 mt-1">Inactive = employee cannot file this leave type.</p>
             </div>
             <input
               type="checkbox"

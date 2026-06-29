@@ -12,12 +12,14 @@ class LeaveType extends Model
         'description',
         'default_days',
         'requires_balance',
+        'is_paid',
         'is_active',
     ];
 
     protected $casts = [
         'default_days' => 'integer',
         'requires_balance' => 'boolean',
+        'is_paid' => 'boolean',
         'is_active' => 'boolean',
     ];
 

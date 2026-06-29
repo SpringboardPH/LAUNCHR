@@ -141,7 +141,7 @@ export function StatusBadge({ status }) {
     part_time:   'badge-yellow',
     contractual: 'badge-gray',
     working:       'badge-green',
-    on_leave:      'badge-blue',
+    on_leave:      'badge-gray',
     holiday:       'badge-purple',
     undertime:     'badge-orange',
     half_day:      'badge-orange',
@@ -150,7 +150,13 @@ export function StatusBadge({ status }) {
     not_scheduled: 'badge-gray',
     not_yet:       'badge-gray',
   }
-  const label = status?.replace(/_/g, ' ')
+  const labels = {
+    on_leave:      'on leave',
+    not_scheduled: 'Not Scheduled',
+    not_yet:       'Not Yet',
+    half_day:      'Half Day',
+  }
+  const label = labels[status] ?? status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
 }
 

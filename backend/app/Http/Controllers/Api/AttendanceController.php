@@ -653,6 +653,23 @@ class AttendanceController extends Controller
                             $log->holiday_name = $events->get($dateStr)->title;
                         }
 
+                        // Reconcile absent/on_leave with the current approved-leave state.
+                        // mark-absent may have run before a leave was approved, or an old
+                        // code path may have written on_leave directly to the DB.
+                        if ($log->status === 'absent' || $log->status === 'on_leave') {
+                            $coveredByLeave = $employeeLeaves->some(function ($leave) use ($date) {
+                                return $date->between(
+                                    Carbon::parse($leave->start_date)->startOfDay(),
+                                    Carbon::parse($leave->end_date)->endOfDay()
+                                );
+                            });
+                            if ($log->status === 'absent' && $coveredByLeave) {
+                                $log->status = 'on_leave';
+                            } elseif ($log->status === 'on_leave' && !$coveredByLeave) {
+                                $log->status = 'absent';
+                            }
+                        }
+
                         $employeeRecords[] = $log;
                     } elseif ($date->lte($generationEndDate)) {
                         // Check for holiday first
@@ -851,6 +868,12 @@ class AttendanceController extends Controller
             $this->maybeReopenAutoClockedOutLog($record, $schedule, $dayRule, $today);
             $record?->refresh();
 
+            $onLeaveToday = \App\Models\LeaveRequest::where('employee_id', $employee->id)
+                ->where('status', 'approved')
+                ->whereDate('start_date', '<=', $today->toDateString())
+                ->whereDate('end_date', '>=', $today->toDateString())
+                ->exists();
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -879,6 +902,7 @@ class AttendanceController extends Controller
                     'clocked_out' => $record ? (bool) $record->clock_out_time : false,
                     'clock_in_time' => $record?->clock_in_time,
                     'clock_out_time' => $record?->clock_out_time,
+                    'on_leave' => $onLeaveToday,
                 ],
                 'message' => 'Today\'s attendance retrieved',
             ]);
@@ -894,6 +918,28 @@ class AttendanceController extends Controller
                 ->where('date', $today)
                 ->orderBy('employee_id')
                 ->get();
+
+            // Append synthetic on_leave entries for employees on approved leave with no log today.
+            $loggedEmployeeIds = $records->pluck('employee_id')->all();
+            \App\Models\LeaveRequest::with('employee')
+                ->where('status', 'approved')
+                ->whereDate('start_date', '<=', $today->toDateString())
+                ->whereDate('end_date', '>=', $today->toDateString())
+                ->whereNotIn('employee_id', $loggedEmployeeIds)
+                ->get()
+                ->each(function ($leave) use ($records, $today) {
+                    $records->push([
+                        'id'               => null,
+                        'employee_id'      => $leave->employee_id,
+                        'employee'         => $leave->employee,
+                        'date'             => $today->toDateString(),
+                        'status'           => 'on_leave',
+                        'clock_in_time'    => null,
+                        'clock_out_time'   => null,
+                        'clock_in_notes'   => null,
+                        'clock_out_notes'  => null,
+                    ]);
+                });
 
             return response()->json([
                 'success' => true,
@@ -981,6 +1027,21 @@ class AttendanceController extends Controller
 
                 if ($events->has($dateStr) && !$events->get($dateStr)->shouldCountAsAbsence()) {
                     $log->holiday_name = $events->get($dateStr)->title;
+                }
+
+                // Reconcile absent/on_leave with the current approved-leave state.
+                if ($log->status === 'absent' || $log->status === 'on_leave') {
+                    $coveredByLeave = $leaves->some(function ($leave) use ($date) {
+                        return $date->between(
+                            Carbon::parse($leave->start_date)->startOfDay(),
+                            Carbon::parse($leave->end_date)->endOfDay()
+                        );
+                    });
+                    if ($log->status === 'absent' && $coveredByLeave) {
+                        $log->status = 'on_leave';
+                    } elseif ($log->status === 'on_leave' && !$coveredByLeave) {
+                        $log->status = 'absent';
+                    }
                 }
 
                 $allDays[] = $log;

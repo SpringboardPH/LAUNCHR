@@ -409,7 +409,8 @@ export default function AttendancePage() {
       const win = getClockWindow(schedule, sysClock)
       let effective
       if (log) {
-        effective = log.clock_out_time ? (log.status || 'completed') : 'working'
+        if (log.status === 'on_leave') effective = 'on_leave'
+        else effective = log.clock_out_time ? (log.status || 'completed') : 'working'
       } else {
         if (win?.isInactiveDay) effective = 'not_scheduled'
         else if (win && win.currentMinutes > win.outEnd) effective = 'absent'
@@ -590,7 +591,9 @@ export default function AttendancePage() {
                       <td className="py-2.5 pr-4 text-gray-600 text-sm">{calculateHoursWorked(log?.clock_in_time, log?.clock_out_time)}</td>
                       <td className="py-2.5 pr-4">
                         {log ? (
-                          log.clock_out_time ? (
+                          log.status === 'on_leave' ? (
+                            <StatusBadge status="on_leave" />
+                          ) : log.clock_out_time ? (
                             <StatusBadge status={log.status} />
                           ) : (
                             <StatusBadge status="working" />
@@ -611,7 +614,7 @@ export default function AttendancePage() {
                         )}
                       </td>
                       <td className="py-2.5">
-                        {!log || !log.clock_in_time ? (
+                        {log?.status === 'on_leave' ? null : !log || !log.clock_in_time ? (
                           (() => {
                             const win = getClockWindow(schedule, sysClock)
                             const canClockIn = Boolean(win) && !win.isInactiveDay && win.currentMinutes >= win.inStart && win.currentMinutes <= win.outEnd
@@ -791,10 +794,14 @@ export default function AttendancePage() {
                           const event = getEventForDate(log.date)
                           const color = getEventColor(event)
                           const type = getEventTypeForEvent(event)
-                          
-                          if (type) {
+                          // Only replace the status badge for non-working holidays.
+                          // Events that count as absence (e.g. a "Leave" event type) should
+                          // not hide individual attendance statuses.
+                          const countsAsAbsence = event?.counts_as_absence ?? event?.type?.counts_as_absence ?? true
+
+                          if (type && !countsAsAbsence) {
                             return (
-                              <span 
+                              <span
                                 className="px-2 py-1 rounded-md text-[10px] font-bold uppercase border"
                                 style={{ backgroundColor: `${color}15`, color: color, borderColor: `${color}30` }}
                               >
@@ -803,20 +810,7 @@ export default function AttendancePage() {
                             )
                           }
 
-                          return (
-                            <>
-                              <StatusBadge status={log.status} />
-                              {color && (
-                                <span 
-                                  className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase w-fit whitespace-nowrap inline-flex border"
-                                  style={{ backgroundColor: `${color}15`, color: color, borderColor: `${color}30` }}
-                                  title={event.title}
-                                >
-                                  {type?.code || getEventCode(event)}
-                                </span>
-                              )}
-                            </>
-                          )
+                          return <StatusBadge status={log.status} />
                         })()}
                       </div>
                     </td>
@@ -861,7 +855,7 @@ export default function AttendancePage() {
                 undertime: { letter: 'U', color: 'bg-orange-500 text-white' },
                 half_day:  { letter: 'H', color: 'bg-orange-400 text-white' },
                 overtime:  { letter: 'O', color: 'bg-blue-600 text-white' },
-                on_leave:  { letter: 'V', color: 'bg-blue-400 text-white' },
+                on_leave:  { letter: 'L', color: 'bg-gray-900 text-white' },
                 holiday:   { letter: 'H', color: 'bg-purple-500 text-white' },
                 working:   { letter: 'W', color: 'bg-green-400 text-white' },
               }
@@ -895,20 +889,22 @@ export default function AttendancePage() {
                           const event = getEventForDate(dateStr)
                           const color = getEventColor(event)
                           const eventType = getEventTypeForEvent(event)
+                          const eventCountsAsAbsence = event?.counts_as_absence ?? event?.type?.counts_as_absence ?? true
+                          const isHolidayEvent = eventType && !eventCountsAsAbsence
 
                           return (
                             <td key={dateStr} className="p-1 border-b border-gray-50 text-center relative">
-                              {(status || color) ? (
+                              {(status || isHolidayEvent) ? (
                                 <button
                                   onClick={() => log ? openEditModal(log) : null}
                                   className={clsx(
                                     "w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold transition-transform hover:scale-110 shadow-sm mx-auto",
-                                    color ? "" : (config?.color || 'bg-gray-100 text-gray-400')
+                                    isHolidayEvent ? "" : (config?.color || 'bg-gray-100 text-gray-400')
                                   )}
-                                  style={color ? { backgroundColor: color, color: 'white' } : {}}
+                                  style={isHolidayEvent ? { backgroundColor: color, color: 'white' } : {}}
                                   title={`${emp.name} - ${format(date, 'MMM dd')}: ${status ? status.replace('_', ' ') : (event?.title || 'Event')}`}
                                 >
-                                  {getEventCode(event) || (config?.letter || '?')}
+                                  {isHolidayEvent ? getEventCode(event) : (config?.letter || '?')}
                                 </button>
                               ) : (
                                 <div className="w-6 h-6 mx-auto rounded-md border border-dashed border-gray-100" />

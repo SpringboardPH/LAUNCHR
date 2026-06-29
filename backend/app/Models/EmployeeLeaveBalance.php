@@ -10,12 +10,14 @@ class EmployeeLeaveBalance extends Model
         'employee_id',
         'leave_type_id',
         'allocated_days',
+        'carryover_days',
         'is_active',
         'notes',
     ];
 
     protected $casts = [
         'allocated_days' => 'integer',
+        'carryover_days' => 'integer',
         'is_active' => 'boolean',
     ];
 

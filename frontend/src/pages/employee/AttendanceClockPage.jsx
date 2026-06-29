@@ -197,6 +197,7 @@ export default function AttendanceClockPage() {
 
   if (isLoading || authLoading || loadingSchedule || sysClockLoading) return <PageSpinner />
 
+  const isOnLeave = todayAttendance?.on_leave ?? false
   const isClockedIn = todayAttendance?.clock_in_time
   const isClockedOut = todayAttendance?.clock_out_time
   const monthlyLogs = monthlyData?.data ?? []
@@ -335,7 +336,7 @@ export default function AttendanceClockPage() {
                 {timerDisplay}
               </div>
               <p className="text-sm font-medium text-brand-600 mb-1">
-                {!isClockedIn ? 'Ready to Clock In' : (isClockedOut ? 'Shift Completed' : 'Time Elapsed')}
+                {isOnLeave ? 'On Approved Leave' : !isClockedIn ? 'Ready to Clock In' : (isClockedOut ? 'Shift Completed' : 'Time Elapsed')}
               </p>
               <p className="text-xs text-gray-500">{displayDateShort}</p>
             </div>
@@ -386,7 +387,12 @@ export default function AttendanceClockPage() {
             />
 
             {/* Action Button */}
-            {!isClockedIn ? (
+            {isOnLeave ? (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                <p className="text-sm font-medium text-gray-700">You have an approved leave today</p>
+                <p className="text-xs text-gray-500 mt-1">Clock-in is not available on leave days</p>
+              </div>
+            ) : !isClockedIn ? (
               <button
                 onClick={() => {
                   if (window && window.currentMinutes < window.normalInStart) {

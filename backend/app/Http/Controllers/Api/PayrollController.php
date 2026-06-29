@@ -128,7 +128,16 @@ class PayrollController extends Controller
                 'rest_day_ot_hours' => 0,
                 'absent_days' => 0,
                 'half_days' => 0,
+                'paid_leave_days' => 0,
             ];
+
+            // Fetch approved leaves covering this cutoff — used to classify absent logs
+            $approvedLeaves = \App\Models\LeaveRequest::with('leaveType')
+                ->where('employee_id', $employee->id)
+                ->where('status', 'approved')
+                ->where('start_date', '<=', $end)
+                ->where('end_date', '>=', $start)
+                ->get();
 
             $daysWorkedCount = 0;
             $countedWorkDates = [];        // dates already counted in daysWorkedCount
@@ -163,6 +172,19 @@ class PayrollController extends Controller
                 if ($log->status === 'absent') {
                     // Skip deduction if it's a holiday/event that doesn't count as absence
                     if ($event && $event->type && !$event->type->counts_as_absence) {
+                        continue;
+                    }
+                    // Check if this date is covered by an approved leave request
+                    $coveredLeave = $approvedLeaves->first(
+                        fn($leave) => $dateStr >= $leave->start_date->format('Y-m-d')
+                                   && $dateStr <= $leave->end_date->format('Y-m-d')
+                    );
+                    if ($coveredLeave) {
+                        if ($coveredLeave->leaveType?->is_paid) {
+                            $metrics['paid_leave_days']++;
+                        } else {
+                            $metrics['absent_days']++; // Unpaid leave: full deduction
+                        }
                         continue;
                     }
                     $metrics['absent_days']++;
@@ -310,6 +332,10 @@ class PayrollController extends Controller
             $restDayPay = $metrics['rest_day_hours'] * ($dailyRate * 1.30 / 8);
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
 
+            // Paid leave: daily employees need explicit pay added back;
+            // monthly employees already receive full salary so no adjustment needed.
+            $leavePay = $isDaily ? $metrics['paid_leave_days'] * $dailyRate : 0;
+
             // ── Deductions ────────────────────────────────────────────────
             $lateDeduction = ($metrics['late_minutes'] / 60) * $hourlyRate;
             $undertimeDeduction = (($metrics['undertime_minutes'] + $requestUndertimeMinutes) / 60) * $hourlyRate;
@@ -324,12 +350,12 @@ class PayrollController extends Controller
             $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis, $periods);
             $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis, $periods);
 
-            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance;
+            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay;
             $finalGross = $grossBase + $totalAllowances;
 
             // Withholding Tax Calculation
             // Taxable base excludes undeclared allowance (off-the-books, not subject to BIR withholding)
-            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay;
+            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay + $leavePay;
             $earnedTaxableBase = $taxableBase - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
             $taxableIncome = $earnedTaxableBase - ($sss + $philhealth + $pagibig);
             $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $frequency);
@@ -357,6 +383,7 @@ class PayrollController extends Controller
                         ['label' => 'Rest Day Pay', 'amount' => round($restDayPay, 2)],
                         ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
                         ['label' => 'Allowance', 'amount' => round($undeclaredAllowance, 2)],
+                        ['label' => 'Leave Pay', 'amount' => round($leavePay, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(

@@ -50,6 +50,7 @@ class LeaveTypeController extends Controller
             'description' => 'nullable|string|max:1000',
             'default_days' => 'required|integer|min:0|max:365',
             'requires_balance' => 'required|boolean',
+            'is_paid' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -59,6 +60,7 @@ class LeaveTypeController extends Controller
             'description' => $validated['description'] ?? null,
             'default_days' => $validated['default_days'],
             'requires_balance' => $validated['requires_balance'],
+            'is_paid' => $request->boolean('is_paid', true),
             'is_active' => $request->boolean('is_active', true),
         ]);
 
@@ -85,6 +87,7 @@ class LeaveTypeController extends Controller
             'description' => 'nullable|string|max:1000',
             'default_days' => 'required|integer|min:0|max:365',
             'requires_balance' => 'required|boolean',
+            'is_paid' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
 
@@ -93,6 +96,7 @@ class LeaveTypeController extends Controller
             'description' => $validated['description'] ?? null,
             'default_days' => $validated['default_days'],
             'requires_balance' => $validated['requires_balance'],
+            'is_paid' => $request->boolean('is_paid', $leaveType->is_paid),
             'is_active' => $request->boolean('is_active', $leaveType->is_active),
         ]);
 

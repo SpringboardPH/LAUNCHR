@@ -147,6 +147,9 @@ export const getEmployeeLeaveBalances = (employeeId) =>
 export const upsertEmployeeLeaveBalance = (employeeId, leaveTypeId, data) =>
   api.put(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`, data).then(r => r.data)
 
+export const resetEmployeeLeaveBalance = (employeeId, leaveTypeId) =>
+  api.delete(`/admin/employee-leave-balances/${employeeId}/${leaveTypeId}`).then(r => r.data)
+
 // ─── Payroll ─────────────────────────────────────────────────
 export const payrollKeys = {
   all: ['payroll'],
