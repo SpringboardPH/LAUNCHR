@@ -341,7 +341,7 @@ const AdminScheduleTemplatesPage = () => {
                 />
               </div>
 
-              <div>
+              <div className="rounded-lg border border-gray-200 p-4">
                 <label className="block text-xs font-medium text-gray-600 mb-2">Schedule Type</label>
                 <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
                   {['fixed', 'flexi'].map(t => (
@@ -357,26 +357,25 @@ const AdminScheduleTemplatesPage = () => {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-xs text-gray-500 mt-2">
                   {formData.type === 'flexi'
                     ? 'Employees can clock in/out at any time — status is based on total hours worked.'
                     : 'Employees have fixed clock-in/out windows per day.'}
                 </p>
+                {formData.type === 'flexi' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-3">
+                    <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Required Hours Per Day</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="24"
+                      value={formData.required_hours_per_day}
+                      onChange={(e) => setFormData(f => ({ ...f, required_hours_per_day: Number(e.target.value) || 8 }))}
+                      className="input w-20"
+                    />
+                  </div>
+                )}
               </div>
-
-              {formData.type === 'flexi' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Required Hours Per Day</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="24"
-                    value={formData.required_hours_per_day}
-                    onChange={(e) => setFormData(f => ({ ...f, required_hours_per_day: Number(e.target.value) || 8 }))}
-                    className="input w-28"
-                  />
-                </div>
-              )}
 
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
