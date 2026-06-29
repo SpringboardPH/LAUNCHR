@@ -810,7 +810,9 @@ export default function PayrollPage() {
 
       for (let i = 0; i < exportablePayrolls.length; i++) {
         const payroll = exportablePayrolls[i]
-        const sheetName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim().substring(0, 31) || `Employee ${i + 1}`
+        const empName = `${payroll.employee?.first_name || ''} ${payroll.employee?.last_name || ''}`.trim()
+        const group = payroll.employee?.group?.trim()
+        const sheetName = (group ? `${group} - ${empName}` : empName).substring(0, 31) || `Employee ${i + 1}`
         const ws = masterWorkbook.addWorksheet(sheetName)
 
         copyTemplateToSheet(sourceWb, sourceWs, masterWorkbook, ws)
