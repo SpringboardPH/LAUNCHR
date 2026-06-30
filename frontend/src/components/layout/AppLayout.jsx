@@ -12,7 +12,14 @@ import clsx from 'clsx'
 const COMMON_NAV = [
   { to: '/hr', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/hr/employees', icon: Users, label: 'Employees' },
-  { to: '/hr/attendance', icon: Clock, label: 'Attendance' },
+  {
+    icon: Clock,
+    label: 'Attendance',
+    children: [
+      { to: '/hr/attendance', label: 'Attendance Logs' },
+      { to: '/hr/dtr', label: 'DTR Management', dtrGated: true },
+    ],
+  },
   {
     icon: CalendarRange,
     label: 'Schedules',
@@ -22,7 +29,6 @@ const COMMON_NAV = [
     ],
   },
   { to: '/hr/requests', icon: ClipboardList, label: 'Requests', badge: true },
-  { to: '/hr/dtr', icon: FileText, label: 'DTR Management', dtrGated: true },
   { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
   {
     icon: Banknote,
@@ -97,8 +103,10 @@ export default function AppLayout() {
   const renderNavItem = (item) => {
     if (item.dtrGated && !systemConfig?.dtr_page_enabled) return null
     if (item.children) {
+      const visibleChildren = item.children.filter(c => !c.dtrGated || systemConfig?.dtr_page_enabled)
+      if (!visibleChildren.length) return null
       const isOpen = openGroups.has(item.label)
-      const isGroupActive = item.children.some(c => location.pathname.startsWith(c.to))
+      const isGroupActive = visibleChildren.some(c => location.pathname.startsWith(c.to))
       const Icon = item.icon
       return (
         <div key={item.label}>
@@ -115,7 +123,7 @@ export default function AppLayout() {
           </button>
           {isOpen && (
             <div className="ml-6 mt-0.5 space-y-0.5 border-l border-gray-100 pl-2.5">
-              {item.children.map(child => (
+              {visibleChildren.map(child => (
                 <NavLink
                   key={child.to}
                   to={child.to}
