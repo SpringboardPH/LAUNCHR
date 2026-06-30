@@ -68,8 +68,8 @@ const EmployeeScheduleAssignmentPage = () => {
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
 
   const { data: employeeResponse } = useQuery({
-    queryKey: employeeKeys.all,
-    queryFn: () => getEmployees({}),
+    queryKey: employeeKeys.list({ status: 'active', per_page: 1000 }),
+    queryFn: () => getEmployees({ status: 'active', per_page: 1000 }),
   })
 
   const { data: templates = [] } = useQuery({

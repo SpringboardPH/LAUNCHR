@@ -1,53 +1,53 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
-import { getPayroll, exportPayroll, payrollKeys } from '../../api/queries'
+import { format, parseISO } from 'date-fns'
+import { getPayroll, payrollKeys } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 export default function PayrollDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const { data: run, isLoading } = useQuery({
+  const { data: payroll, isLoading } = useQuery({
     queryKey: payrollKeys.detail(id),
     queryFn: () => getPayroll(id),
   })
 
   if (isLoading) return <PageSpinner />
-  if (!run) return <p className="text-sm text-gray-500">Payroll run not found.</p>
+  if (!payroll) return <p className="text-sm text-gray-500 p-6">Payroll record not found.</p>
 
-  const totalGross = run.items?.reduce((s, i) => s + Number(i.gross_pay), 0) ?? 0
-  const totalNet = run.items?.reduce((s, i) => s + Number(i.net_pay), 0) ?? 0
-  const totalDeductions = totalGross - totalNet
+  const deductions = Array.isArray(payroll.deductions)
+    ? payroll.deductions
+    : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount }))
+
+  const allowances = Array.isArray(payroll.allowances)
+    ? payroll.allowances
+    : Object.entries(payroll.allowances || {}).map(([label, amount]) => ({ label, amount }))
+
+  const totalDeductions = Number(payroll.gross_pay) - Number(payroll.net_pay)
+  const periodLabel = `${format(parseISO(payroll.cutoff_start), 'MMM d')} – ${format(parseISO(payroll.cutoff_end), 'MMM d, yyyy')}`
+  const baseIncome = Number(payroll.gross_pay) - allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
 
   return (
-    <div>
+    <div className="space-y-5">
       <PageHeader
-        title={run.period_label}
-        description={`${format(new Date(run.period_start), 'MMM d')} – ${format(new Date(run.period_end), 'MMM d, yyyy')}`}
+        title={`${payroll.employee?.first_name ?? ''} ${payroll.employee?.last_name ?? ''}`}
+        description={periodLabel}
         action={
-          <div className="flex gap-2">
-            <button onClick={() => navigate('/payroll')} className="btn-secondary">
-              <ArrowLeft size={14} /> Back
-            </button>
-            <button
-              onClick={() => exportPayroll(id, run.period_label)}
-              className="btn-primary"
-            >
-              <Download size={14} /> Export CSV
-            </button>
-          </div>
+          <button onClick={() => navigate(-1)} className="btn-secondary">
+            <ArrowLeft size={14} /> Back
+          </button>
         }
       />
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Employees', value: run.items?.length ?? 0 },
-          { label: 'Total Gross Pay', value: `₱${totalGross.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
+          { label: 'Days Worked', value: payroll.days_worked ?? 0 },
+          { label: 'Gross Pay', value: `₱${Number(payroll.gross_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
           { label: 'Total Deductions', value: `₱${totalDeductions.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
-          { label: 'Total Net Pay', value: `₱${totalNet.toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
+          { label: 'Net Pay', value: `₱${Number(payroll.net_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
         ].map(({ label, value }) => (
           <div key={label} className="card p-4">
             <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -57,74 +57,90 @@ export default function PayrollDetailPage() {
       </div>
 
       {/* Status + meta */}
-      <div className="flex items-center gap-3 mb-5">
-        <StatusBadge status={run.status} />
+      <div className="flex items-center gap-3">
+        <StatusBadge status={payroll.status} />
         <span className="text-xs text-gray-400">
-          Created {format(new Date(run.created_at), 'MMM d, yyyy h:mm a')}
+          Generated {format(parseISO(payroll.created_at), 'MMM d, yyyy h:mm a')}
         </span>
+        {payroll.employee?.position && (
+          <span className="text-xs text-gray-400">· {payroll.employee.position}</span>
+        )}
       </div>
 
-      {/* Items table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {[
-                  'Employee', 'Basic Salary', 'Days Worked', 'Days Absent',
-                  'Gross Pay', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Net Pay'
-                ].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {run.items?.map(item => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">
-                      {item.employee?.first_name} {item.employee?.last_name}
-                    </p>
-                    <p className="text-xs text-gray-400 font-mono">{item.employee?.employee_id}</p>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    ₱{Number(item.basic_salary).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{item.days_worked}</td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {item.days_absent > 0
-                      ? <span className="text-red-500">{item.days_absent}</span>
-                      : item.days_absent}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700 font-medium">
-                    ₱{Number(item.gross_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    ₱{Number(item.sss_deduction).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    ₱{Number(item.philhealth_deduction).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    ₱{Number(item.pagibig_deduction).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-brand-700">
-                    ₱{Number(item.net_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
-              {!run.items?.length && (
-                <tr>
-                  <td colSpan={9} className="py-10 text-center text-sm text-gray-400">
-                    No payroll items found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* Earnings / Deductions */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="card p-5">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Earnings</p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-sm py-2 border-b border-gray-100">
+              <span className="text-gray-600">
+                {payroll.employee?.rate_type === 'daily'
+                  ? `Base Pay (${payroll.days_worked} days)`
+                  : 'Base Salary'}
+              </span>
+              <span className="font-semibold text-gray-900">
+                ₱{baseIncome.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+            {allowances.map((item, i) => (
+              <div key={i} className="flex justify-between text-sm py-1">
+                <span className="text-blue-700">{item.label}</span>
+                <span className="font-medium text-blue-800">+₱{Number(item.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
+              <span className="text-gray-700">Gross Pay</span>
+              <span className="text-gray-900">₱{Number(payroll.gross_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
         </div>
+
+        <div className="card p-5">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Deductions</p>
+          <div className="space-y-1.5">
+            {deductions.length === 0 && (
+              <p className="text-sm text-gray-400">No deductions</p>
+            )}
+            {deductions.map((item, i) => (
+              <div key={i} className="flex justify-between text-sm py-1">
+                <span className="text-red-700">{item.label}</span>
+                <span className="font-medium text-red-800">-₱{Number(item.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-200">
+              <span className="text-gray-700">Total Deductions</span>
+              <span className="text-red-700">₱{totalDeductions.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Attendance metrics */}
+      <div className="card p-5">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Attendance Metrics</p>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+          {[
+            { label: 'Work Hours', value: `${Number(payroll.total_hours ?? 0).toFixed(1)}h` },
+            { label: 'Days Worked', value: `${payroll.days_worked ?? 0}d` },
+            { label: 'Overtime', value: `${Number(payroll.overtime_hours ?? 0).toFixed(1)}h` },
+            { label: 'Late', value: `${payroll.late_minutes ?? 0}m` },
+            { label: 'Undertime', value: `${payroll.undertime_minutes ?? 0}m` },
+            { label: 'Daily Rate', value: `₱${Number(payroll.daily_rate ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` },
+          ].map(({ label, value }) => (
+            <div key={label}>
+              <p className="text-xs text-gray-400">{label}</p>
+              <p className="text-sm font-bold text-gray-700 mt-0.5">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Net pay */}
+      <div className="card p-5 flex justify-between items-center bg-green-50 border border-green-100">
+        <p className="text-sm font-semibold text-green-700">Net Pay</p>
+        <p className="text-2xl font-black text-green-700">
+          ₱{Number(payroll.net_pay).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+        </p>
       </div>
     </div>
   )

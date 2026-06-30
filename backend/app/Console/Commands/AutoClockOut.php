@@ -17,6 +17,11 @@ class AutoClockOut extends Command
 
     public function handle()
     {
+        if (!\App\Models\SystemSettings::get('auto_clock_out_enabled', true)) {
+            $this->info('Auto clock-out is disabled in system settings. Skipping.');
+            return;
+        }
+
         $employees = Employee::all();
         foreach ($employees as $employee) {
             $this->performAutoClockOut($employee->id);
@@ -97,7 +102,7 @@ class AutoClockOut extends Command
             $log->update([
                 'clock_out_time' => $finalClockOutTime,
                 'status'         => $status,
-                'clock_out_notes' => ($log->clock_out_notes ? $log->clock_out_notes . "\n" : '') . 'Auto clocked out (End of Day)',
+                'clock_out_notes' => ($log->clock_out_notes ? $log->clock_out_notes . "\n" : '') . '[System] Automatically clocked out due to missed departure window.',
             ]);
         }
     }

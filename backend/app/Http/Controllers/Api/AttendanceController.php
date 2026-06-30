@@ -93,7 +93,7 @@ class AttendanceController extends Controller
             $outMinutes += 1440;
         }
 
-        return max(1, round(($outMinutes - $inMinutes) / 60));
+        return max(0.5, round(($outMinutes - $inMinutes) / 60, 1));
     }
 
     private function resolveTemplateName(?AttendanceLog $log, ?EmployeeSchedule $schedule): ?string
@@ -424,6 +424,7 @@ class AttendanceController extends Controller
             'notes' => 'nullable|string|max:255',
             'employee_id' => 'nullable|exists:employees,id',
             'confirm_early_clock_out' => 'nullable|boolean',
+            'is_overtime' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
@@ -456,6 +457,14 @@ class AttendanceController extends Controller
         $log = AttendanceLog::where('employee_id', $employee->id)
             ->whereDate('date', $today->toDateString())
             ->first();
+
+        if (!$log) {
+            // Overnight shift: log was created yesterday, employee clocking out today
+            $log = AttendanceLog::where('employee_id', $employee->id)
+                ->whereDate('date', $today->copy()->subDay()->toDateString())
+                ->whereNull('clock_out_time')
+                ->first();
+        }
 
         if (!$log) {
             return response()->json([
@@ -587,6 +596,15 @@ class AttendanceController extends Controller
             $dayRule
         );
 
+        // HR/Admin can explicitly override the OT classification at clock-out
+        if ($request->has('is_overtime')) {
+            if ($request->boolean('is_overtime') && $log->status !== 'overtime') {
+                $log->status = 'overtime';
+            } elseif (!$request->boolean('is_overtime') && $log->status === 'overtime') {
+                $log->status = 'completed';
+            }
+        }
+
         $log->save();
 
         // Log audit event for clock out
@@ -631,10 +649,14 @@ class AttendanceController extends Controller
 
         // Employees only see their own records, or if 'personal' flag is set
         if (!$user->isAdminOrHr() || $isPersonal) {
-            $query->where('employee_id', $user->employee->id);
+            $employee = $user->employee;
+            if (!$employee) {
+                return response()->json(['success' => true, 'data' => [], 'pagination' => [], 'message' => 'No employee record linked'], 200);
+            }
+            $query->where('employee_id', $employee->id);
             // If personal, we can just use the monthly method's logic if it's a report
             if ($monthStr && $includeAbsentees) {
-                return $this->monthly($request, $user->employee->id);
+                return $this->monthly($request, $employee->id);
             }
         }
 

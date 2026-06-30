@@ -182,6 +182,10 @@ class PayrollController extends Controller
                     continue;
                 }
 
+                if ($log->status === 'half_day') {
+                    $metrics['half_days']++;
+                }
+
                 if ($isFlexiSchedule) {
                     $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
                     $details = AttendanceService::calculateFlexiDetails(
@@ -190,7 +194,8 @@ class PayrollController extends Controller
                         $expectedHours
                     );
                     // Flexi has no fixed end time — undertime is purely hours-based
-                    $earlyDepartureMin = in_array($log->status, ['completed', 'overtime'])
+                    // half_day status is handled via $metrics['half_days'], not undertime minutes
+                    $earlyDepartureMin = in_array($log->status, ['completed', 'overtime', 'half_day'])
                         ? 0
                         : $details['undertime_minutes'];
                 } else {
@@ -212,7 +217,8 @@ class PayrollController extends Controller
                     );
 
                     $earlyDepartureMin = 0;
-                    if (!in_array($log->status, ['completed', 'overtime'])) {
+                    // half_day status is handled via $metrics['half_days'], not undertime minutes
+                    if (!in_array($log->status, ['completed', 'overtime', 'half_day'])) {
                         $clockOutMin = $log->clock_out_time
                             ? $this->parseTimeToMinutes($log->clock_out_time)
                             : $this->parseTimeToMinutes($workEnd);
@@ -384,7 +390,7 @@ class PayrollController extends Controller
                 + $absentDeduction + $halfDayDeduction
                 + $sss + $philhealth + $pagibig + $wTax;
 
-            $finalNet = $finalGross - $totalDeductions;
+            $finalNet = max(0, round($finalGross - $totalDeductions, 2));
 
                     $deductions = array_filter([
                         'Late' => round($lateDeduction, 2),
@@ -470,7 +476,7 @@ class PayrollController extends Controller
         }
 
         $request->validate([
-            'status' => 'sometimes|in:draft,finalized,paid',
+            'status' => 'sometimes|in:draft,finalized',
             'base_salary' => 'sometimes|numeric',
             'gross_pay' => 'sometimes|numeric',
             'net_pay' => 'sometimes|numeric',
@@ -543,7 +549,8 @@ class PayrollController extends Controller
         $payrolls = Payroll::with('employee')
             ->whereIn('id', $request->payroll_ids)
             ->where('status', 'finalized')
-            ->get();
+            ->get()
+            ->keyBy('id');
 
         if ($payrolls->isEmpty()) {
             return response()->json([
@@ -558,7 +565,16 @@ class PayrollController extends Controller
         $ccEmails = $request->input('cc_emails', []);
         $bccEmails = $request->input('bcc_emails', []);
 
-        foreach ($payrolls as $index => $payroll) {
+        foreach ($request->payroll_ids as $index => $payrollId) {
+            $payroll = $payrolls->get($payrollId);
+            if (!$payroll) {
+                $failed[] = [
+                    'payroll_id' => $payrollId,
+                    'employee' => null,
+                    'error' => 'Payroll not found or not finalized',
+                ];
+                continue;
+            }
             try {
                 // Validate employee has email
                 if (!$payroll->employee?->email) {
@@ -711,12 +727,12 @@ class PayrollController extends Controller
         // Calculate absent days from deductions (if present)
         $deductions = is_array($payroll->deductions) ? $payroll->deductions : [];
         $oldAbsentDeduction = (float)($deductions['Absent'] ?? 0);
-        $absentDays = $oldAbsentDeduction > 0 ? $oldAbsentDeduction / $payroll->daily_rate : 0;
+        $absentDays = ($oldAbsentDeduction > 0 && $payroll->daily_rate > 0) ? $oldAbsentDeduction / $payroll->daily_rate : 0;
         $newAbsentDeduction = $absentDays * $dailyRate;
 
         // Calculate half day deduction
         $oldHalfDayDeduction = (float)($deductions['Half Day'] ?? 0);
-        $halfDays = $oldHalfDayDeduction > 0 ? $oldHalfDayDeduction / (($payroll->daily_rate ?? 1) / 2) : 0;
+        $halfDays = $oldHalfDayDeduction > 0 ? $oldHalfDayDeduction / (($payroll->daily_rate ?: 1) / 2) : 0;
         $newHalfDayDeduction = $halfDays * ($dailyRate / 2);
 
         // Update all affected deductions

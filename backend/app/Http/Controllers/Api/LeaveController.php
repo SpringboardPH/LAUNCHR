@@ -60,7 +60,8 @@ class LeaveController extends Controller
 
         foreach ($leaveTypes as $leaveType) {
             $override = $overrides->get($leaveType->id);
-            $total = $override ? (int) $override->allocated_days : (int) $leaveType->default_days;
+            $carryover = $override ? (int) $override->carryover_days : 0;
+            $total = ($override ? (int) $override->allocated_days : (int) $leaveType->default_days) + $carryover;
 
             $used = LeaveRequest::where('employee_id', $employee->id)
                 ->where('leave_type', $leaveType->code)
@@ -316,6 +317,26 @@ class LeaveController extends Controller
                 'success' => false,
                 'message' => 'The 3-day approval window for this request has expired (Submitted: ' . $submissionDate->format('Y-m-d') . ').',
             ], 400);
+        }
+
+        // Re-validate balance at approval time to prevent concurrent over-approval
+        $leaveTypeModel = LeaveType::where('code', $leave->leave_type)->first();
+        if ($leaveTypeModel?->requires_balance) {
+            $override = EmployeeLeaveBalance::where('employee_id', $leave->employee_id)
+                ->where('leave_type_id', $leaveTypeModel->id)
+                ->where('is_active', true)->first();
+            $carryover = $override ? (int) $override->carryover_days : 0;
+            $total = ($override ? (int) $override->allocated_days : (int) $leaveTypeModel->default_days) + $carryover;
+            $alreadyApproved = LeaveRequest::where('employee_id', $leave->employee_id)
+                ->where('leave_type', $leave->leave_type)
+                ->where('status', 'approved')
+                ->sum('days_requested');
+            if ($alreadyApproved + $leave->days_requested > $total) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Approving this leave would exceed the employee's remaining balance.",
+                ], 422);
+            }
         }
 
         $leave->update([

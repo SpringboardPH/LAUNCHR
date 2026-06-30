@@ -14,7 +14,7 @@ class AttendanceService
      * @param array|null $dayRule - Optional day rule with grace period info
      * @return string
      */
-    public static function calculateStatus(?string $clockIn, ?string $clockOut, int $expectedHours, string $workStart, ?array $dayRule = null): string
+    public static function calculateStatus(?string $clockIn, ?string $clockOut, int|float $expectedHours, string $workStart, ?array $dayRule = null): string
     {
         if (!$clockIn) {
             return 'absent';

@@ -91,6 +91,9 @@ class MarkAbsentEmployees extends Command
                 if (in_array($dayOfWeek, $template->work_days)) {
                     $isWorkingDay = true;
                 }
+            } else {
+                // Flexi templates with no day config default to Mon–Fri
+                $isWorkingDay = $dayOfWeek >= Carbon::MONDAY && $dayOfWeek <= Carbon::FRIDAY;
             }
 
             if ($isWorkingDay) {

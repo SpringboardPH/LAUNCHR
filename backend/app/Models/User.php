@@ -41,6 +41,6 @@ class User extends Authenticatable
 
     public function isAdminOrHr()
     {
-        return in_array($this->role, ['admin', 'hr'], true);
+        return in_array($this->role, ['admin', 'hr', 'accounting'], true);
     }
 }

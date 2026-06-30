@@ -250,7 +250,7 @@ export const getClockWindow = (schedule, sysClock = null) => {
     formatTime
   }
 }
-export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, workStart, schedule = null) => {
+export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, workStart, schedule = null, logDate = null) => {
   if (!clockIn) return 'absent'
   
   const parse = (t) => {
@@ -275,7 +275,7 @@ export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, work
   // Check if grace period applies
   let graceCovered = false
   if (schedule?.template?.day_rules) {
-    const dayOfWeek = new Date().getDay()
+    const dayOfWeek = logDate ? new Date(logDate).getDay() : new Date().getDay()
     const dayRule = schedule.template.day_rules.find(r => r.day === dayOfWeek)
     
     if (dayRule && dayRule.grace_enabled) {

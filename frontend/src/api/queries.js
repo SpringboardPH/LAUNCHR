@@ -69,11 +69,12 @@ export const getMonthlyAttendance = (employeeId, startDate, endDate) =>
 export const clockIn = (notes, employeeId = null) =>
   api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)
 
-export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false) =>
+export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false, isOvertime = null) =>
   api.post('/attendance/clock-out', {
     notes,
     employee_id: employeeId,
     confirm_early_clock_out: confirmEarlyClockOut,
+    ...(isOvertime !== null && { is_overtime: isOvertime }),
   }).then(r => r.data.data)
 
 export const updateAttendanceLog = (id, data) =>
@@ -170,11 +171,11 @@ export const updatePayroll = (id, data) =>
   api.put(`/payroll/${id}`, data).then(r => r.data)
 
 export const exportPayroll = (id, label) => {
-  api.get(`/payroll/${id}/export`, { responseType: 'blob' }).then(res => {
+  return api.get(`/payroll/${id}/export`, { responseType: 'blob' }).then(res => {
     const url = URL.createObjectURL(new Blob([res.data]))
     const a = document.createElement('a')
     a.href = url
-    a.download = `payroll-${label}.json`
+    a.download = `payroll-${label}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
   })

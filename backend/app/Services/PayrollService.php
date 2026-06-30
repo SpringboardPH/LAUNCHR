@@ -67,6 +67,7 @@ class PayrollService
      */
     public static function calculatePhilHealth(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
         if ($monthlySalary < 10000) return (500.00 * 0.5) / $periods;
         if ($monthlySalary > 100000) return (5000.00 * 0.5) / $periods;
 
@@ -143,20 +144,20 @@ class PayrollService
         // ponytail: fallback — keeps working before the seeder runs or if the setting is missing
         $fallback = [
             'semi_monthly' => [
-                ['from' => 0,        'to' => 10417,  'fixed' => 0,        'rate' => 0,    'floor' => 0],
-                ['from' => 10417.01, 'to' => 16666,  'fixed' => 0,        'rate' => 0.15, 'floor' => 10417],
-                ['from' => 16667,    'to' => 33332,  'fixed' => 937.50,   'rate' => 0.20, 'floor' => 16667],
-                ['from' => 33333,    'to' => 83332,  'fixed' => 4270.70,  'rate' => 0.25, 'floor' => 33333],
-                ['from' => 83333,    'to' => 333332, 'fixed' => 16770.70, 'rate' => 0.30, 'floor' => 83333],
-                ['from' => 333333,   'to' => null,   'fixed' => 91770.70, 'rate' => 0.35, 'floor' => 333333],
+                ['from' => 0,          'to' => 10417,    'fixed' => 0,        'rate' => 0,    'floor' => 0],
+                ['from' => 10417.01,   'to' => 16666,    'fixed' => 0,        'rate' => 0.15, 'floor' => 10417],
+                ['from' => 16666.01,   'to' => 33332,    'fixed' => 937.50,   'rate' => 0.20, 'floor' => 16666.01],
+                ['from' => 33332.01,   'to' => 83332,    'fixed' => 4270.70,  'rate' => 0.25, 'floor' => 33332.01],
+                ['from' => 83332.01,   'to' => 333332,   'fixed' => 16770.70, 'rate' => 0.30, 'floor' => 83332.01],
+                ['from' => 333332.01,  'to' => null,     'fixed' => 91770.70, 'rate' => 0.35, 'floor' => 333332.01],
             ],
             'monthly' => [
-                ['from' => 0,        'to' => 20833,  'fixed' => 0,         'rate' => 0,    'floor' => 0],
-                ['from' => 20833.01, 'to' => 33332,  'fixed' => 0,         'rate' => 0.15, 'floor' => 20833],
-                ['from' => 33333,    'to' => 66666,  'fixed' => 1875.00,   'rate' => 0.20, 'floor' => 33333],
-                ['from' => 66667,    'to' => 166666, 'fixed' => 8541.80,   'rate' => 0.25, 'floor' => 66667],
-                ['from' => 166667,   'to' => 666666, 'fixed' => 33541.80,  'rate' => 0.30, 'floor' => 166667],
-                ['from' => 666667,   'to' => null,   'fixed' => 183541.80, 'rate' => 0.35, 'floor' => 666667],
+                ['from' => 0,          'to' => 20833,    'fixed' => 0,         'rate' => 0,    'floor' => 0],
+                ['from' => 20833.01,   'to' => 33332,    'fixed' => 0,         'rate' => 0.15, 'floor' => 20833],
+                ['from' => 33332.01,   'to' => 66666,    'fixed' => 1875.00,   'rate' => 0.20, 'floor' => 33332.01],
+                ['from' => 66666.01,   'to' => 166666,   'fixed' => 8541.80,   'rate' => 0.25, 'floor' => 66666.01],
+                ['from' => 166666.01,  'to' => 666666,   'fixed' => 33541.80,  'rate' => 0.30, 'floor' => 166666.01],
+                ['from' => 666666.01,  'to' => null,     'fixed' => 183541.80, 'rate' => 0.35, 'floor' => 666666.01],
             ],
         ];
         return $fallback[$frequency] ?? $fallback['semi_monthly'];

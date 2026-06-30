@@ -62,6 +62,7 @@ class AuthController extends Controller
         if (!SystemSettings::get('login_otp_required', false)) {
             $rememberMe = $request->boolean('remember_me');
             $tokenName = $rememberMe ? 'auth_token_remember' : 'auth_token';
+            $user->tokens()->delete();
             $token = $user->createToken($tokenName);
 
             if ($rememberMe) {
@@ -116,6 +117,7 @@ class AuthController extends Controller
 
         // Create token - longer expiry if "remember me" is checked
         $tokenName = $validated['remember_me'] ?? false ? 'auth_token_remember' : 'auth_token';
+        $user->tokens()->delete();
         $token = $user->createToken($tokenName);
 
         // If remember me, set token to expire in 30 days instead of default 24 hours

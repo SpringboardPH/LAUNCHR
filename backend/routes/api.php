@@ -22,10 +22,9 @@ use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
 
 // Public routes
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/auth/request-otp', [AuthController::class, 'requestOtp']);
-Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/auth/request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:10,1');
+Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:5,1');
 Route::get('/theme-color', [AdminSettingsController::class, 'getThemeColor']);
 Route::get('/system-config', [AdminSettingsController::class, 'getSystemConfig']);
 Route::get('/logo/{filename}', [AdminSettingsController::class, 'getLogo']);
@@ -39,9 +38,9 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Employees
     Route::put('/profile', [EmployeeController::class, 'updateProfile']);
-    Route::get('/employees/groups', [EmployeeController::class, 'groups']);
-    Route::apiResource('employees', EmployeeController::class);
-    Route::patch('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate']);
+    Route::get('/employees/groups', [EmployeeController::class, 'groups'])->middleware('role:admin,hr,accounting');
+    Route::apiResource('employees', EmployeeController::class)->middleware('role:admin,hr,accounting');
+    Route::patch('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate'])->middleware('role:admin,hr');
     
     // Attendance
     Route::prefix('attendance')->group(function () {
@@ -63,8 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/balance', [LeaveController::class, 'balance']);
         Route::get('/', [LeaveController::class, 'index']);
         Route::get('/{id}', [LeaveController::class, 'show']);
-        Route::patch('/{id}/approve', [LeaveController::class, 'approve']);
-        Route::patch('/{id}/reject', [LeaveController::class, 'reject']);
+        Route::patch('/{id}/approve', [LeaveController::class, 'approve'])->middleware('role:admin,hr');
+        Route::patch('/{id}/reject', [LeaveController::class, 'reject'])->middleware('role:admin,hr');
     });
 
     // Employee Requests
@@ -85,14 +84,14 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Payroll
     Route::prefix('payroll')->group(function () {
-        Route::get('/', [PayrollController::class, 'index']);
+        Route::get('/', [PayrollController::class, 'index'])->middleware('role:admin,hr,accounting');
         Route::post('/generate', [PayrollController::class, 'generate'])->middleware('role:admin,hr,accounting');
         Route::post('/send-paystubs', [PayrollController::class, 'sendPaystubs'])->middleware('role:admin,hr,accounting');
         Route::post('/{id}/revert-to-draft', [PayrollController::class, 'revertToDraft'])->middleware('role:admin,hr,accounting');
         Route::post('/{id}/toggle-undertime-calc', [PayrollController::class, 'toggleUndertimeCalculation'])->middleware('role:admin,hr,accounting');
-        Route::get('/{id}', [PayrollController::class, 'show']);
+        Route::get('/{id}', [PayrollController::class, 'show'])->middleware('role:admin,hr,accounting');
         Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr,accounting');
-        Route::get('/{id}/export', [PayrollController::class, 'export']);
+        Route::get('/{id}/export', [PayrollController::class, 'export'])->middleware('role:admin,hr,accounting');
     });
     
     // Dashboard
@@ -179,6 +178,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/admin/users/{id}/restore', [UserController::class, 'restore']);
         Route::apiResource('admin/users', UserController::class);
         Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
+        Route::post('/register', [AuthController::class, 'register']);
     });
     
     // Employee Schedules & Templates (Admin + HR)

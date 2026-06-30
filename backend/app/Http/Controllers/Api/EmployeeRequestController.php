@@ -172,7 +172,28 @@ class EmployeeRequestController extends Controller
         if ($employeeRequest->request_type === 'overtime') {
             $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
             if ($logId) {
-                \App\Models\AttendanceLog::where('id', $logId)->update(['status' => 'overtime']);
+                $log = \App\Models\AttendanceLog::where('id', $logId)
+                    ->where('employee_id', $employeeRequest->employee_id)
+                    ->whereNotIn('status', ['absent', 'on_leave'])
+                    ->first();
+                if ($log) {
+                    // Store original status so rejection can revert correctly (D5)
+                    $meta = $employeeRequest->meta ?? [];
+                    $meta['original_status'] = $log->status;
+                    $employeeRequest->update(['meta' => $meta]);
+                    $log->update(['status' => 'overtime']);
+                }
+            }
+        }
+
+        // Half-day approval: mark the attendance log for that date as half_day
+        if ($employeeRequest->request_type === 'half_day') {
+            $date = $employeeRequest->meta['date'] ?? null;
+            if ($date) {
+                \App\Models\AttendanceLog::where('employee_id', $employeeRequest->employee_id)
+                    ->whereDate('date', $date)
+                    ->whereNotIn('status', ['absent', 'on_leave', 'half_day'])
+                    ->update(['status' => 'half_day']);
             }
         }
 
@@ -224,11 +245,15 @@ class EmployeeRequestController extends Controller
             'response_notes' => $request->response_notes,
         ]);
 
-        // Ensure the attendance log stays at 'completed' (not overtime) when OT is rejected
+        // Revert the attendance log when OT is rejected
         if ($employeeRequest->request_type === 'overtime') {
             $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
             if ($logId) {
-                \App\Models\AttendanceLog::where('id', $logId)->where('status', 'overtime')->update(['status' => 'completed']);
+                $revertTo = $employeeRequest->meta['original_status'] ?? 'completed';
+                \App\Models\AttendanceLog::where('id', $logId)
+                    ->where('employee_id', $employeeRequest->employee_id)
+                    ->where('status', 'overtime')
+                    ->update(['status' => $revertTo]);
             }
         }
 

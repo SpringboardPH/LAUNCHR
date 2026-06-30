@@ -86,7 +86,7 @@ export default function EmployeeListPage() {
       {isLoading ? <PageSpinner /> : employees.length === 0 ? (
         <EmptyState icon={Users} title="No employees found"
           description="Add your first employee to get started"
-          action={<Link to="/employees/new" className="btn-primary"><Plus size={14} /> Add Employee</Link>}
+          action={<Link to="/hr/employees/new" className="btn-primary"><Plus size={14} /> Add Employee</Link>}
         />
       ) : (
         <div className="card overflow-hidden">

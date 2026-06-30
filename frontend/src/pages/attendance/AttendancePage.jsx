@@ -101,6 +101,7 @@ export default function AttendancePage() {
     end_date: currentCutoff.endDate,
     include_absentees: true,
     personal: false,
+    per_page: 1000,
     ...(monthlyEmployeeSearch.trim() ? { employee_search: monthlyEmployeeSearch.trim() } : {}),
     ...(monthlyStatus ? { status: monthlyStatus } : {}),
     ...(monthlyDate ? { date: monthlyDate } : {}),

@@ -80,8 +80,8 @@ export default function RequestsPage() {
   })
 
   const isWithinWindow = (createdAt) => {
-    if (!systemClock?.now) return true
-    return differenceInDays(new Date(systemClock.now), new Date(createdAt)) <= 3
+    if (!systemClock?.date) return true
+    return differenceInDays(new Date(systemClock.date), new Date(createdAt)) <= 3
   }
 
   const approveMutation = useMutation({

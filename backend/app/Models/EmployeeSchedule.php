@@ -76,6 +76,7 @@ class EmployeeSchedule extends Model
             ->where('end_date', '>=', $weekStart)
             ->where('status', 'active')
             ->with('template')
+            ->orderBy('start_date', 'desc')
             ->first();
 
         if ($currentSchedule) {

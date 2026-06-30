@@ -85,6 +85,7 @@ class EmployeeScheduleController extends Controller
         $existingSchedule = EmployeeSchedule::where('employee_id', $validated['employee_id'])
             ->whereDate('start_date', $validated['start_date'])
             ->whereDate('end_date', $validated['end_date'])
+            ->where('status', 'active')
             ->first();
 
         if ($existingSchedule) {
@@ -190,6 +191,7 @@ class EmployeeScheduleController extends Controller
         // Preserve historical schedule context only for past weeks.
         // Current/future week edits should still update in-place.
         if ($dateRangeChanged && $isHistoricalSchedule) {
+            $employeeSchedule->update(['status' => 'archived']);
             $newSchedule = EmployeeSchedule::create([
                 'employee_id' => $employeeSchedule->employee_id,
                 'schedule_template_id' => $validated['schedule_template_id'],

@@ -41,8 +41,8 @@ export default function LeavePage() {
   })
 
   const isWithinWindow = (createdAt) => {
-    if (!systemClock?.now) return true
-    const diff = differenceInDays(new Date(systemClock.now), new Date(createdAt))
+    if (!systemClock?.date) return true
+    const diff = differenceInDays(new Date(systemClock.date), new Date(createdAt))
     return diff <= 3
   }
 
