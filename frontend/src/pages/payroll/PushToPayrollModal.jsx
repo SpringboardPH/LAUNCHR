@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, ArrowRight, CheckCircle, AlertCircle } from 'lucide-react'
 import {
   getThirteenthMonthPeriods, pushThirteenthMonthToPayroll,
-  getEmployees, employeeKeys, thirteenthMonthKeys,
+  getEmployees, employeeKeys, thirteenthMonthKeys, payrollKeys,
 } from '../../api/queries'
 import { format, parseISO } from 'date-fns'
 
@@ -13,6 +13,7 @@ function fmtPeriod(start, end) {
 }
 
 export default function PushToPayrollModal({ year, onClose }) {
+  const queryClient = useQueryClient()
   const [selected, setSelected] = useState('')
   const [scope, setScope] = useState('all') // 'all' | 'specific'
   const [employeeId, setEmployeeId] = useState('')
@@ -33,7 +34,10 @@ export default function PushToPayrollModal({ year, onClose }) {
 
   const push = useMutation({
     mutationFn: pushThirteenthMonthToPayroll,
-    onSuccess: (data) => setResult(data),
+    onSuccess: (data) => {
+      setResult(data)
+      queryClient.invalidateQueries({ queryKey: payrollKeys.all })
+    },
   })
 
   const handleSubmit = () => {

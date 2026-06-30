@@ -173,10 +173,23 @@ export default function PayrollPage() {
   }
 
   const handleRemoveField = (type, index) => {
-    setEditForm(prev => ({
-      ...prev,
-      [type]: prev[type].filter((_, i) => i !== index)
-    }))
+    setEditForm(prev => {
+      const next = {
+        ...prev,
+        allowances: (prev.allowances || []).map(a => ({ ...a })),
+        deductions: (prev.deductions || []).map(d => ({ ...d })),
+      }
+      next[type] = next[type].filter((_, i) => i !== index)
+      const isDaily = next.employee?.rate_type === 'daily'
+      const baseGross = isDaily
+        ? (Number(next.base_salary) * Number(next.days_worked || 0))
+        : (Number(next.base_salary) / payPeriods)
+      const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
+      const totalDeductions = next.deductions.reduce((s, d) => s + Number(d.amount || 0), 0)
+      next.gross_pay = baseGross + totalAllowances
+      next.net_pay = next.gross_pay - totalDeductions
+      return next
+    })
   }
 
   const handleFieldChange = (type, index, field, value) => {
