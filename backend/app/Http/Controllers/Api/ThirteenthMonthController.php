@@ -146,6 +146,7 @@ class ThirteenthMonthController extends Controller
                 ->whereDate('cutoff_start', $validated['cutoff_start'])
                 ->whereDate('cutoff_end', $validated['cutoff_end'])
                 ->where('status', 'draft')
+                ->latest('id')
                 ->first();
 
             if (!$payroll) {
@@ -215,15 +216,26 @@ class ThirteenthMonthController extends Controller
     }
 
     /**
-     * When monthly and semi-monthly payrolls coexist, drop the wider period.
-     * A payroll is dropped if its date range fully contains any other payroll's range.
+     * Remove overlapping/duplicate payrolls:
+     * - Identical date range: keep only the newest (highest id).
+     * - Strictly wider range: drop the wider one (monthly contains semi-monthly → drop monthly).
      */
     private function removeContainedPeriods($payrolls)
     {
         return $payrolls->filter(function ($p) use ($payrolls) {
             return !$payrolls->some(function ($other) use ($p) {
-                return $other->id !== $p->id
-                    && $p->cutoff_start->lte($other->cutoff_start)
+                if ($other->id === $p->id) return false;
+
+                $sameRange = $p->cutoff_start->eq($other->cutoff_start)
+                          && $p->cutoff_end->eq($other->cutoff_end);
+
+                if ($sameRange) {
+                    // Duplicate period: drop the older record, keep the newest.
+                    return $other->id > $p->id;
+                }
+
+                // Drop if this period strictly contains another (wider = monthly duplicate).
+                return $p->cutoff_start->lte($other->cutoff_start)
                     && $p->cutoff_end->gte($other->cutoff_end);
             });
         });
