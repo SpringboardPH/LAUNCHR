@@ -19,6 +19,7 @@ import EmployeeDetailPage from './pages/employees/EmployeeDetailPage'
 import AttendancePage from './pages/attendance/AttendancePage'
 import PayrollPage from './pages/payroll/PayrollPage'
 import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
+import ThirteenthMonthPage from './pages/payroll/ThirteenthMonthPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import RequestFormPage from './pages/employee/RequestFormPage'
@@ -139,6 +140,7 @@ export default function App() {
             <Route path="requests" element={<RequestsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
+            <Route path="thirteenth-month" element={<ThirteenthMonthPage />} />
             <Route path="dtr" element={<DtrManagePage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />

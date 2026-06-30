@@ -24,7 +24,14 @@ const COMMON_NAV = [
   { to: '/hr/requests', icon: ClipboardList, label: 'Requests', badge: true },
   { to: '/hr/dtr', icon: FileText, label: 'DTR Management', dtrGated: true },
   { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
-  { to: '/hr/payroll', icon: Banknote, label: 'Payroll' },
+  {
+    icon: Banknote,
+    label: 'Payroll',
+    children: [
+      { to: '/hr/payroll', label: 'Payroll Runs' },
+      { to: '/hr/thirteenth-month', label: '13th Month' },
+    ],
+  },
 ]
 
 const ADMIN_ONLY_NAV = [
