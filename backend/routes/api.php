@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\CalendarEventTypeController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
+use App\Http\Controllers\Api\AssistantController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -35,6 +36,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::put('/user/password', [UserController::class, 'updatePassword']);
+
+    // LaunchAssist chatbot (placeholder MVP — any authenticated user)
+    Route::post('/assistant/chat', [AssistantController::class, 'chat'])->middleware('throttle:20,1');
     
     // Employees
     Route::put('/profile', [EmployeeController::class, 'updateProfile']);

@@ -5,6 +5,7 @@ import { getSystemConfig, systemConfigKeys } from '../../api/queries'
 import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
+import ChatWidget from '../assistant/ChatWidget'
 
 const BASE_NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -109,6 +110,10 @@ export default function EmployeeLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* LaunchAssist chatbot (placeholder MVP). The full plan gates this on
+          systemConfig?.assistant_enabled — left ungated for the MVP. */}
+      <ChatWidget />
     </div>
   )
 }

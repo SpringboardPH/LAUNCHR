@@ -238,6 +238,10 @@ export const getThemeColor = () =>
 export const getSystemConfig = () =>
   api.get('/system-config').then(r => r.data.data)
 
+// ─── LaunchAssist (chatbot, placeholder MVP) ─────────────────
+export const sendAssistantMessage = (messages) =>
+  api.post('/assistant/chat', { messages }).then(r => r.data.data)
+
 export const updateAdminSetting = (key, value, description, type = 'string') =>
   api.put(`/admin/settings/${key}`, { value, description, type }).then(r => r.data)
 
