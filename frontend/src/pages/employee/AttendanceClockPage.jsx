@@ -322,6 +322,26 @@ export default function AttendanceClockPage() {
             ← Back
           </button>
         }
+        help={[
+          { heading: 'Live Clock', items: [
+            'The date and time shown at the top reflects the server\'s virtual clock, which all employees share.',
+            'The clock updates every 30 seconds automatically.',
+          ]},
+          { heading: 'Clocking In & Out', items: [
+            'Click the green Clock In button when you arrive. Your schedule window is displayed — clocking in outside that window may result in a "Late" or "Early" status.',
+            'Click the red Clock Out button at the end of your shift. Clocking out too early may trigger "Undertime" status.',
+            'An optional Notes field appears before confirming — use it to add context for your HR team.',
+          ]},
+          { heading: "Today's Record", items: [
+            'Once clocked in, your clock-in time and elapsed hours are displayed on this page.',
+            'After clocking out, your total hours worked for the day are shown.',
+          ]},
+          { heading: 'Monthly Attendance Log', items: [
+            'Below the clock-in panel, your attendance records for the current month are listed by payroll cutoff period.',
+            'Use the Previous / Next arrows to navigate to earlier months.',
+            'Each row shows the date, clock-in/out times, status, and hours worked.',
+          ]},
+        ]}
       />
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">

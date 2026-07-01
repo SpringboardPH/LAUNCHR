@@ -237,6 +237,25 @@ export default function ConfigureLeavePage() {
       <PageHeader
         title="Configure Leave"
         description="Control leave policy, leave types, and employee-specific balances"
+        help={[
+          { heading: 'Weekend Counting Policy', items: [
+            'Toggle whether weekends count as leave days when an employee files a multi-day leave.',
+            'When off, only working days (Mon–Fri, or per schedule) are deducted from the leave balance.',
+          ]},
+          { heading: 'Leave Types', items: [
+            'The table shows all leave types with their code, default allocation, balance rule, paid status, and active flag.',
+            'Click Add Leave Type to create a new type. Set the name, code, default days, whether it accrues or resets, and whether it is paid.',
+            'Click the pencil icon to edit an existing type, or the trash icon to delete it.',
+          ]},
+          { heading: 'Employee Leave Balances', items: [
+            'Select an employee from the dropdown to view their leave balance per type.',
+            'Columns show: Allocated, Carryover, Total, Used, and Remaining days.',
+          ]},
+          { heading: 'Overriding a Balance', items: [
+            'Click the edit (pencil) icon next to any leave type to manually override that employee\'s balance.',
+            'Click Reset to Default to restore the system-computed allocation for that leave type.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

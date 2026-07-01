@@ -973,7 +973,7 @@ export default function PayrollPage() {
         description="Calculate salaries and manage disbursements"
         action={
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => moveCutoff(-1)}
               className="btn-secondary p-2"
             >
@@ -985,7 +985,7 @@ export default function PayrollPage() {
                 {currentCutoff.label}
               </span>
             </div>
-            <button 
+            <button
               onClick={() => moveCutoff(1)}
               className="btn-secondary p-2"
             >
@@ -993,6 +993,34 @@ export default function PayrollPage() {
             </button>
           </div>
         }
+        help={[
+          { heading: 'Cutoff Navigation', items: [
+            'Use the Previous / Next arrows at the top-right to switch between payroll periods.',
+            'The current period label (e.g., "Jun 1–15, 2025") is shown between the arrows.',
+          ]},
+          { heading: 'Summary Cards', items: [
+            'The three cards at the top show the total number of employees, total gross pay, and total net pay for the selected period.',
+          ]},
+          { heading: 'Generating Payroll', items: [
+            'Click the Generate button to compute payroll for the current period. Records start in Draft status.',
+            'Payroll can only be generated once per period — regenerating replaces the existing draft.',
+          ]},
+          { heading: 'Viewing & Editing', items: [
+            'Click the file icon on any employee row to open their full payroll breakdown: earnings, deductions, attendance metrics, and employer contributions.',
+            'Inside the detail view, click Edit to add or remove allowance and deduction line items.',
+          ]},
+          { heading: 'Finalize & Revert', items: [
+            'Click the checkmark icon to finalize a payroll record — finalized records are locked from editing.',
+            'Inside the detail view, click Revert to Draft to unlock a finalized record.',
+          ]},
+          { heading: 'Email Paystubs', items: [
+            'Check the checkbox next to one or more employees, then click Email Paystubs.',
+            'Enter optional CC or BCC addresses and click Send to deliver paystubs by email.',
+          ]},
+          { heading: 'Export', items: [
+            'Click Export All to download the entire payroll batch as an Excel file using the configured template.',
+          ]},
+        ]}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

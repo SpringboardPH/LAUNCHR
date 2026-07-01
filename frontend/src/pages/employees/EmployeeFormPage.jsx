@@ -101,6 +101,24 @@ export default function EmployeeFormPage() {
             <ArrowLeft size={14} /> Back
           </button>
         }
+        help={[
+          { heading: 'Basic Information', items: [
+            'Fill in the employee\'s full name, email address, phone number, position title, department, and group.',
+            'Group assignment is optional — click an existing group chip to assign, or leave blank.',
+          ]},
+          { heading: 'Employment Details', items: [
+            'Set the hire date, select Monthly or Daily as the pay rate type, and enter the base salary.',
+            'Undeclared Salary is an optional separate amount used for internal payroll calculations while keeping the declared salary different.',
+          ]},
+          { heading: 'Bank & Government IDs', items: [
+            'Enter the bank account number, SSS, PhilHealth, Pag-IBIG, and TIN numbers.',
+            'These are used by the payroll engine for statutory deduction computations.',
+          ]},
+          { heading: 'System Role (Admin only)', items: [
+            'Admins can change the employee\'s system login role: Employee, HR, Accounting, or Admin.',
+            'Use the password reset fields in this section to set or change the employee\'s login password.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

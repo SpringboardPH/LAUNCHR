@@ -497,9 +497,9 @@ export default function AttendancePage() {
         </div>
       </Modal>
 
-      <PageHeader 
-        title="Attendance" 
-        description={`Today: ${displayDateLabel}`} 
+      <PageHeader
+        title="Attendance"
+        description={`Today: ${displayDateLabel}`}
         action={
           <button
             onClick={() => setMarkAbsentModal({ ...markAbsentModal, open: true })}
@@ -508,6 +508,30 @@ export default function AttendancePage() {
             <UserX size={16} /> Mark Absentees
           </button>
         }
+        help={[
+          { heading: "Today's Attendance Panel", items: [
+            'Click the panel header to expand it. It shows all scheduled employees for today.',
+            'Use the search, status filter, and group filter to narrow the list.',
+            'Click Clock In to record an employee\'s arrival, or Clock Out to end their shift.',
+          ]},
+          { heading: 'Attendance Log', items: [
+            'The main table shows all attendance records for the current payroll cutoff period.',
+            'Navigate between cutoff periods using the Previous / Next arrows at the top.',
+            'Switch between List view (detailed rows) and Grid view (calendar overview) using the icons on the right.',
+          ]},
+          { heading: 'Filters', items: [
+            'Search by employee name, filter by attendance status, filter by date, or filter by group.',
+            'In grid view, use the weekends toggle to show or hide Saturday/Sunday columns.',
+          ]},
+          { heading: 'Editing a Log', items: [
+            'Click the pencil icon on any row to edit that record\'s clock-in/out times, status, and notes.',
+            'A system-detected status hint is shown when the computed status differs from the current value.',
+          ]},
+          { heading: 'Mark Absentees', items: [
+            'Click the Mark Absentees button (top-right) to bulk-flag employees with no clock-in record for a given date range.',
+            'Select the date range and confirm — only employees with no record for those dates will be marked.',
+          ]},
+        ]}
       />
 
       {/* Today's quick clock-in panel */}

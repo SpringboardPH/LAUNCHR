@@ -110,6 +110,21 @@ export default function EmployeeProfilePage() {
       <PageHeader
         title="My Profile"
         description="View your personal and employment details"
+        help={[
+          { heading: 'Personal Information', items: [
+            'Your name, email, phone number, position, department, hire date, and employment status are displayed here.',
+            'Click the pencil (Edit) icon in the Personal Info section to update your name, email address, and phone number.',
+          ]},
+          { heading: 'Bank & Government IDs', items: [
+            'View your bank account number and government ID numbers (SSS, PhilHealth, Pag-IBIG, TIN).',
+            'Click the pencil (Edit) icon in the Bank & IDs section to update these details.',
+            'These numbers are used by payroll for statutory deduction calculations.',
+          ]},
+          { heading: 'Change Password', items: [
+            'Click "Change Password" at the bottom of the page to set a new login password.',
+            'You must enter your current password to confirm the change.',
+          ]},
+        ]}
       />
 
       <div className="grid lg:grid-cols-3 gap-5 items-start">

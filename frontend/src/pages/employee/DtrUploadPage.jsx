@@ -100,6 +100,21 @@ export default function DtrUploadPage() {
       <PageHeader
         title="DTR Upload"
         description="Upload your Daily Time Record for each payroll cutoff"
+        help={[
+          { heading: 'Selecting a Cutoff', items: [
+            'Use the tabs at the top to switch between the 1st Cutoff and 2nd Cutoff (or Monthly, if configured that way).',
+            'Use the Period dropdown to choose which month you are uploading for.',
+          ]},
+          { heading: 'Uploading a File', items: [
+            'Click the upload area or Choose File button to select your DTR file (PDF, JPG, or PNG).',
+            'After selecting, click Upload to submit it. Only one file per cutoff per period is allowed.',
+            'Re-uploading replaces the previously submitted file.',
+          ]},
+          { heading: 'Managing Uploaded Files', items: [
+            'Previously uploaded DTRs are listed below the upload area.',
+            'Click the trash icon to delete a file if you need to replace it with a corrected version.',
+          ]},
+        ]}
       />
 
       <div className="space-y-5">

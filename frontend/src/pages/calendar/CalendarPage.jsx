@@ -293,8 +293,8 @@ export default function CalendarPage({ readOnly = false }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader 
-        title={readOnly ? "Company Calendar" : "Manage Company Calendar"} 
+      <PageHeader
+        title={readOnly ? "Company Calendar" : "Manage Company Calendar"}
         description={readOnly ? "View upcoming company events and holidays." : "Add and manage company-wide events and holidays."}
         action={canManage && (
           <div className="flex gap-2">
@@ -314,6 +314,34 @@ export default function CalendarPage({ readOnly = false }) {
             </button>
           </div>
         )}
+        help={readOnly ? [
+          { heading: 'Browsing Events', items: [
+            'Navigate between months using the Previous and Next arrows on the calendar.',
+            'Click any date that has an event to see its details.',
+            'The legend on the right shows what each event color represents.',
+          ]},
+          { heading: 'Event Types', items: [
+            'Holidays and non-working days are marked — you are not expected to work on these days and absences are not counted.',
+            'Company events (team buildings, announcements) appear in their configured color.',
+          ]},
+        ] : [
+          { heading: 'Browsing', items: [
+            'Navigate between months with the Previous / Next arrows.',
+            'Click any date to start adding an event on that day.',
+          ]},
+          { heading: 'Adding Events', items: [
+            'Click Add Event or click a date on the calendar. Choose an event type, enter a title, and set the date range.',
+            'If the event type has "Recurs Annually" enabled, the event will automatically repeat for 10 consecutive years.',
+          ]},
+          { heading: 'Editing & Deleting', items: [
+            'Click an existing event to open its edit form — update the title, type, or date.',
+            'Click Delete inside the edit form to remove the event.',
+          ]},
+          { heading: 'Import / Export', items: [
+            'Export downloads all current calendar events as a file.',
+            'Import lets you upload a previously exported file to bulk-restore events.',
+          ]},
+        ]}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

@@ -177,6 +177,28 @@ export default function RequestsPage() {
             <Plus size={14} /> New Request
           </button>
         }
+        help={[
+          { heading: 'Tabs', items: [
+            'Switch between the Requests tab (overtime, half-day, COE, concerns, etc.) and the Leaves tab using the tab buttons.',
+          ]},
+          { heading: 'Filtering', items: [
+            'Filter by status — Pending, Approved, or Rejected — using the status buttons.',
+            'On the Requests tab, further narrow by request type using the type dropdown.',
+          ]},
+          { heading: 'Approving & Rejecting', items: [
+            'Click the check icon on a pending row to approve it. A confirmation dialog will appear.',
+            'Click the X icon to reject it. A confirmation dialog will appear.',
+            'Click the eye icon to view the full details of any request.',
+          ]},
+          { heading: 'New Request (on behalf of employee)', items: [
+            'Click New Request to file a request for a specific employee.',
+            'Select the employee, choose a category (Request or Leave), and fill in the relevant fields.',
+            'Leave requests require selecting a leave type and a date range.',
+          ]},
+          { heading: 'Leave Details', items: [
+            'On the Leaves tab, the start date, end date, and number of working days affected are shown in each row.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

@@ -39,6 +39,23 @@ export default function PayrollDetailPage() {
             <ArrowLeft size={14} /> Back
           </button>
         }
+        help={[
+          { heading: 'Summary Cards', items: [
+            'The four cards at the top show Days Worked, Gross Pay, Total Deductions, and Net Pay for this payroll record.',
+          ]},
+          { heading: 'Earnings Breakdown', items: [
+            'The Earnings section lists base pay and any allowances added to this employee\'s payroll.',
+          ]},
+          { heading: 'Deductions Breakdown', items: [
+            'The Deductions section lists SSS, PhilHealth, Pag-IBIG, withholding tax, and any late/absent deductions.',
+          ]},
+          { heading: 'Attendance Metrics', items: [
+            'Shows the attendance summary for this period: days present, late count, absent count, overtime hours, etc.',
+          ]},
+          { heading: 'Employer Contributions', items: [
+            'Shows the employer share of SSS, PhilHealth, and Pag-IBIG — these are costs borne by the company, not deducted from the employee.',
+          ]},
+        ]}
       />
 
       {/* Summary cards */}

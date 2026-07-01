@@ -84,6 +84,29 @@ export default function UserListPage() {
             <Plus size={16} /> Add User
           </Link>
         }
+        help={[
+          { heading: 'Searching', items: [
+            'Type a name or email into the search bar to filter the user list in real time.',
+          ]},
+          { heading: 'System Roles', items: [
+            'Admin — full access to all features including system settings and user management.',
+            'HR — access to HR management and self-service employee features.',
+            'Accounting — payroll-level access shared with HR, but no admin-only settings.',
+            'Employee — self-service only (attendance clock, requests, profile).',
+          ]},
+          { heading: 'Adding a User', items: [
+            'Click Add User to create a new system account linked to an employee record.',
+            'You can also set the role and initial password from the user form.',
+          ]},
+          { heading: 'Editing & Deactivating', items: [
+            'Click the pencil icon to modify a user\'s name, email, or role.',
+            'Click the trash icon to soft-delete (deactivate) a user — they lose login access but their records are preserved.',
+          ]},
+          { heading: 'Archived Users', items: [
+            'Deleted users appear in the Archived Users section below the active list.',
+            'Click the green restore icon to reactivate, or the red trash icon to permanently remove the account.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

@@ -398,6 +398,42 @@ export default function SystemSettingsPage() {
       <PageHeader
         title="System Settings"
         description="Manage global system configurations and environment overrides."
+        help={[
+          { heading: 'General Configuration', items: [
+            'Set the System Display Name — this appears in the sidebar for all users.',
+            'Choose the active logo from the library, or upload a new one (PNG/JPG/SVG, max 2MB).',
+            'Upload a custom Excel payroll template (XLSX) used for all payroll exports. Click "Download Current Template" to retrieve the active file.',
+          ]},
+          { heading: 'Authentication', items: [
+            'Toggle "Require OTP at Login" to add an email one-time-password step on top of the password login.',
+          ]},
+          { heading: 'DTR Upload', items: [
+            'Enable or disable the DTR Upload page for employees.',
+            'Set the upload frequency (semi-monthly or monthly) and the cutoff days employees see when choosing a period.',
+            'Enable Per-Employee Restriction to control DTR upload access individually per employee via DTR Management.',
+          ]},
+          { heading: 'Attendance Automation', items: [
+            'Enable Auto Clock-Out to automatically close open shifts after the shift\'s end time has passed.',
+            'Set the Absent Marking Time — the daily time at which employees with no clock-in record are marked absent.',
+          ]},
+          { heading: 'Visual Theme', items: [
+            'Choose one of the five preset color themes. The selection is applied instantly across the entire application.',
+          ]},
+          { heading: 'Statutory Contribution Tables', items: [
+            'Edit the SSS contribution brackets (JSON) to reflect new SSS-issued rates.',
+            'Edit the Withholding Tax table (JSON) to update TRAIN Law brackets when BIR releases revised tables.',
+          ]},
+          { heading: 'Payroll Configuration', items: [
+            'Set payroll frequency (semi-monthly or monthly) and the start/end day for each period.',
+            'A preview table shows the upcoming 3 months of payroll periods based on your current settings.',
+            'Changing frequency only affects future payroll runs — existing drafts must be deleted and regenerated.',
+          ]},
+          { heading: 'Date & Time (Virtual Clock)', items: [
+            'Override the system clock used by all attendance and payroll calculations — useful for testing date-sensitive features.',
+            'Click "Set Current Date/Time" to instantly sync back to real time. This saves immediately.',
+            'Always click Save Settings after making any other changes on this page.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

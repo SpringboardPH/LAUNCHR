@@ -34,13 +34,13 @@ export default function AuditLogPage() {
 
   return (
     <div>
-      <PageHeader 
-        title="Audit Logs" 
+      <PageHeader
+        title="Audit Logs"
         description="Track all system activities and database changes."
         icon={<History className="text-brand-600" size={24} />}
         action={
-          <button 
-            onClick={() => refetch()} 
+          <button
+            onClick={() => refetch()}
             disabled={isFetching}
             className="btn-secondary flex items-center gap-2"
           >
@@ -48,6 +48,20 @@ export default function AuditLogPage() {
             {isFetching ? 'Refreshing...' : 'Refresh'}
           </button>
         }
+        help={[
+          { heading: 'Reading the Log', items: [
+            'Each row shows the timestamp, the user who performed the action (Actor), the event type, and a description.',
+            'Event types are color-coded: green = Create, yellow = Update, red = Delete.',
+          ]},
+          { heading: 'Expanding a Row', items: [
+            'Click any row to expand it and see detailed metadata: IP address, user agent, and the resource that was changed.',
+            'For Update events, old and new values are shown side-by-side in JSON format.',
+            'Click the row again to collapse it.',
+          ]},
+          { heading: 'Refresh', items: [
+            'The log auto-refreshes every 10 seconds. Click the Refresh button to force an immediate reload.',
+          ]},
+        ]}
       />
 
       <div className="card overflow-hidden">

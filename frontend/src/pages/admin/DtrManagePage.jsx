@@ -101,6 +101,22 @@ export default function DtrManagePage() {
       <PageHeader
         title="DTR Management"
         description="View and download employee Daily Time Record uploads"
+        help={[
+          { heading: 'Tabs', items: [
+            'Uploads tab — shows all DTR files submitted by employees, with filters for name, period, and cutoff.',
+            'Employee Access tab — manage per-employee DTR upload permissions (only shown if per-employee restriction is enabled in System Settings).',
+          ]},
+          { heading: 'Uploads Tab', items: [
+            'Filter by employee name, period (month), and cutoff (1st, 2nd, or monthly) using the controls at the top.',
+            'Click the download icon on any row to download that employee\'s submitted DTR file.',
+            'Click the trash icon to permanently delete a submitted DTR (a confirmation dialog will appear).',
+          ]},
+          { heading: 'Employee Access Tab', items: [
+            'Each employee has a toggle showing whether they are allowed to upload DTRs.',
+            'Toggle individual employees on or off, then click Save Changes to apply.',
+            'This tab is only relevant when "Per-Employee Restriction" is enabled in System Settings → DTR Upload.',
+          ]},
+        ]}
       />
 
       {!config?.enabled && (

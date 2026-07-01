@@ -215,6 +215,29 @@ export default function ThirteenthMonthPage() {
       <PageHeader
         title="13th Month Pay"
         description="Click any cell to override a monthly value. 13th month = sum of all 12 months ÷ 12 (DOLE formula). Month toggles highlight months for review only."
+        help={[
+          { heading: 'Year & Group Filters', items: [
+            'Use the year dropdown to select the calendar year for 13th month computation.',
+            'Use the group dropdown to filter the employee list by group.',
+          ]},
+          { heading: 'Auto vs Manual Mode', items: [
+            'Auto mode pulls basic pay amounts directly from finalized payroll records.',
+            'Manual mode lets you type in per-month amounts directly for each employee.',
+            'Click "Refresh from Payroll" to re-sync auto values from payroll records.',
+          ]},
+          { heading: 'Editing Amounts', items: [
+            'In Manual mode, click any amount cell to type a value override.',
+            'Overridden cells are highlighted so you can tell which values were manually set.',
+          ]},
+          { heading: 'Total Column', items: [
+            'The rightmost column shows the computed 13th month pay: sum of all 12 monthly values ÷ 12.',
+            'Hover over a total to copy the exact value to your clipboard.',
+          ]},
+          { heading: 'Save & Push to Payroll', items: [
+            'Click Save to persist any manual overrides or mode changes.',
+            'Click Push to Payroll to add the computed 13th month amounts as allowances in a selected payroll run.',
+          ]},
+        ]}
       />
 
       {/* Controls bar */}

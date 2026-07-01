@@ -248,6 +248,26 @@ export default function RequestFormPage() {
         title="My Requests"
         description="Submit and track your HR requests"
         action={<button onClick={() => navigate('/employee')} className="btn-secondary">← Back</button>}
+        help={[
+          { heading: 'Submitting a Request', items: [
+            'Choose a request type from the dropdown at the top of the form, fill in the required fields, then click Submit.',
+            'Each request type shows only the fields relevant to it — unused fields are hidden automatically.',
+          ]},
+          { heading: 'Request Types', items: [
+            'Overtime — specify the date and start/end time of overtime work.',
+            'Half-Day — specify the date and whether it is the AM or PM half.',
+            'Undertime — specify the date and your early departure time.',
+            'Schedule Change — describe the requested schedule adjustment.',
+            'Certificate of Employment (COE) — no extra fields needed.',
+            'Leave — select a leave type, then pick your start and end dates. Your remaining balance is shown per leave type.',
+            'Concern — describe any HR-related concern.',
+          ]},
+          { heading: 'Request History', items: [
+            'All previously submitted requests are listed below the form, with their current status: Pending, Approved, or Rejected.',
+            'Click the eye icon on any row to view the full details of that request.',
+            'Switch to the Leaves tab to see your filed leave requests separately.',
+          ]},
+        ]}
       />
 
       <ConfirmModal
