@@ -268,6 +268,11 @@ export default function LoginPage() {
         <p className="text-center text-xs text-gray-400 mt-6">
           LAUNCHR &copy; {new Date().getFullYear()} made by aaron luyun
         </p>
+        <p className="text-center text-xs text-gray-400 mt-1">
+          <a href="/terms" className="hover:underline">Terms and Conditions</a>
+          {' · '}
+          <a href="/privacy" className="hover:underline">Privacy Policy</a>
+        </p>
       </div>
     </div>
   )

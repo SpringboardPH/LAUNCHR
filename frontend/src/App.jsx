@@ -34,6 +34,8 @@ import AdminCalendarEventTypesPage from './pages/admin/AdminCalendarEventTypesPa
 import AuditLogPage from './pages/admin/AuditLogPage'
 import DtrManagePage from './pages/admin/DtrManagePage'
 import DtrUploadPage from './pages/employee/DtrUploadPage'
+import TermsPage from './pages/legal/TermsPage'
+import PrivacyPage from './pages/legal/PrivacyPage'
 
 const isEmployee = (user) => {
   if (!user) return true;
@@ -128,6 +130,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/" element={<RootRoute />} />
           <Route path="/hr" element={<HrRoute><AppLayout /></HrRoute>}>
             <Route index element={<DashboardPage />} />
