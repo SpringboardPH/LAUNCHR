@@ -86,11 +86,11 @@ export default function RequestsPage() {
 
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }) => approveRequest(id, notes || null),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: requestKeys.all }); setApproveTarget(null); setApproveNotes('') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: requestKeys.all }); qc.invalidateQueries({ queryKey: dashboardKeys.all }); setApproveTarget(null); setApproveNotes('') },
   })
   const rejectMutation = useMutation({
     mutationFn: ({ id, notes }) => rejectRequest(id, notes),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: requestKeys.all }); setRejectModal(null); setRejectNotes('') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: requestKeys.all }); qc.invalidateQueries({ queryKey: dashboardKeys.all }); setRejectModal(null); setRejectNotes('') },
   })
   const approveLeaveMutation = useMutation({
     mutationFn: approveLeave,
