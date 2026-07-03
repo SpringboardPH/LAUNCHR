@@ -391,6 +391,7 @@ export default function AdminAttendanceLogsPage() {
               <option value="overtime">Overtime</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
+              <option value="rest_day">Rest Day</option>
             </select>
             <input type="date" className="input text-sm w-36 shrink-0" value={filters.date} onChange={e => setFilters({ ...filters, date: e.target.value })} />
             {employeeGroups.length > 0 && (
@@ -541,6 +542,9 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="absent">Absent</option>
                   <option value="on_leave">On Leave</option>
+                  {getScheduleForEmployee(editLog?.employee_id)?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
 
                 {(() => {
@@ -745,6 +749,9 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="on_leave">On Leave</option>
                   <option value="absent">Absent</option>
+                  {getScheduleForEmployee(parseInt(createForm.employee_id))?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
 
                 {(() => {

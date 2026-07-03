@@ -783,6 +783,7 @@ export default function AttendancePage() {
               <option value="overtime">Overtime</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
+              <option value="rest_day">Rest Day</option>
             </select>
             <input type="date" className="input text-sm sm:w-36 sm:shrink-0" value={monthlyDate} onChange={e => setMonthlyDate(e.target.value)} />
             {employeeGroups.length > 0 && (
@@ -913,6 +914,7 @@ export default function AttendancePage() {
                 on_leave:  { letter: 'L', color: 'bg-gray-900 text-white' },
                 holiday:   { letter: 'H', color: 'bg-purple-500 text-white' },
                 working:   { letter: 'W', color: 'bg-green-400 text-white' },
+                rest_day:  { letter: 'R', color: 'bg-blue-500 text-white' },
               }
 
               const employeeList = Object.entries(groupedByEmployee).sort((a, b) => a[1].name.localeCompare(b[1].name))
@@ -999,6 +1001,9 @@ export default function AttendancePage() {
                   <option value="overtime">Overtime</option>
                   <option value="absent">Absent</option>
                   <option value="on_leave">On Leave</option>
+                  {getScheduleForEmployee(editLog?.employee_id)?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
                 
                 {(() => {

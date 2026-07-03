@@ -102,9 +102,21 @@ class PayrollController extends Controller
                 ->whereBetween('date', [$start, $end])
                 ->get();
 
-            // Get latest schedule to determine work days and divisor
+            // Get latest schedule to determine work days and divisor.
+            // Flexi templates only populate day_rules (no work_days), so derive from
+            // day_rules first — falls back to work_days for legacy fixed templates.
             $latestSchedule = EmployeeSchedule::getCurrentForEmployee($employee->id);
-            $workDays = $latestSchedule?->template?->work_days ?? [1, 2, 3, 4, 5];
+            $latestTemplate = $latestSchedule?->template;
+            if ($latestTemplate?->day_rules) {
+                $workDays = collect($latestTemplate->day_rules)
+                    ->filter(fn($rule) => !empty($rule['enabled']))
+                    ->pluck('day')
+                    ->map(fn($day) => (int) $day)
+                    ->values()
+                    ->all();
+            } else {
+                $workDays = $latestTemplate?->work_days ?? [1, 2, 3, 4, 5];
+            }
             $daysInWeek = count($workDays);
 
             // HR Rule: Mon-Fri = 261 working days/year, Mon-Sat = 313 working days/year
@@ -124,7 +136,9 @@ class PayrollController extends Controller
                 'overtime_hours' => 0,
                 'late_minutes' => 0,
                 'undertime_minutes' => 0,
+                'undertime_deduction' => 0,
                 'rest_day_hours' => 0,
+                'rest_day_pay' => 0,
                 'rest_day_ot_hours' => 0,
                 'absent_days' => 0,
                 'half_days' => 0,
@@ -240,9 +254,16 @@ class PayrollController extends Controller
                 }
 
                 if ($isRestDay) {
-                    // Rest day: regular hours and OT hours tracked separately
-                    $restRegularHours = max(0, $details['hours_worked'] - $overtimeHours);
+                    // Rest day: regular pay is a day rate (like Base Pay), not an hourly
+                    // rate — completing the required hours earns the full daily_rate * 1.30,
+                    // prorated if they clocked out early. Hours beyond that only count once
+                    // OT is approved (status === 'overtime') — while pending, the excess
+                    // isn't paid at all yet.
+                    $restRegularHours = min($details['hours_worked'], $expectedHours);
                     $metrics['rest_day_hours'] += $restRegularHours;
+                    $metrics['rest_day_pay'] += $expectedHours > 0
+                        ? ($restRegularHours / $expectedHours) * $dailyRate * 1.30
+                        : 0;
                     $metrics['rest_day_ot_hours'] += $overtimeHours;
                 } else {
                     $metrics['total_hours'] += $details['hours_worked'];
@@ -253,6 +274,12 @@ class PayrollController extends Controller
 
                 $metrics['late_minutes'] += $details['late_minutes'];
                 $metrics['undertime_minutes'] += $earlyDepartureMin;
+
+                // Flexi undertime is deducted at the employee's own required-hours rate
+                // (daily_rate / required_hours), not the flat /8 hourly rate — otherwise
+                // the deduction can exceed the full day's pay when required hours > 8.
+                $undertimeRate = ($isFlexiSchedule && $expectedHours > 0) ? ($dailyRate / $expectedHours) : $hourlyRate;
+                $metrics['undertime_deduction'] += ($earlyDepartureMin / 60) * $undertimeRate;
             }
 
             // Count non-absence holidays on scheduled work days as paid days.
@@ -351,10 +378,10 @@ class PayrollController extends Controller
                 : $undeclaredDiff / $periods;
 
             // OT Pay:          daily_rate * 1.25 / 8 * OT hours
-            // Rest Day Pay:    daily_rate * 1.30 / 8 * rest day regular hours
+            // Rest Day Pay:    daily_rate * 1.30, prorated by hours worked / required hours
             // Rest Day OT Pay: daily_rate * 1.69 / 8 * rest day OT hours
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
-            $restDayPay = $metrics['rest_day_hours'] * ($dailyRate * 1.30 / 8);
+            $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
 
             // Paid leave: daily employees need explicit pay added back;
@@ -363,7 +390,7 @@ class PayrollController extends Controller
 
             // ── Deductions ────────────────────────────────────────────────
             $lateDeduction = ($metrics['late_minutes'] / 60) * $hourlyRate;
-            $undertimeDeduction = (($metrics['undertime_minutes'] + $requestUndertimeMinutes) / 60) * $hourlyRate;
+            $undertimeDeduction = $metrics['undertime_deduction'] + (($requestUndertimeMinutes / 60) * $hourlyRate);
             $absentDeduction = $metrics['absent_days'] * $dailyRate;
             $halfDayDeduction = $metrics['half_days'] * ($dailyRate / 2) + $requestHalfDayDeduction;
 

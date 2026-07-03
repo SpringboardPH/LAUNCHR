@@ -182,12 +182,14 @@ export function StatusBadge({ status }) {
     overtime:      'badge-purple',
     not_scheduled: 'badge-gray',
     not_yet:       'badge-gray',
+    rest_day:      'badge-blue',
   }
   const labels = {
     on_leave:      'on leave',
     not_scheduled: 'Not Scheduled',
     not_yet:       'Not Yet',
     half_day:      'Half Day',
+    rest_day:      'Rest Day',
   }
   const label = labels[status] ?? status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
