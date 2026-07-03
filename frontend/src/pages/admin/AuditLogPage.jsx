@@ -6,13 +6,22 @@ import { PageHeader, PageSpinner, PagePagination } from '../../components/ui/ind
 import { History, User, Globe, Monitor, Info, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 
+const MODELS = ['Employee', 'EmployeeRequest', 'AttendanceLog', 'Payroll', 'CalendarEvent', 'LeaveRequest']
+
 export default function AuditLogPage() {
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState(null)
+  const [action, setAction] = useState('')
+  const [model, setModel] = useState('')
+  const [actor, setActor] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const resetPage = () => setPage(1)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: auditLogKeys.list({ page }),
-    queryFn: () => getAuditLogs({ page }),
+    queryKey: auditLogKeys.list({ page, action, model, actor, dateFrom, dateTo }),
+    queryFn: () => getAuditLogs({ page, action, model, actor, date_from: dateFrom, date_to: dateTo }),
     refetchInterval: 10000, // Auto-refresh every 10s
   })
 
@@ -49,6 +58,12 @@ export default function AuditLogPage() {
           </button>
         }
         help={[
+          { heading: 'Filtering', items: [
+            'Type into the actor search bar to filter by the name of the user who performed the action.',
+            'Use the Action dropdown to show only Created, Updated, or Deleted events.',
+            'Use the Resource dropdown to show changes to a specific record type (e.g. Employee, Payroll).',
+            'Use the date fields to narrow the log to a specific date range.',
+          ]},
           { heading: 'Reading the Log', items: [
             'Each row shows the timestamp, the user who performed the action (Actor), the event type, and a description.',
             'Event types are color-coded: green = Create, yellow = Update, red = Delete.',
@@ -63,6 +78,30 @@ export default function AuditLogPage() {
           ]},
         ]}
       />
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1 sm:max-w-xs">
+          <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-9" placeholder="Search by actor name..."
+            value={actor} onChange={e => { setActor(e.target.value); resetPage() }}
+          />
+        </div>
+        <select className="input sm:w-40" value={action} onChange={e => { setAction(e.target.value); resetPage() }}>
+          <option value="">All actions</option>
+          <option value="created">Created</option>
+          <option value="updated">Updated</option>
+          <option value="deleted">Deleted</option>
+        </select>
+        <select className="input sm:w-48" value={model} onChange={e => { setModel(e.target.value); resetPage() }}>
+          <option value="">All resources</option>
+          {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <input type="date" className="input sm:w-40" value={dateFrom}
+          onChange={e => { setDateFrom(e.target.value); resetPage() }} />
+        <input type="date" className="input sm:w-40" value={dateTo}
+          onChange={e => { setDateTo(e.target.value); resetPage() }} />
+      </div>
 
       <div className="card overflow-hidden">
         {isLoading ? (
