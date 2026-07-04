@@ -8,7 +8,7 @@ import {
   getLeaveTypes, getEmployees, getSystemClock, getLeaveBalance,
   leaveTypeKeys, employeeKeys, systemClockKeys, dashboardKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination } from '../../components/ui/index.jsx'
 import { Check, X, Eye, ClipboardList, Plus, CalendarOff, AlertCircle } from 'lucide-react'
 
 const REQUEST_TYPES = [
@@ -39,6 +39,8 @@ export default function RequestsPage() {
   const [tab, setTab]               = useState('requests')
   const [status, setStatus]         = useState('pending')
   const [typeFilter, setTypeFilter] = useState('')
+  const [reqPage, setReqPage]       = useState(1)
+  const [leavePage, setLeavePage]   = useState(1)
   const [viewRequest, setViewRequest]     = useState(null)
   const [rejectModal, setRejectModal]     = useState(null)
   const [rejectNotes, setRejectNotes]     = useState('')
@@ -54,12 +56,12 @@ export default function RequestsPage() {
   const qc = useQueryClient()
 
   const { data: reqData, isLoading: loadingReq } = useQuery({
-    queryKey: requestKeys.list({ status, request_type: typeFilter || undefined }),
-    queryFn: () => getRequests({ status, ...(typeFilter ? { request_type: typeFilter } : {}) }),
+    queryKey: requestKeys.list({ status, request_type: typeFilter || undefined, page: reqPage }),
+    queryFn: () => getRequests({ status, page: reqPage, ...(typeFilter ? { request_type: typeFilter } : {}) }),
   })
   const { data: leaveData, isLoading: loadingLeave } = useQuery({
-    queryKey: leaveKeys.list({ status }),
-    queryFn: () => getLeaves({ status }),
+    queryKey: leaveKeys.list({ status, page: leavePage }),
+    queryFn: () => getLeaves({ status, page: leavePage }),
   })
   const { data: employees } = useQuery({
     queryKey: employeeKeys.list({}),
@@ -118,6 +120,8 @@ export default function RequestsPage() {
   const activeTypes = leaveTypes ?? []
   const requests    = reqData?.data ?? []
   const leaves      = leaveData?.data ?? []
+  const reqPagination   = reqData?.pagination
+  const leavePagination = leaveData?.pagination
 
   const includeWeekends  = Boolean(balanceData?.policy?.include_weekends)
   const selectedBalance  = balanceData?.balances?.[form.leave_type]
@@ -222,14 +226,14 @@ export default function RequestsPage() {
         </div>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
           {['pending', 'approved', 'rejected'].map(s => (
-            <button key={s} onClick={() => setStatus(s)}
+            <button key={s} onClick={() => { setStatus(s); setReqPage(1); setLeavePage(1) }}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${status === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {s}
             </button>
           ))}
         </div>
         {tab === 'requests' && (
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input py-1.5 text-sm w-auto">
+          <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setReqPage(1) }} className="input py-1.5 text-sm w-auto">
             <option value="">All Types</option>
             {REQUEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -278,6 +282,11 @@ export default function RequestsPage() {
               </tbody>
             </table>
             </div>
+            {reqPagination && reqPagination.last_page > 1 && (
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
+                <PagePagination pagination={reqPagination} onPageChange={setReqPage} />
+              </div>
+            )}
           </div>
         )
       )}
@@ -332,6 +341,11 @@ export default function RequestsPage() {
               </tbody>
             </table>
             </div>
+            {leavePagination && leavePagination.last_page > 1 && (
+              <div className="px-4 py-3 border-t border-gray-100 bg-gray-50">
+                <PagePagination pagination={leavePagination} onPageChange={setLeavePage} />
+              </div>
+            )}
           </div>
         )
       )}
