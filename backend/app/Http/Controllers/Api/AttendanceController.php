@@ -1459,8 +1459,16 @@ class AttendanceController extends Controller
             if (!$schedule || !$schedule->template) continue;
 
             $template = $schedule->template;
+            $scheduleType = $log->schedule_type ?? $template->type ?? 'fixed';
+
+            // Flexi has no fixed departure window intraday — only the nightly
+            // attendance:auto-clock-out command should close these out (at 23:59).
+            if ($scheduleType === 'flexi') {
+                continue;
+            }
+
             $dayOfWeek = $date->dayOfWeek; // 0 (Sun) to 6 (Sat)
-            
+
             $dayRule = null;
             if ($template->day_rules) {
                 foreach ($template->day_rules as $rule) {
