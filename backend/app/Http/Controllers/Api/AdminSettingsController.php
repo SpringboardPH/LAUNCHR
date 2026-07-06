@@ -376,6 +376,7 @@ class AdminSettingsController extends Controller
                 'system_name'              => SystemSettings::get('system_name', 'LAUNCHR'),
                 'system_logo'              => SystemSettings::get('system_logo', 'launchr_black.svg'),
                 'dtr_page_enabled'         => (bool) SystemSettings::get('dtr_page_enabled', false),
+                'assistant_enabled'        => (bool) SystemSettings::get('assistant_enabled', false),
                 'dtr_upload_frequency'     => SystemSettings::get('dtr_upload_frequency', 'semi_monthly'),
             ],
             'message' => 'System configuration retrieved',

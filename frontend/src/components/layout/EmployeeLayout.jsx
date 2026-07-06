@@ -111,9 +111,8 @@ export default function EmployeeLayout() {
         </main>
       </div>
 
-      {/* LaunchAssist chatbot (placeholder MVP). The full plan gates this on
-          systemConfig?.assistant_enabled — left ungated for the MVP. */}
-      <ChatWidget />
+      {/* LaunchAssist chatbot — gated on the assistant_enabled system setting. */}
+      {systemConfig?.assistant_enabled && <ChatWidget />}
     </div>
   )
 }

@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // LaunchAssist — local Ollama on the Pi (co-located, so defaults to loopback).
+    'ollama' => [
+        'host'  => env('OLLAMA_HOST', 'http://127.0.0.1:11434'),
+        'model' => env('OLLAMA_MODEL', 'minimax-m2.5:cloud'),
+    ],
+
 ];
