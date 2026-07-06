@@ -74,6 +74,16 @@ class AssistantService
                     return trim($msg['content'] ?? '') ?: $this->unavailable();
                 }
 
+                // PHP's json_decode turns an empty {} into [], which re-serializes as a JSON
+                // array — and Ollama 400s on tool_call arguments that aren't an object. Coerce
+                // empty arguments back to an object before replaying the assistant turn.
+                foreach ($msg['tool_calls'] as &$tc) {
+                    if (empty($tc['function']['arguments'])) {
+                        $tc['function']['arguments'] = new \stdClass();
+                    }
+                }
+                unset($tc);
+
                 $convo[] = $msg; // append the assistant turn (with tool_calls) verbatim
                 foreach ($calls as $call) {
                     $name = $call['function']['name'] ?? '';
