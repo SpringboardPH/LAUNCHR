@@ -299,6 +299,25 @@ const AdminScheduleTemplatesPage = () => {
       <PageHeader
         title="Schedule Templates"
         description="Create and manage reusable work schedule templates for employees"
+        help={[
+          { heading: 'Template List', items: [
+            'All created templates are displayed with their name, enabled working days, and shift times.',
+            'Templates can be assigned to employees via the Employee Schedules page.',
+          ]},
+          { heading: 'Creating a Template', items: [
+            'Click New Template to open the template editor.',
+            'Enable each working day with its toggle, then set the clock-in and clock-out time for that day.',
+            'Each day can have its own shift time, allowing for non-uniform schedules.',
+          ]},
+          { heading: 'Grace Period', items: [
+            'Optionally enable a grace period per day — this defines a window (in minutes) around the clock-in time where employees are still considered on time.',
+            'Grace type options: before only (−), after only (+), or both (−/+).',
+          ]},
+          { heading: 'Editing & Deleting', items: [
+            'Click the pencil icon on any template to modify it.',
+            'Click the trash icon to delete a template. Deletion may be blocked if employees are currently assigned to it.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

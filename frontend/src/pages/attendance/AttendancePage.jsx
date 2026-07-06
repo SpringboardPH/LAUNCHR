@@ -497,9 +497,9 @@ export default function AttendancePage() {
         </div>
       </Modal>
 
-      <PageHeader 
-        title="Attendance" 
-        description={`Today: ${displayDateLabel}`} 
+      <PageHeader
+        title="Attendance"
+        description={`Today: ${displayDateLabel}`}
         action={
           <button
             onClick={() => setMarkAbsentModal({ ...markAbsentModal, open: true })}
@@ -508,6 +508,30 @@ export default function AttendancePage() {
             <UserX size={16} /> Mark Absentees
           </button>
         }
+        help={[
+          { heading: "Today's Attendance Panel", items: [
+            'Click the panel header to expand it. It shows all scheduled employees for today.',
+            'Use the search, status filter, and group filter to narrow the list.',
+            'Click Clock In to record an employee\'s arrival, or Clock Out to end their shift.',
+          ]},
+          { heading: 'Attendance Log', items: [
+            'The main table shows all attendance records for the current payroll cutoff period.',
+            'Navigate between cutoff periods using the Previous / Next arrows at the top.',
+            'Switch between List view (detailed rows) and Grid view (calendar overview) using the icons on the right.',
+          ]},
+          { heading: 'Filters', items: [
+            'Search by employee name, filter by attendance status, filter by date, or filter by group.',
+            'In grid view, use the weekends toggle to show or hide Saturday/Sunday columns.',
+          ]},
+          { heading: 'Editing a Log', items: [
+            'Click the pencil icon on any row to edit that record\'s clock-in/out times, status, and notes.',
+            'A system-detected status hint is shown when the computed status differs from the current value.',
+          ]},
+          { heading: 'Mark Absentees', items: [
+            'Click the Mark Absentees button (top-right) to bulk-flag employees with no clock-in record for a given date range.',
+            'Select the date range and confirm — only employees with no record for those dates will be marked.',
+          ]},
+        ]}
       />
 
       {/* Today's quick clock-in panel */}
@@ -759,6 +783,7 @@ export default function AttendancePage() {
               <option value="overtime">Overtime</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
+              <option value="rest_day">Rest Day</option>
             </select>
             <input type="date" className="input text-sm sm:w-36 sm:shrink-0" value={monthlyDate} onChange={e => setMonthlyDate(e.target.value)} />
             {employeeGroups.length > 0 && (
@@ -889,6 +914,7 @@ export default function AttendancePage() {
                 on_leave:  { letter: 'L', color: 'bg-gray-900 text-white' },
                 holiday:   { letter: 'H', color: 'bg-purple-500 text-white' },
                 working:   { letter: 'W', color: 'bg-green-400 text-white' },
+                rest_day:  { letter: 'R', color: 'bg-blue-500 text-white' },
               }
 
               const employeeList = Object.entries(groupedByEmployee).sort((a, b) => a[1].name.localeCompare(b[1].name))
@@ -975,6 +1001,9 @@ export default function AttendancePage() {
                   <option value="overtime">Overtime</option>
                   <option value="absent">Absent</option>
                   <option value="on_leave">On Leave</option>
+                  {getScheduleForEmployee(editLog?.employee_id)?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
                 
                 {(() => {

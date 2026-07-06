@@ -59,6 +59,20 @@ export default function EmployeeDetailPage() {
             </Link>
           </div>
         }
+        help={[
+          { heading: 'Profile Information', items: [
+            'The profile card shows the employee\'s position, department, hire date, employment status, and contact details.',
+            'Click the Edit button (top-right) to open the full edit form for this employee.',
+          ]},
+          { heading: 'Leave Balances', items: [
+            'Progress bars show remaining vs. used days for each leave type assigned to this employee.',
+            'The numbers reflect the current period allocation including any admin overrides or carryover.',
+          ]},
+          { heading: 'Assigned Schedule', items: [
+            'The employee\'s current weekly schedule is shown at the bottom — displaying which days they work and their shift times.',
+            'Click Assign Schedule (top-right) to modify or create a schedule assignment for this employee.',
+          ]},
+        ]}
       />
 
       <div className="grid lg:grid-cols-3 gap-5">

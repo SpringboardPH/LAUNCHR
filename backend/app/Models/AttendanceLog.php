@@ -19,6 +19,7 @@ class AttendanceLog extends Model
         'status',
         'schedule_template_id',
         'schedule_template_name',
+        'schedule_type',
     ];
     
     protected $casts = [

@@ -1,21 +1,54 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, CalendarDays, Clock, LogOut } from 'lucide-react'
+import { X, CalendarDays, Clock, LogOut, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import AlertModal from './AlertModal'
 
 export { AlertModal }
 
 // ─── PageHeader ───────────────────────────────────────────────
-export function PageHeader({ title, description, action }) {
+export function PageHeader({ title, description, action, help }) {
+  const [helpOpen, setHelpOpen] = useState(false)
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-5">
-      <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-gray-900 leading-tight">{title}</h1>
-        {description && <p className="text-sm text-gray-500 mt-1 max-w-2xl">{description}</p>}
+    <>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-lg font-semibold text-gray-900 leading-tight">{title}</h1>
+            {help && (
+              <button
+                onClick={() => setHelpOpen(true)}
+                className="text-gray-400 hover:text-brand-600 transition-colors"
+                title="Page help"
+              >
+                <HelpCircle size={16} />
+              </button>
+            )}
+          </div>
+          {description && <p className="text-sm text-gray-500 mt-1 max-w-2xl">{description}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
+      {help && (
+        <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title={`${title} — Help`} size="md">
+          <div className="space-y-5">
+            {help.map((section, i) => (
+              <div key={i}>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{section.heading}</p>
+                <ul className="space-y-1.5">
+                  {section.items.map((item, j) => (
+                    <li key={j} className="flex gap-2 text-sm text-gray-700">
+                      <span className="text-brand-500 shrink-0 mt-0.5">•</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
 
@@ -149,12 +182,14 @@ export function StatusBadge({ status }) {
     overtime:      'badge-purple',
     not_scheduled: 'badge-gray',
     not_yet:       'badge-gray',
+    rest_day:      'badge-blue',
   }
   const labels = {
     on_leave:      'on leave',
     not_scheduled: 'Not Scheduled',
     not_yet:       'Not Yet',
     half_day:      'Half Day',
+    rest_day:      'Rest Day',
   }
   const label = labels[status] ?? status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>

@@ -157,26 +157,9 @@ export const getClockWindow = (schedule, sysClock = null) => {
 
   const dayRule = (template.day_rules || []).find(r => r.day === dayOfWeek)
 
-  if (dayRule && !dayRule.enabled) {
-    return {
-      isInactiveDay: true,
-      currentMinutes,
-      workStart: dayRule.clock_in?.substring(0, 5) || template.work_start_time?.substring(0, 5) || '—',
-      workEnd: dayRule.clock_out?.substring(0, 5) || template.work_end_time?.substring(0, 5) || '—',
-      formatTime: (m) => {
-        const h = Math.floor(m / 60)
-        const min = m % 60
-        return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
-      },
-    }
-  }
-
-  // Flexi schedule: employee can clock in/out any time on an enabled work day
+  // Flexi schedule: employee can always clock in/out. On a disabled (rest) day
+  // they may still choose to work — payroll pays that at the rest-day rate.
   if (template.type === 'flexi') {
-    const isWorkDay = dayRule?.enabled ?? false
-    if (!isWorkDay) {
-      return { isInactiveDay: true, currentMinutes, workStart: 'Flexi', workEnd: 'Flexi', formatTime }
-    }
     return {
       inStart: 0,
       inEnd: 1439,
@@ -191,8 +174,23 @@ export const getClockWindow = (schedule, sysClock = null) => {
       isWithinInWindow: true,
       isWithinOutWindow: true,
       isFlexi: true,
+      isRestDay: !(dayRule?.enabled ?? false),
       requiredHours: template.required_hours_per_day ?? 8,
       formatTime,
+    }
+  }
+
+  if (dayRule && !dayRule.enabled) {
+    return {
+      isInactiveDay: true,
+      currentMinutes,
+      workStart: dayRule.clock_in?.substring(0, 5) || template.work_start_time?.substring(0, 5) || '—',
+      workEnd: dayRule.clock_out?.substring(0, 5) || template.work_end_time?.substring(0, 5) || '—',
+      formatTime: (m) => {
+        const h = Math.floor(m / 60)
+        const min = m % 60
+        return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
+      },
     }
   }
 

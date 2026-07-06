@@ -330,9 +330,29 @@ export default function AdminAttendanceLogsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader 
-        title="Attendance Log Management" 
+      <PageHeader
+        title="Attendance Log Management"
         description="View, edit, and delete attendance logs with full control"
+        help={[
+          { heading: 'Cutoff Navigation', items: [
+            'Use the Previous / Next arrows to navigate between payroll cutoff periods.',
+          ]},
+          { heading: 'Filters', items: [
+            'Filter logs by employee name/email, attendance status, specific date, and employee group.',
+            'All filters can be combined to narrow results.',
+          ]},
+          { heading: 'Adding a Log', items: [
+            'Click the Add Log button (top-right of the filters card) to manually create an attendance record.',
+            'Specify the employee, date, clock-in/out times, status, and notes.',
+          ]},
+          { heading: 'Editing a Log', items: [
+            'Click the pencil icon on any row to edit that record\'s clock-in/out times, status, and notes.',
+            'A system-detected status hint is shown if the computed status differs from the selected one.',
+          ]},
+          { heading: 'Deleting a Log', items: [
+            'Click the trash icon to permanently delete an attendance record. A confirmation dialog will appear.',
+          ]},
+        ]}
       />
 
       {/* Cutoff Navigation and Filters */}
@@ -371,6 +391,7 @@ export default function AdminAttendanceLogsPage() {
               <option value="overtime">Overtime</option>
               <option value="on_leave">On Leave</option>
               <option value="absent">Absent</option>
+              <option value="rest_day">Rest Day</option>
             </select>
             <input type="date" className="input text-sm w-36 shrink-0" value={filters.date} onChange={e => setFilters({ ...filters, date: e.target.value })} />
             {employeeGroups.length > 0 && (
@@ -521,6 +542,9 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="absent">Absent</option>
                   <option value="on_leave">On Leave</option>
+                  {getScheduleForEmployee(editLog?.employee_id)?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
 
                 {(() => {
@@ -725,6 +749,9 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="on_leave">On Leave</option>
                   <option value="absent">Absent</option>
+                  {getScheduleForEmployee(parseInt(createForm.employee_id))?.template?.type === 'flexi' && (
+                    <option value="rest_day">Rest Day</option>
+                  )}
                 </select>
 
                 {(() => {

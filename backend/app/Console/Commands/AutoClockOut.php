@@ -60,7 +60,29 @@ class AutoClockOut extends Command
 
             $template = $schedule->template;
             $dayOfWeek = $date->dayOfWeek;
-            
+            $scheduleType = $log->schedule_type ?? $template->type ?? 'fixed';
+
+            // Always use 23:59:00 (11:59 PM) for the clock-out time
+            $finalClockOutTime = '23:59:00';
+
+            if ($scheduleType === 'flexi') {
+                $requiredHours = $template->required_hours_per_day ?? 8;
+                $status = AttendanceService::calculateFlexiStatus($log->clock_in_time, $finalClockOutTime, $requiredHours);
+
+                // Cap at 'completed' to avoid accidental overtime for employees
+                // who simply forgot to clock out (mirrors the fixed-schedule cap below).
+                if ($status === 'overtime') {
+                    $status = 'completed';
+                }
+
+                $log->update([
+                    'clock_out_time' => $finalClockOutTime,
+                    'status'         => $status,
+                    'clock_out_notes' => ($log->clock_out_notes ? $log->clock_out_notes . "\n" : '') . '[System] Automatically clocked out due to missed departure window.',
+                ]);
+                continue;
+            }
+
             $dayRule = null;
             if ($template->day_rules) {
                 foreach ($template->day_rules as $rule) {
@@ -70,9 +92,6 @@ class AutoClockOut extends Command
                     }
                 }
             }
-
-            // Always use 23:59:00 (11:59 PM) for the clock-out time
-            $finalClockOutTime = '23:59:00';
 
             // Derive work start and expected hours for accurate status
             $workStartTime = $dayRule['clock_in'] ?? $template->work_start_time ?? '09:00:00';

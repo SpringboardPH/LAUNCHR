@@ -96,6 +96,19 @@ export default function UserFormPage() {
             <ArrowLeft size={16} /> Back to Users
           </Link>
         }
+        help={[
+          { heading: 'User Details', items: [
+            'Enter the user\'s full name and email address. The email is used for login.',
+            'Set the system role: Admin (full access), HR (HR management + self-service), Accounting (payroll-level access), or Employee (self-service only).',
+          ]},
+          { heading: 'Password', items: [
+            'Set an initial password for new users. For existing users, leave blank to keep the current password unchanged.',
+            'Passwords must meet the minimum length requirement.',
+          ]},
+          { heading: 'Linked Employee Record', items: [
+            'Users can optionally be linked to an existing employee record to enable payroll and attendance tracking.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

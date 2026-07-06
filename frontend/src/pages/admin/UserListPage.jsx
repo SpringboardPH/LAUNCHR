@@ -10,20 +10,22 @@ import { format } from 'date-fns'
 export default function UserListPage() {
   const { user: currentUser } = useAuth()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [trashedPage, setTrashedPage] = useState(1)
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '' })
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const queryClient = useQueryClient()
 
 
   const { data, isLoading } = useQuery({
-    queryKey: userKeys.list({ search }),
-    queryFn: () => getUsers({ search }),
+    queryKey: userKeys.list({ search, page }),
+    queryFn: () => getUsers({ search, page }),
     keepPreviousData: true,
   })
 
   const { data: trashedData, isLoading: isLoadingTrashed } = useQuery({
-    queryKey: userKeys.trashed({ search }),
-    queryFn: () => getTrashedUsers({ search }),
+    queryKey: userKeys.trashed({ search, page: trashedPage }),
+    queryFn: () => getTrashedUsers({ search, page: trashedPage }),
     keepPreviousData: true,
   })
 
@@ -84,6 +86,29 @@ export default function UserListPage() {
             <Plus size={16} /> Add User
           </Link>
         }
+        help={[
+          { heading: 'Searching', items: [
+            'Type a name or email into the search bar to filter the user list in real time.',
+          ]},
+          { heading: 'System Roles', items: [
+            'Admin — full access to all features including system settings and user management.',
+            'HR — access to HR management and self-service employee features.',
+            'Accounting — payroll-level access shared with HR, but no admin-only settings.',
+            'Employee — self-service only (attendance clock, requests, profile).',
+          ]},
+          { heading: 'Adding a User', items: [
+            'Click Add User to create a new system account linked to an employee record.',
+            'You can also set the role and initial password from the user form.',
+          ]},
+          { heading: 'Editing & Deactivating', items: [
+            'Click the pencil icon to modify a user\'s name, email, or role.',
+            'Click the trash icon to soft-delete (deactivate) a user — they lose login access but their records are preserved.',
+          ]},
+          { heading: 'Archived Users', items: [
+            'Deleted users appear in the Archived Users section below the active list.',
+            'Click the green restore icon to reactivate, or the red trash icon to permanently remove the account.',
+          ]},
+        ]}
       />
 
       <ConfirmModal
@@ -107,7 +132,7 @@ export default function UserListPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             className="input pl-9" placeholder="Search by name or email..."
-            value={search} onChange={e => setSearch(e.target.value)}
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1); setTrashedPage(1) }}
           />
         </div>
       </div>
@@ -215,6 +240,35 @@ export default function UserListPage() {
         </div>
       )}
 
+      {data?.pagination && (
+        <div className="flex items-center justify-end mt-4">
+          <div className="inline-flex items-center bg-gray-100 text-gray-600 text-xs font-medium rounded-full overflow-hidden">
+            <button
+              className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setPage(p => p - 1)}
+              disabled={page <= 1}
+            >
+              ‹ Prev
+            </button>
+            <span className="px-3 py-1.5 border-x border-gray-200">
+              {(() => {
+                const { current_page, per_page, total, last_page } = data.pagination
+                const from = total === 0 ? 0 : (current_page - 1) * per_page + 1
+                const to = current_page === last_page ? total : current_page * per_page
+                return `${from}–${to} of ${total} users · Page ${current_page}/${last_page}`
+              })()}
+            </span>
+            <button
+              className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setPage(p => p + 1)}
+              disabled={page >= data.pagination.last_page}
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card overflow-hidden mt-6">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3">
           <div>
@@ -225,7 +279,7 @@ export default function UserListPage() {
             <p className="text-sm text-gray-500 mt-1">View and restore soft-deleted user accounts.</p>
           </div>
           <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-            {trashedUsers.length} deactivated
+            {trashedData?.pagination?.total ?? trashedUsers.length} deactivated
           </span>
         </div>
 
@@ -323,6 +377,35 @@ export default function UserListPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {trashedData?.pagination && (
+          <div className="flex items-center justify-end p-4">
+            <div className="inline-flex items-center bg-gray-100 text-gray-600 text-xs font-medium rounded-full overflow-hidden">
+              <button
+                className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                onClick={() => setTrashedPage(p => p - 1)}
+                disabled={trashedPage <= 1}
+              >
+                ‹ Prev
+              </button>
+              <span className="px-3 py-1.5 border-x border-gray-200">
+                {(() => {
+                  const { current_page, per_page, total, last_page } = trashedData.pagination
+                  const from = total === 0 ? 0 : (current_page - 1) * per_page + 1
+                  const to = current_page === last_page ? total : current_page * per_page
+                  return `${from}–${to} of ${total} deactivated · Page ${current_page}/${last_page}`
+                })()}
+              </span>
+              <button
+                className="px-3 py-1.5 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                onClick={() => setTrashedPage(p => p + 1)}
+                disabled={trashedPage >= trashedData.pagination.last_page}
+              >
+                Next ›
+              </button>
+            </div>
           </div>
         )}
       </div>

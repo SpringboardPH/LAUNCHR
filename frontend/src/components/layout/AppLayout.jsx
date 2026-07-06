@@ -4,15 +4,23 @@ import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown,
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown, HelpCircle,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
+import OnboardingTutorial, { useOnboardingTutorial, HR_STEPS, ADMIN_STEPS } from '../OnboardingTutorial'
 
 const COMMON_NAV = [
   { to: '/hr', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/hr/employees', icon: Users, label: 'Employees' },
-  { to: '/hr/attendance', icon: Clock, label: 'Attendance' },
+  {
+    icon: Clock,
+    label: 'Attendance',
+    children: [
+      { to: '/hr/attendance', label: 'Attendance Logs' },
+      { to: '/hr/dtr', label: 'DTR Management', dtrGated: true },
+    ],
+  },
   {
     icon: CalendarRange,
     label: 'Schedules',
@@ -22,9 +30,15 @@ const COMMON_NAV = [
     ],
   },
   { to: '/hr/requests', icon: ClipboardList, label: 'Requests', badge: true },
-  { to: '/hr/dtr', icon: FileText, label: 'DTR Management', dtrGated: true },
   { to: '/hr/calendar', icon: CalendarRange, label: 'Calendar' },
-  { to: '/hr/payroll', icon: Banknote, label: 'Payroll' },
+  {
+    icon: Banknote,
+    label: 'Payroll',
+    children: [
+      { to: '/hr/payroll', label: 'Payroll Runs' },
+      { to: '/hr/thirteenth-month', label: '13th Month' },
+    ],
+  },
 ]
 
 const ADMIN_ONLY_NAV = [
@@ -50,6 +64,9 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const isAdmin = user?.role === 'admin'
+  const tutorial = useOnboardingTutorial(isAdmin ? 'admin_onboarding_v1' : 'hr_onboarding_v1')
+  const tutorialSteps = isAdmin ? ADMIN_STEPS : HR_STEPS
   const [openGroups, setOpenGroups] = useState(
     () => new Set(COMMON_NAV.filter(i => i.children?.some(c => location.pathname.startsWith(c.to))).map(i => i.label))
   )
@@ -90,8 +107,10 @@ export default function AppLayout() {
   const renderNavItem = (item) => {
     if (item.dtrGated && !systemConfig?.dtr_page_enabled) return null
     if (item.children) {
+      const visibleChildren = item.children.filter(c => !c.dtrGated || systemConfig?.dtr_page_enabled)
+      if (!visibleChildren.length) return null
       const isOpen = openGroups.has(item.label)
-      const isGroupActive = item.children.some(c => location.pathname.startsWith(c.to))
+      const isGroupActive = visibleChildren.some(c => location.pathname.startsWith(c.to))
       const Icon = item.icon
       return (
         <div key={item.label}>
@@ -108,7 +127,7 @@ export default function AppLayout() {
           </button>
           {isOpen && (
             <div className="ml-6 mt-0.5 space-y-0.5 border-l border-gray-100 pl-2.5">
-              {item.children.map(child => (
+              {visibleChildren.map(child => (
                 <NavLink
                   key={child.to}
                   to={child.to}
@@ -148,6 +167,8 @@ export default function AppLayout() {
   }
 
   return (
+    <>
+    <OnboardingTutorial open={tutorial.open} onDismiss={tutorial.dismiss} steps={tutorialSteps} />
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {open && (
         <div className="fixed inset-0 z-20 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />
@@ -226,6 +247,9 @@ export default function AppLayout() {
               </p>
             </div>
           </div>
+          <button onClick={tutorial.show} className="btn-ghost w-full justify-start text-xs mb-1">
+            <HelpCircle size={14} /> Help & Tutorial
+          </button>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">
             <LogOut size={14} /> Sign out
           </button>
@@ -244,5 +268,6 @@ export default function AppLayout() {
         </main>
       </div>
     </div>
+    </>
   )
 }

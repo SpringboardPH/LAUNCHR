@@ -48,6 +48,25 @@ export default function EmployeeListPage() {
             <Plus size={16} /> Add Employee
           </Link>
         }
+        help={[
+          { heading: 'Finding Employees', items: [
+            'Type a name, email, or position into the search bar to filter the list in real time.',
+            'Use the Status dropdown to show only Active or Inactive employees.',
+            'Use the Group dropdown to filter by employee group.',
+          ]},
+          { heading: 'Employee Actions', items: [
+            'Click the eye icon to view a full employee profile including leave balances and assigned schedule.',
+            'Click the pencil icon to open the edit form and update any employee details.',
+            'Click the toggle/deactivate icon to deactivate an active employee (they cannot log in) or reactivate an inactive one.',
+          ]},
+          { heading: 'Adding Employees', items: [
+            'Click Add Employee (top-right) to open the employee creation form.',
+            'New employees are Active by default and can log in once their account is set up.',
+          ]},
+          { heading: 'Pagination', items: [
+            'Use the Previous / Next controls at the bottom to browse through large employee lists.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

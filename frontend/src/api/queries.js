@@ -194,6 +194,27 @@ export const revertPayrollToDraft = (payrollId) =>
 export const togglePayrollUndertimeCalculation = (payrollId) =>
   api.post(`/payroll/${payrollId}/toggle-undertime-calc`).then(r => r.data)
 
+// ─── 13th Month ──────────────────────────────────────────────
+export const thirteenthMonthKeys = {
+  all: ['thirteenth-month'],
+  list: (params) => ['thirteenth-month', 'list', params],
+}
+
+export const getThirteenthMonth = (params) =>
+  api.get('/thirteenth-month', { params }).then(r => r.data)
+
+export const saveThirteenthMonth = (data) =>
+  api.post('/thirteenth-month/save', data).then(r => r.data)
+
+export const getThirteenthMonthPeriods = (year) =>
+  api.get('/thirteenth-month/payroll-periods', { params: { year } }).then(r => r.data.data)
+
+export const pushThirteenthMonthToPayroll = (data) =>
+  api.post('/thirteenth-month/push-to-payroll', data).then(r => r.data)
+
+export const setThirteenthMonthMode = (data) =>
+  api.post('/thirteenth-month/set-mode', data).then(r => r.data)
+
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardKeys = { all: ['dashboard'] }
 

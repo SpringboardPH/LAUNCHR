@@ -11,7 +11,7 @@ import {
   getPayrollConfig, payrollConfigKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
-import { Clock, LogOut, AlertCircle, CalendarDays } from 'lucide-react'
+import { Clock, LogOut, AlertCircle, CalendarDays, Sparkles } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 
@@ -214,6 +214,7 @@ export default function AttendanceClockPage() {
     { key: 'half_day', label: 'Half Day', color: 'bg-orange-300' },
     { key: 'absent', label: 'Absent', color: 'bg-rose-500' },
     { key: 'on_leave', label: 'On Leave', color: 'bg-sky-500' },
+    { key: 'rest_day', label: 'Rest Day', color: 'bg-blue-500' },
   ]
 
   const totalVisualDays = visualStatuses.reduce((sum, item) => sum + (statusCounts[item.key] || 0), 0)
@@ -322,6 +323,26 @@ export default function AttendanceClockPage() {
             ← Back
           </button>
         }
+        help={[
+          { heading: 'Live Clock', items: [
+            'The date and time shown at the top reflects the server\'s virtual clock, which all employees share.',
+            'The clock updates every 30 seconds automatically.',
+          ]},
+          { heading: 'Clocking In & Out', items: [
+            'Click the green Clock In button when you arrive. Your schedule window is displayed — clocking in outside that window may result in a "Late" or "Early" status.',
+            'Click the red Clock Out button at the end of your shift. Clocking out too early may trigger "Undertime" status.',
+            'An optional Notes field appears before confirming — use it to add context for your HR team.',
+          ]},
+          { heading: "Today's Record", items: [
+            'Once clocked in, your clock-in time and elapsed hours are displayed on this page.',
+            'After clocking out, your total hours worked for the day are shown.',
+          ]},
+          { heading: 'Monthly Attendance Log', items: [
+            'Below the clock-in panel, your attendance records for the current month are listed by payroll cutoff period.',
+            'Use the Previous / Next arrows to navigate to earlier months.',
+            'Each row shows the date, clock-in/out times, status, and hours worked.',
+          ]},
+        ]}
       />
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">
@@ -339,6 +360,13 @@ export default function AttendanceClockPage() {
                 {isOnLeave ? 'On Approved Leave' : !isClockedIn ? 'Ready to Clock In' : (isClockedOut ? 'Shift Completed' : 'Time Elapsed')}
               </p>
               <p className="text-xs text-gray-500">{displayDateShort}</p>
+
+              {window?.isRestDay && (
+                <div className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-blue-700">
+                  <Sparkles size={12} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide">Rest Day</span>
+                </div>
+              )}
 
               {window?.isFlexi && (() => {
                 const required = window.requiredHours ?? 8
@@ -421,24 +449,26 @@ export default function AttendanceClockPage() {
                 <p className="text-xs text-gray-500 mt-1">Clock-in is not available on leave days</p>
               </div>
             ) : !isClockedIn ? (
-              <button
-                onClick={() => {
-                  if (window && window.currentMinutes < window.normalInStart) {
-                    setEarlyClockInConfirmOpen(true)
-                  } else {
-                    inMutation.mutate()
-                  }
-                }}
-                disabled={inMutation.isPending || !canClockIn}
-                className={`btn w-full ${!canClockIn ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
-              >
-                <Clock size={16} />
-                {!canClockIn
-                  ? (window?.isInactiveDay
-                    ? 'Not scheduled today'
-                    : (isTooEarlyToClockIn ? 'Not your scheduled time yet' : (isClockInWindowClosed ? 'Clock-in window closed' : 'Clock in unavailable')))
-                  : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    if (window && window.currentMinutes < window.normalInStart) {
+                      setEarlyClockInConfirmOpen(true)
+                    } else {
+                      inMutation.mutate()
+                    }
+                  }}
+                  disabled={inMutation.isPending || !canClockIn}
+                  className={`btn w-full ${!canClockIn ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
+                >
+                  <Clock size={16} />
+                  {!canClockIn
+                    ? (window?.isInactiveDay
+                      ? 'Not scheduled today'
+                      : (isTooEarlyToClockIn ? 'Not your scheduled time yet' : (isClockInWindowClosed ? 'Clock-in window closed' : 'Clock in unavailable')))
+                    : (inMutation.isPending ? 'Clocking in...' : 'Clock In')}
+                </button>
+              </>
             ) : !isClockedOut ? (
               <>
                 <button
@@ -564,6 +594,7 @@ export default function AttendanceClockPage() {
                             if (log.status === 'late') return <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Late</span>
                             if (log.status === 'undertime') return <span className="badge-yellow text-[10px] px-1.5 py-0.5 rounded">Undertime</span>
                             if (log.status === 'half_day') return <span className="badge-orange text-[10px] px-1.5 py-0.5 rounded">Half Day</span>
+                            if (log.status === 'rest_day') return <span className="badge-blue text-[10px] px-1.5 py-0.5 rounded">Rest Day</span>
                             return <span className="badge-red text-[10px] px-1.5 py-0.5 rounded">Absent</span>
                           })()}
                         </td>

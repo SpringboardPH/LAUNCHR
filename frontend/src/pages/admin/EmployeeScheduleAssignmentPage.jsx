@@ -323,6 +323,24 @@ const EmployeeScheduleAssignmentPage = () => {
       <PageHeader
         title="Weekly Employee Schedules"
         description="Assign a pre-defined schedule to an employee for a specific week"
+        help={[
+          { heading: 'Tabs', items: [
+            'Current Week — shows all schedule assignments active during the current week.',
+            'Upcoming / All — shows future or all assignments.',
+          ]},
+          { heading: 'Assigning a Schedule', items: [
+            'Click the + Add Assignment button, select an employee and a schedule template, then pick the start and end date range.',
+            'An employee can have overlapping assignments — the most recently created one takes precedence.',
+          ]},
+          { heading: 'Editing & Deleting', items: [
+            'Click the pencil icon on any row to change the template or date range for an existing assignment.',
+            'Click the trash icon to remove an assignment entirely.',
+          ]},
+          { heading: 'Suggested Schedules', items: [
+            'If any employees have no schedule assigned for the current week, a banner appears at the top listing them.',
+            'Click an employee in the banner to quickly open the assignment form with them pre-selected.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

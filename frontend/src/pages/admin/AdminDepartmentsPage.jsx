@@ -108,6 +108,24 @@ export default function AdminDepartmentsPage() {
             </button>
           )
         }
+        help={[
+          { heading: 'Adding a Department', items: [
+            'Click New Department to reveal the creation form. Enter a name (required) and an optional description, then click Save.',
+          ]},
+          { heading: 'Editing', items: [
+            'Click the pencil icon on any active department to pre-fill the form with its current data. Update and click Save.',
+          ]},
+          { heading: 'Soft Delete', items: [
+            'Click the trash icon on an active department to move it to the Deleted section. It is hidden from normal use but can be recovered.',
+          ]},
+          { heading: 'Restoring', items: [
+            'The Deleted Departments section appears below when trashed departments exist.',
+            'Click the green restore icon to bring a deleted department back to active status.',
+          ]},
+          { heading: 'Permanent Delete', items: [
+            'Click the red trash icon in the Deleted section to permanently remove a department. This cannot be undone and may affect employees linked to it.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

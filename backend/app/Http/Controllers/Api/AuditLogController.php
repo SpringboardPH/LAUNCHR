@@ -16,12 +16,34 @@ class AuditLogController extends Controller
     {
         $query = AuditLog::with('user')->orderBy('created_at', 'desc');
 
-        if ($request->has('event')) {
-            $query->where('event', $request->event);
+        if ($event = $request->query('event')) {
+            $query->where('event', $event);
         }
 
-        if ($request->has('user_id')) {
-            $query->where('user_id', $request->user_id);
+        if ($action = $request->query('action')) {
+            $query->where('event', 'like', "{$action}_%");
+        }
+
+        if ($model = $request->query('model')) {
+            $query->where('auditable_type', 'like', "%\\{$model}");
+        }
+
+        if ($userId = $request->query('user_id')) {
+            $query->where('user_id', $userId);
+        }
+
+        if ($actor = $request->query('actor')) {
+            $query->whereHas('user', function ($q) use ($actor) {
+                $q->where('name', 'like', "%{$actor}%");
+            });
+        }
+
+        if ($dateFrom = $request->query('date_from')) {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo = $request->query('date_to')) {
+            $query->whereDate('created_at', '<=', $dateTo);
         }
 
         $logs = $query->paginate(50);

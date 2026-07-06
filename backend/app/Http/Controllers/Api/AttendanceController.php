@@ -234,6 +234,7 @@ class AttendanceController extends Controller
         $today = SystemClock::today();
         $schedule = $this->getScheduleForDate($employee->id, $today);
         $dayRule = $this->getDayRuleForDate($schedule, $today);
+        $templateType = $schedule?->template?->type ?? 'fixed';
 
         // Check if employee is on leave today
         $onLeave = \App\Models\LeaveRequest::where('employee_id', $employee->id)
@@ -241,7 +242,7 @@ class AttendanceController extends Controller
             ->whereDate('start_date', '<=', $today->toDateString())
             ->whereDate('end_date', '>=', $today->toDateString())
             ->exists();
-            
+
         if ($onLeave) {
             return response()->json([
                 'success' => false,
@@ -249,29 +250,33 @@ class AttendanceController extends Controller
             ], 400);
         }
 
-        if ($dayRule !== null) {
-            if (empty($dayRule['enabled'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Employee is not scheduled to work today',
-                ], 400);
-            }
-        } elseif ($schedule && $schedule->template) {
-            $workDays = $schedule->template->work_days ?? [];
-            if (!in_array($today->dayOfWeek, $workDays, true)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Employee is not scheduled to work today',
-                ], 400);
-            }
-        } else {
-            // Check if today is a weekday (Monday = 1, Friday = 5)
-            $dayOfWeek = $today->dayOfWeek;
-            if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot clock in on weekends',
-                ], 400);
+        // Flexi employees may clock in on a rest day (disabled day_rule) — it's paid
+        // as rest-day work (1.30x) by payroll instead of being blocked outright.
+        if ($templateType !== 'flexi') {
+            if ($dayRule !== null) {
+                if (empty($dayRule['enabled'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Employee is not scheduled to work today',
+                    ], 400);
+                }
+            } elseif ($schedule && $schedule->template) {
+                $workDays = $schedule->template->work_days ?? [];
+                if (!in_array($today->dayOfWeek, $workDays, true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Employee is not scheduled to work today',
+                    ], 400);
+                }
+            } else {
+                // Check if today is a weekday (Monday = 1, Friday = 5)
+                $dayOfWeek = $today->dayOfWeek;
+                if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot clock in on weekends',
+                    ], 400);
+                }
             }
         }
 
@@ -288,9 +293,8 @@ class AttendanceController extends Controller
         }
 
         $clockInTime = SystemClock::timeString();
-        $templateType = $schedule?->template?->type ?? 'fixed';
 
-        // Flexi: no window restrictions — employee can clock in any time on a work day
+        // Flexi: no window restrictions — employee can clock in any time, including rest days
         if ($templateType === 'flexi') {
             $log = AttendanceLog::updateOrCreate(
                 ['employee_id' => $employee->id, 'date' => $today->toDateString()],
@@ -492,9 +496,13 @@ class AttendanceController extends Controller
             if ($outMin < $inMin) $outMin += 1440;
             $hoursWorked   = ($outMin - $inMin) / 60;
             $overtimeHours = max(0, round($hoursWorked - $requiredHours, 2));
+            $isRestDay     = !($dayRule['enabled'] ?? false);
 
-            // OT requires HR approval — record as completed, auto-submit a request
-            $flexiStatus = $overtimeHours > 0 ? 'completed' : AttendanceService::calculateFlexiStatus($log->clock_in_time, $clockOutTime, $requiredHours);
+            // OT requires HR approval before it's paid — record as completed and
+            // auto-submit a request, whether it's a normal work day or a rest day.
+            $flexiStatus = $overtimeHours > 0
+                ? 'completed'
+                : AttendanceService::calculateFlexiStatus($log->clock_in_time, $clockOutTime, $requiredHours);
 
             $log->clock_out_time  = $clockOutTime;
             $log->clock_out_notes = $request->notes;
@@ -505,7 +513,7 @@ class AttendanceController extends Controller
                 \App\Models\EmployeeRequest::create([
                     'employee_id'  => $employee->id,
                     'request_type' => 'overtime',
-                    'subject'      => 'Overtime on ' . $log->date->format('M d, Y'),
+                    'subject'      => ($isRestDay ? 'Rest Day Overtime on ' : 'Overtime on ') . $log->date->format('M d, Y'),
                     'details'      => "Clocked out at {$clockOutTime} after working " . round($hoursWorked, 2) . "h (required: {$requiredHours}h). Overtime: {$overtimeHours}h.",
                     'meta'         => [
                         'attendance_log_id' => $log->id,
@@ -513,6 +521,7 @@ class AttendanceController extends Controller
                         'hours_worked'      => round($hoursWorked, 2),
                         'required_hours'    => $requiredHours,
                         'date'              => $log->date->toDateString(),
+                        'is_rest_day'       => $isRestDay,
                     ],
                     'status' => 'pending',
                 ]);
@@ -845,6 +854,16 @@ class AttendanceController extends Controller
                                     'clock_in_time' => null,
                                     'clock_out_time' => null,
                                     'status' => 'absent',
+                                    'template_name' => $templateName,
+                                ];
+                            } elseif ($template->type === 'flexi') {
+                                $employeeRecords[] = [
+                                    'employee_id' => $employee->id,
+                                    'employee' => $employee,
+                                    'date' => $dateStr,
+                                    'clock_in_time' => null,
+                                    'clock_out_time' => null,
+                                    'status' => 'rest_day',
                                     'template_name' => $templateName,
                                 ];
                             }
@@ -1232,6 +1251,15 @@ class AttendanceController extends Controller
                                  'template_name' => $templateName,
                              ];
                          }
+                     } elseif ($template->type === 'flexi') {
+                         $allDays[] = [
+                             'employee_id' => $employeeId,
+                             'date' => $dateStr,
+                             'clock_in_time' => null,
+                             'clock_out_time' => null,
+                             'status' => 'rest_day',
+                             'template_name' => $templateName,
+                         ];
                      }
                 }
             }
@@ -1431,8 +1459,16 @@ class AttendanceController extends Controller
             if (!$schedule || !$schedule->template) continue;
 
             $template = $schedule->template;
+            $scheduleType = $log->schedule_type ?? $template->type ?? 'fixed';
+
+            // Flexi has no fixed departure window intraday — only the nightly
+            // attendance:auto-clock-out command should close these out (at 23:59).
+            if ($scheduleType === 'flexi') {
+                continue;
+            }
+
             $dayOfWeek = $date->dayOfWeek; // 0 (Sun) to 6 (Sat)
-            
+
             $dayRule = null;
             if ($template->day_rules) {
                 foreach ($template->day_rules as $rule) {

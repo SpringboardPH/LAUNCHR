@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTypeController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\ThirteenthMonthController;
 use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
 use App\Http\Controllers\Api\AssistantController;
@@ -98,6 +99,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}/export', [PayrollController::class, 'export'])->middleware('role:admin,hr,accounting');
     });
     
+    // 13th Month
+    Route::prefix('thirteenth-month')->middleware('role:admin,hr,accounting')->group(function () {
+        Route::get('/', [ThirteenthMonthController::class, 'index']);
+        Route::post('/save', [ThirteenthMonthController::class, 'save']);
+        Route::post('/set-mode', [ThirteenthMonthController::class, 'setMode']);
+        Route::get('/payroll-periods', [ThirteenthMonthController::class, 'payrollPeriods']);
+        Route::post('/push-to-payroll', [ThirteenthMonthController::class, 'pushToPayroll']);
+    });
+
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
 

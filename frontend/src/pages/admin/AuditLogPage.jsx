@@ -6,13 +6,22 @@ import { PageHeader, PageSpinner, PagePagination } from '../../components/ui/ind
 import { History, User, Globe, Monitor, Info, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 
+const MODELS = ['Employee', 'EmployeeRequest', 'AttendanceLog', 'Payroll', 'CalendarEvent', 'LeaveRequest']
+
 export default function AuditLogPage() {
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState(null)
+  const [action, setAction] = useState('')
+  const [model, setModel] = useState('')
+  const [actor, setActor] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const resetPage = () => setPage(1)
 
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: auditLogKeys.list({ page }),
-    queryFn: () => getAuditLogs({ page }),
+    queryKey: auditLogKeys.list({ page, action, model, actor, dateFrom, dateTo }),
+    queryFn: () => getAuditLogs({ page, action, model, actor, date_from: dateFrom, date_to: dateTo }),
     refetchInterval: 10000, // Auto-refresh every 10s
   })
 
@@ -34,13 +43,13 @@ export default function AuditLogPage() {
 
   return (
     <div>
-      <PageHeader 
-        title="Audit Logs" 
+      <PageHeader
+        title="Audit Logs"
         description="Track all system activities and database changes."
         icon={<History className="text-brand-600" size={24} />}
         action={
-          <button 
-            onClick={() => refetch()} 
+          <button
+            onClick={() => refetch()}
             disabled={isFetching}
             className="btn-secondary flex items-center gap-2"
           >
@@ -48,7 +57,51 @@ export default function AuditLogPage() {
             {isFetching ? 'Refreshing...' : 'Refresh'}
           </button>
         }
+        help={[
+          { heading: 'Filtering', items: [
+            'Type into the actor search bar to filter by the name of the user who performed the action.',
+            'Use the Action dropdown to show only Created, Updated, or Deleted events.',
+            'Use the Resource dropdown to show changes to a specific record type (e.g. Employee, Payroll).',
+            'Use the date fields to narrow the log to a specific date range.',
+          ]},
+          { heading: 'Reading the Log', items: [
+            'Each row shows the timestamp, the user who performed the action (Actor), the event type, and a description.',
+            'Event types are color-coded: green = Create, yellow = Update, red = Delete.',
+          ]},
+          { heading: 'Expanding a Row', items: [
+            'Click any row to expand it and see detailed metadata: IP address, user agent, and the resource that was changed.',
+            'For Update events, old and new values are shown side-by-side in JSON format.',
+            'Click the row again to collapse it.',
+          ]},
+          { heading: 'Refresh', items: [
+            'The log auto-refreshes every 10 seconds. Click the Refresh button to force an immediate reload.',
+          ]},
+        ]}
       />
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1 sm:max-w-xs">
+          <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-9" placeholder="Search by actor name..."
+            value={actor} onChange={e => { setActor(e.target.value); resetPage() }}
+          />
+        </div>
+        <select className="input sm:w-40" value={action} onChange={e => { setAction(e.target.value); resetPage() }}>
+          <option value="">All actions</option>
+          <option value="created">Created</option>
+          <option value="updated">Updated</option>
+          <option value="deleted">Deleted</option>
+        </select>
+        <select className="input sm:w-48" value={model} onChange={e => { setModel(e.target.value); resetPage() }}>
+          <option value="">All resources</option>
+          {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <input type="date" className="input sm:w-40" value={dateFrom}
+          onChange={e => { setDateFrom(e.target.value); resetPage() }} />
+        <input type="date" className="input sm:w-40" value={dateTo}
+          onChange={e => { setDateTo(e.target.value); resetPage() }} />
+      </div>
 
       <div className="card overflow-hidden">
         {isLoading ? (

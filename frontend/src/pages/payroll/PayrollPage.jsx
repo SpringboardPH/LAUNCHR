@@ -173,10 +173,23 @@ export default function PayrollPage() {
   }
 
   const handleRemoveField = (type, index) => {
-    setEditForm(prev => ({
-      ...prev,
-      [type]: prev[type].filter((_, i) => i !== index)
-    }))
+    setEditForm(prev => {
+      const next = {
+        ...prev,
+        allowances: (prev.allowances || []).map(a => ({ ...a })),
+        deductions: (prev.deductions || []).map(d => ({ ...d })),
+      }
+      next[type] = next[type].filter((_, i) => i !== index)
+      const isDaily = next.employee?.rate_type === 'daily'
+      const baseGross = isDaily
+        ? (Number(next.base_salary) * Number(next.days_worked || 0))
+        : (Number(next.base_salary) / payPeriods)
+      const totalAllowances = next.allowances.reduce((s, a) => s + Number(a.amount || 0), 0)
+      const totalDeductions = next.deductions.reduce((s, d) => s + Number(d.amount || 0), 0)
+      next.gross_pay = baseGross + totalAllowances
+      next.net_pay = next.gross_pay - totalDeductions
+      return next
+    })
   }
 
   const handleFieldChange = (type, index, field, value) => {
@@ -960,7 +973,7 @@ export default function PayrollPage() {
         description="Calculate salaries and manage disbursements"
         action={
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => moveCutoff(-1)}
               className="btn-secondary p-2"
             >
@@ -972,7 +985,7 @@ export default function PayrollPage() {
                 {currentCutoff.label}
               </span>
             </div>
-            <button 
+            <button
               onClick={() => moveCutoff(1)}
               className="btn-secondary p-2"
             >
@@ -980,6 +993,34 @@ export default function PayrollPage() {
             </button>
           </div>
         }
+        help={[
+          { heading: 'Cutoff Navigation', items: [
+            'Use the Previous / Next arrows at the top-right to switch between payroll periods.',
+            'The current period label (e.g., "Jun 1–15, 2025") is shown between the arrows.',
+          ]},
+          { heading: 'Summary Cards', items: [
+            'The three cards at the top show the total number of employees, total gross pay, and total net pay for the selected period.',
+          ]},
+          { heading: 'Generating Payroll', items: [
+            'Click the Generate button to compute payroll for the current period. Records start in Draft status.',
+            'Payroll can only be generated once per period — regenerating replaces the existing draft.',
+          ]},
+          { heading: 'Viewing & Editing', items: [
+            'Click the file icon on any employee row to open their full payroll breakdown: earnings, deductions, attendance metrics, and employer contributions.',
+            'Inside the detail view, click Edit to add or remove allowance and deduction line items.',
+          ]},
+          { heading: 'Finalize & Revert', items: [
+            'Click the checkmark icon to finalize a payroll record — finalized records are locked from editing.',
+            'Inside the detail view, click Revert to Draft to unlock a finalized record.',
+          ]},
+          { heading: 'Email Paystubs', items: [
+            'Check the checkbox next to one or more employees, then click Email Paystubs.',
+            'Enter optional CC or BCC addresses and click Send to deliver paystubs by email.',
+          ]},
+          { heading: 'Export', items: [
+            'Click Export All to download the entire payroll batch as an Excel file using the configured template.',
+          ]},
+        ]}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

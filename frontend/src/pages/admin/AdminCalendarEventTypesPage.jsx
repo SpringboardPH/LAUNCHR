@@ -102,6 +102,29 @@ export default function AdminCalendarEventTypesPage() {
             Add Event Type
           </button>
         }
+        help={[
+          { heading: 'Event Type Table', items: [
+            'Shows all configured event types with their name, color, behavior flags, and active status.',
+          ]},
+          { heading: 'Adding an Event Type', items: [
+            'Click Add Event Type, enter a name, pick a display color, and configure the behavior flags.',
+          ]},
+          { heading: 'Counts as Absence', items: [
+            'When checked, employees are still expected to work on this event day — not showing up counts as an absence.',
+            'When unchecked (like Regular Holidays), employees are not expected to work and no absence is recorded.',
+          ]},
+          { heading: 'Recurs Annually', items: [
+            'When enabled, any event of this type automatically repeats for 10 consecutive years after the initial date.',
+            'Useful for fixed-date holidays like Christmas (Dec 25) or New Year\'s Day (Jan 1).',
+          ]},
+          { heading: 'Active Status', items: [
+            'Inactive types are hidden from the event creation form but preserved for historical calendar records.',
+          ]},
+          { heading: 'Editing & Deleting', items: [
+            'Click the pencil icon to edit a type\'s name, color, or behavior.',
+            'Click the trash icon to delete a type. This affects all existing calendar events that use it.',
+          ]},
+        ]}
       />
 
       <ConfirmModal

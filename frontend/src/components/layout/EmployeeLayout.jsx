@@ -2,10 +2,11 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
 import { getSystemConfig, systemConfigKeys } from '../../api/queries'
-import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText } from 'lucide-react'
+import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText, HelpCircle } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 import ChatWidget from '../assistant/ChatWidget'
+import OnboardingTutorial, { useOnboardingTutorial, EMPLOYEE_STEPS } from '../OnboardingTutorial'
 
 const BASE_NAV = [
   { to: '/employee', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -19,6 +20,7 @@ export default function EmployeeLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const tutorial = useOnboardingTutorial('employee_onboarding_v1')
 
   const { data: systemConfig } = useQuery({
     queryKey: systemConfigKeys.all,
@@ -32,6 +34,8 @@ export default function EmployeeLayout() {
   }
 
   return (
+    <>
+    <OnboardingTutorial open={tutorial.open} onDismiss={tutorial.dismiss} steps={EMPLOYEE_STEPS} />
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Mobile overlay */}
       {open && (
@@ -90,6 +94,9 @@ export default function EmployeeLayout() {
               <p className="text-xs text-gray-500 truncate">Employee</p>
             </div>
           </div>
+          <button onClick={tutorial.show} className="btn-ghost w-full justify-start text-xs mb-1">
+            <HelpCircle size={14} /> Help & Tutorial
+          </button>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">
             <LogOut size={14} /> Sign out
           </button>
@@ -114,5 +121,6 @@ export default function EmployeeLayout() {
       {/* LaunchAssist chatbot — gated on the assistant_enabled system setting. */}
       {systemConfig?.assistant_enabled && <ChatWidget />}
     </div>
+    </>
   )
 }
