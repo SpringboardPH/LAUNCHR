@@ -35,10 +35,11 @@ return [
         ],
     ],
 
-    // LaunchAssist — local Ollama on the Pi (co-located, so defaults to loopback).
-    'ollama' => [
-        'host'  => env('OLLAMA_HOST', 'http://127.0.0.1:11434'),
-        'model' => env('OLLAMA_MODEL', 'minimax-m2.5:cloud'),
+    // LaunchAssist — MiniMax OpenAI-compatible API. Key lives only in .env (never committed).
+    'minimax' => [
+        'base_url' => env('MINIMAX_BASE_URL', 'https://api.minimax.io/v1'),
+        'key'      => env('MINIMAX_API_KEY'),
+        'model'    => env('MINIMAX_MODEL', 'MiniMax-M2.5'),
     ],
 
 ];

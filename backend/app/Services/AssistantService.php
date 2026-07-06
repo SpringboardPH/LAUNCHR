@@ -48,51 +48,51 @@ class AssistantService
             array_map(fn ($m) => ['role' => $m['role'], 'content' => $m['content']], $messages),
         );
 
-        $host = rtrim(config('services.ollama.host'), '/');
-        $model = config('services.ollama.model');
+        $base = rtrim(config('services.minimax.base_url'), '/');
+        $key = config('services.minimax.key');
+        $model = config('services.minimax.model');
         $toolsUsed = [];
+
+        if (empty($key)) {
+            Log::warning('assistant misconfigured: MINIMAX_API_KEY not set');
+            return $this->unavailable();
+        }
 
         try {
             for ($i = 0; $i < self::MAX_ITERATIONS; $i++) {
-                $resp = Http::timeout(120)->post("{$host}/api/chat", [
+                // MiniMax OpenAI-compatible chat completions.
+                $resp = Http::withToken($key)->timeout(120)->post("{$base}/chat/completions", [
                     'model'    => $model,
-                    'stream'   => false,
                     'messages' => $convo,
                     'tools'    => $this->toolSchemas(),
                 ]);
 
                 if ($resp->failed()) {
-                    Log::warning('assistant ollama error', ['status' => $resp->status()]);
+                    // base_resp carries MiniMax's error detail; never log the key or full request.
+                    Log::warning('assistant minimax error', [
+                        'status' => $resp->status(),
+                        'detail' => $resp->json('base_resp') ?? $resp->json('error') ?? $resp->body(),
+                    ]);
                     return $this->unavailable();
                 }
 
-                $msg = $resp->json('message') ?? [];
+                $msg = $resp->json('choices.0.message') ?? [];
                 $calls = $msg['tool_calls'] ?? [];
 
                 if (empty($calls)) {
-                    // Final answer — ignore the reasoning `thinking` field, use content only.
                     return trim($msg['content'] ?? '') ?: $this->unavailable();
                 }
 
-                // PHP's json_decode turns an empty {} into [], which re-serializes as a JSON
-                // array — and Ollama 400s on tool_call arguments that aren't an object. Coerce
-                // empty arguments back to an object before replaying the assistant turn.
-                foreach ($msg['tool_calls'] as &$tc) {
-                    if (empty($tc['function']['arguments'])) {
-                        $tc['function']['arguments'] = new \stdClass();
-                    }
-                }
-                unset($tc);
-
-                $convo[] = $msg; // append the assistant turn (with tool_calls) verbatim
+                $convo[] = $msg; // append the full assistant message (with tool_calls) verbatim
                 foreach ($calls as $call) {
                     $name = $call['function']['name'] ?? '';
-                    $args = $call['function']['arguments'] ?? [];
+                    // OpenAI format: arguments is a JSON string.
+                    $args = json_decode($call['function']['arguments'] ?? '{}', true) ?: [];
                     $toolsUsed[] = $name;
                     $convo[] = [
-                        'role'      => 'tool',
-                        'tool_name' => $name,
-                        'content'   => json_encode($this->executeTool($name, $args, $employee)),
+                        'role'         => 'tool',
+                        'tool_call_id' => $call['id'] ?? '',
+                        'content'      => json_encode($this->executeTool($name, $args, $employee)),
                     ];
                 }
             }
