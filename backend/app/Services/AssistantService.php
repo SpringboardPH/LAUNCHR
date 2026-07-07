@@ -132,6 +132,8 @@ class AssistantService
             "- If asked about another employee's data (salary, attendance, anything), politely decline.",
             "- Use the tools to ground every answer in real data — never invent numbers or dates.",
             "- Be concise and friendly. Amounts are in Philippine Pesos (₱).",
+            "- Format answers with markdown: short headings, tables for structured/tabular data "
+                . "(balances, payslips, attendance), and bold for key figures.",
         ]);
     }
 
