@@ -14,7 +14,6 @@ class LoanService
         'sss_calamity'  => 'SSS Loan',
         'pagibig_mpl'   => 'Pag-IBIG Loan',
         'cash_advance'  => 'Cash Advance/Others',
-        'company_loan'  => 'Cash Advance/Others',
     ];
 
     public static function computeSchedule(float $principal, float $interestRate, int $termCount): array
@@ -34,7 +33,7 @@ class LoanService
             $payments = LoanPayment::where('payroll_id', $payrollId)->get();
 
             foreach ($payments as $payment) {
-                $loan = Loan::find($payment->loan_id);
+                $loan = Loan::withTrashed()->find($payment->loan_id);
                 if ($loan) {
                     $loan->balance = round($loan->balance + $payment->amount, 2);
                     if ($loan->status === 'paid_off' && $loan->balance > 0) {
@@ -62,7 +61,7 @@ class LoanService
     ): array {
         $loans = Loan::where('employee_id', $employeeId)
             ->where('status', 'active')
-            ->where('start_cutoff', '<=', $cutoffStart)
+            ->where('start_cutoff', '<=', $cutoffEnd)
             ->orderBy('start_cutoff')
             ->orderBy('id')
             ->get();

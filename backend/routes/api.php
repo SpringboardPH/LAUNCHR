@@ -82,6 +82,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [LoanController::class, 'index']);
         Route::get('/{id}', [LoanController::class, 'show']);
         Route::post('/', [LoanController::class, 'store'])->middleware('role:admin,hr,accounting');
+        Route::put('/{id}', [LoanController::class, 'update'])->middleware('role:admin,hr,accounting');
+        Route::delete('/{id}', [LoanController::class, 'destroy'])->middleware('role:admin,hr,accounting');
     });
 
     Route::get('/leave-types', [LeaveTypeController::class, 'index']);

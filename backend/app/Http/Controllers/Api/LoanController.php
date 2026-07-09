@@ -98,4 +98,69 @@ class LoanController extends Controller
 
         return response()->json(['success' => true, 'data' => $loan, 'message' => 'Loan created'], 201);
     }
+
+    /**
+     * Update a loan. installment_amount/start_cutoff/notes/status are always
+     * editable; principal/interest_rate/term_count only while unpaid (no
+     * payments taken yet), since changing them afterward would retroactively
+     * invalidate money already deducted.
+     */
+    public function update(Request $request, int $id)
+    {
+        $loan = Loan::findOrFail($id);
+        $unpaid = bccomp((string) $loan->balance, (string) $loan->total_payable, 2) === 0;
+
+        $rules = [
+            'installment_amount' => 'sometimes|numeric|min:1',
+            'start_cutoff'       => 'sometimes|date',
+            'notes'              => 'sometimes|nullable|string',
+            'status'             => 'sometimes|in:active,cancelled',
+        ];
+
+        if ($unpaid) {
+            $rules['principal']     = 'sometimes|numeric|min:1';
+            $rules['interest_rate'] = 'sometimes|numeric|min:0|max:1';
+            $rules['term_count']    = 'sometimes|integer|min:1';
+        }
+
+        $validated = $request->validate($rules);
+
+        if ($unpaid && (array_key_exists('principal', $validated) || array_key_exists('interest_rate', $validated) || array_key_exists('term_count', $validated))) {
+            $principal = (float) ($validated['principal'] ?? $loan->principal);
+            $interestRate = (float) ($validated['interest_rate'] ?? $loan->interest_rate);
+            $termCount = (int) ($validated['term_count'] ?? $loan->term_count);
+            $installmentAmount = (float) ($validated['installment_amount'] ?? $loan->installment_amount);
+
+            if ($loan->loan_type === 'cash_advance') {
+                [$totalPayable, $installmentAmount] = \App\Services\LoanService::computeSchedule($principal, $interestRate, $termCount);
+            } else {
+                $totalPayable = round($installmentAmount * $termCount, 2);
+            }
+
+            $validated['principal'] = $principal;
+            $validated['interest_rate'] = $interestRate;
+            $validated['term_count'] = $termCount;
+            $validated['installment_amount'] = $installmentAmount;
+            $validated['total_payable'] = $totalPayable;
+            $validated['balance'] = $totalPayable;
+        }
+
+        $loan->update($validated);
+
+        return response()->json(['success' => true, 'data' => $loan->fresh(), 'message' => 'Loan updated']);
+    }
+
+    /**
+     * Cancel a loan: soft-delete so future payroll runs stop deducting it
+     * (chargeForPayroll only selects status='active'), while keeping the
+     * audit trail and existing loan_payments intact.
+     */
+    public function destroy(int $id)
+    {
+        $loan = Loan::findOrFail($id);
+        $loan->update(['status' => 'cancelled']);
+        $loan->delete();
+
+        return response()->json(['success' => true, 'data' => null, 'message' => 'Loan cancelled']);
+    }
 }

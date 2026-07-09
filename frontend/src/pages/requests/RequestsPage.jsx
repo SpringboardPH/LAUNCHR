@@ -19,7 +19,6 @@ const REQUEST_TYPES = [
   { value: 'coe',             label: 'Certificate of Employment' },
   { value: 'concern',         label: 'Concern' },
   { value: 'cash_advance',    label: 'Cash Advance' },
-  { value: 'company_loan',    label: 'Company Loan' },
 ]
 
 function formatType(type) {
@@ -162,7 +161,7 @@ export default function RequestsPage() {
       if (['overtime', 'half_day', 'undertime', 'schedule_change'].includes(t) && !form.date) return setCreateError('Date is required for this request type.')
       if (t === 'overtime' && (!form.start_time || !form.end_time)) return setCreateError('Start and end time are required for overtime.')
       if (t === 'undertime' && !form.departure_time) return setCreateError('Departure time is required for undertime.')
-      if (['cash_advance', 'company_loan'].includes(t)) {
+      if (t === 'cash_advance') {
         const principal = Number(form.principal)
         const termCount = Number(form.term_count)
         if (!form.principal || isNaN(principal) || principal < 1) return setCreateError('Amount must be at least ₱1.')
@@ -173,7 +172,7 @@ export default function RequestsPage() {
       else if (t === 'half_day')   meta = { date: form.date, half: form.half }
       else if (t === 'undertime')  meta = { date: form.date, departure_time: form.departure_time }
       else if (t === 'schedule_change') meta = { date: form.date }
-      else if (['cash_advance', 'company_loan'].includes(t)) meta = { principal: Number(form.principal), term_count: Number(form.term_count), interest_rate: form.interest_rate ? Number(form.interest_rate) : 0 }
+      else if (t === 'cash_advance') meta = { principal: Number(form.principal), term_count: Number(form.term_count), interest_rate: form.interest_rate ? Number(form.interest_rate) : 0 }
       createMutation.mutate({ employee_id: form.employee_id, request_type: form.request_type, subject: form.subject, details: form.details || null, meta })
     }
   }
@@ -520,7 +519,7 @@ export default function RequestsPage() {
                   <input type="time" value={form.departure_time} onChange={e => f('departure_time', e.target.value)} className="input" />
                 </FormField>
               )}
-              {['cash_advance', 'company_loan'].includes(form.request_type) && (
+              {form.request_type === 'cash_advance' && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <FormField label="Amount (₱)" required><input type="number" min="1" step="0.01" value={form.principal} onChange={e => f('principal', e.target.value)} className="input" /></FormField>
                   <FormField label="Term (cutoffs)" required><input type="number" min="1" step="1" value={form.term_count} onChange={e => f('term_count', e.target.value)} className="input" /></FormField>

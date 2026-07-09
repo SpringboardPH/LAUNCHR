@@ -514,6 +514,12 @@ export const getLoan = (id) =>
 export const createLoan = (data) =>
   api.post('/loans', data).then(r => r.data)
 
+export const updateLoan = (id, data) =>
+  api.put(`/loans/${id}`, data).then(r => r.data)
+
+export const deleteLoan = (id) =>
+  api.delete(`/loans/${id}`).then(r => r.data)
+
 // ─── DTR Uploads ─────────────────────────────────────────────
 export const dtrKeys = {
   all:            ['dtr'],

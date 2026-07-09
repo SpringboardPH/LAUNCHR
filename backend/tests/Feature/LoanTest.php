@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Employee;
 use App\Models\EmployeeRequest;
 use App\Models\Loan;
+use App\Models\LoanPayment;
 use App\Models\User;
+use App\Services\LoanService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -62,8 +64,8 @@ class LoanTest extends TestCase
 
         $employeeRequest = EmployeeRequest::create([
             'employee_id' => $employee->id,
-            'request_type' => 'company_loan',
-            'subject' => 'Company loan request',
+            'request_type' => 'cash_advance',
+            'subject' => 'Cash advance request',
             'meta' => ['principal' => 20000, 'term_count' => 6, 'interest_rate' => 0.08],
             'status' => 'pending',
         ]);

@@ -23,7 +23,6 @@ const REQUEST_TYPES = [
   { value: 'leave',           label: 'Leave' },
   { value: 'concern',         label: 'Concern' },
   { value: 'cash_advance',    label: 'Cash Advance' },
-  { value: 'company_loan',    label: 'Company Loan' },
 ]
 
 const requestSchema = z.object({
@@ -69,7 +68,7 @@ const requestSchema = z.object({
     if (['concern', 'coe'].includes(t) && !data.details?.trim()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Details are required for this request type', path: ['details'] })
     }
-    if (['cash_advance', 'company_loan'].includes(t)) {
+    if (t === 'cash_advance') {
       const principal = Number(data.principal)
       const termCount = Number(data.term_count)
       if (!data.principal || isNaN(principal) || principal < 1) ctx.addIssue({ path: ['principal'], code: z.ZodIssueCode.custom, message: 'Amount must be at least ₱1' })
@@ -84,7 +83,7 @@ function buildMeta(data) {
   if (t === 'half_day')        return { date: data.date, half: data.half }
   if (t === 'undertime')       return { date: data.date, departure_time: data.departure_time }
   if (t === 'schedule_change') return { date: data.date }
-  if (['cash_advance', 'company_loan'].includes(t)) {
+  if (t === 'cash_advance') {
     return {
       principal: Number(data.principal),
       term_count: Number(data.term_count),
@@ -263,7 +262,7 @@ export default function RequestFormPage() {
   const showStartEndTime = requestType === 'overtime'
   const showHalf         = requestType === 'half_day'
   const showDeparture    = requestType === 'undertime'
-  const showLoanFields   = ['cash_advance', 'company_loan'].includes(requestType)
+  const showLoanFields   = requestType === 'cash_advance'
   const isPending        = requestMutation.isPending || leaveMutation.isPending
   const mutationError    = requestMutation.error || leaveMutation.error
 
@@ -446,7 +445,7 @@ export default function RequestFormPage() {
                           {errors.term_count && <p className="text-xs text-red-500 mt-1">{errors.term_count.message}</p>}
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Interest Rate (optional)</label>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Interest Rate</label>
                           <input type="number" min="0" max="1" step="0.01" {...register('interest_rate')} className="input px-2" placeholder="e.g. 0.05 = 5%" />
                         </div>
                       </div>

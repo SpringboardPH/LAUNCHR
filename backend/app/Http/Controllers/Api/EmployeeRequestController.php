@@ -15,14 +15,14 @@ class EmployeeRequestController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'request_type' => 'required|in:overtime,half_day,undertime,concern,schedule_change,coe,other,cash_advance,company_loan',
+            'request_type' => 'required|in:overtime,half_day,undertime,concern,schedule_change,coe,other,cash_advance',
             'subject'      => 'required|string|max:255',
             'details'      => 'nullable|string',
             'meta'         => 'nullable|array',
             'employee_id'  => 'nullable|exists:employees,id',
         ]);
 
-        if (in_array($request->request_type, ['cash_advance', 'company_loan'])) {
+        if ($request->request_type === 'cash_advance') {
             $request->validate([
                 'meta.principal'      => 'required|numeric|min:1',
                 'meta.term_count'     => 'required|integer|min:1',
@@ -207,8 +207,8 @@ class EmployeeRequestController extends Controller
                 }
             }
 
-            // Loan approval: create the loan for employee-initiated cash advances/company loans
-            if (in_array($employeeRequest->request_type, ['cash_advance', 'company_loan'])) {
+            // Loan approval: create the loan for employee-initiated cash advances
+            if ($employeeRequest->request_type === 'cash_advance') {
                 $principal = (float) ($employeeRequest->meta['principal'] ?? 0);
                 $termCount = (int) ($employeeRequest->meta['term_count'] ?? 1);
                 $interestRate = (float) ($employeeRequest->meta['interest_rate'] ?? 0);
