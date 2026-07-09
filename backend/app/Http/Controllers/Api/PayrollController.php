@@ -167,11 +167,18 @@ class PayrollController extends Controller
             foreach ($logs as $log) {
                 $dateStr = Carbon::parse($log->date)->format('Y-m-d');
                 $date = Carbon::parse($log->date);
-                $isRestDay = !in_array($date->dayOfWeek, $workDays);
                 $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
                 $isFlexiSchedule = ($log->schedule_type ?? $schedule?->template?->type ?? 'fixed') === 'flexi';
+
+                // Flexi: rest day is derived from the schedule (disabled day_rule).
+                // Fixed: never inferred from the schedule — a day not assigned to a fixed
+                // schedule is simply not scheduled, not paid rest-day work. Rest day pay for
+                // fixed only applies when HR manually sets that status on the log.
+                $isRestDay = $isFlexiSchedule
+                    ? !in_array($date->dayOfWeek, $workDays)
+                    : $log->status === 'rest_day';
 
                 // Track absences and half days for deduction purposes
                 if ($log->status === 'absent') {
@@ -240,8 +247,13 @@ class PayrollController extends Controller
                     }
                 }
 
-                // Only count overtime hours if status is actually 'overtime' (not covered by grace period)
-                $overtimeHours = $log->status === 'overtime' ? $details['overtime_hours'] : 0;
+                // Only count overtime hours if status is actually 'overtime' (not covered by grace
+                // period) — except fixed-schedule rest days, where 'status' is already spent on the
+                // manual rest_day flag, so hours beyond the expected day count as OT directly (fixed
+                // has no separate OT-approval step that would otherwise promote status to 'overtime').
+                $overtimeHours = ($log->status === 'overtime' || (!$isFlexiSchedule && $isRestDay))
+                    ? $details['overtime_hours']
+                    : 0;
 
                 // Track per-date OT hours for request deduplication
                 if (!$isRestDay && $details['overtime_hours'] > 0) {
@@ -272,14 +284,19 @@ class PayrollController extends Controller
                     $countedWorkDates[$dateStr] = true;
                 }
 
-                $metrics['late_minutes'] += $details['late_minutes'];
-                $metrics['undertime_minutes'] += $earlyDepartureMin;
+                // Rest day pay is already prorated against hours worked (above) — late/
+                // undertime deductions don't apply on top of that, since there's no
+                // scheduled window to be late for or leave early from on a day off.
+                if (!$isRestDay) {
+                    $metrics['late_minutes'] += $details['late_minutes'];
+                    $metrics['undertime_minutes'] += $earlyDepartureMin;
 
-                // Flexi undertime is deducted at the employee's own required-hours rate
-                // (daily_rate / required_hours), not the flat /8 hourly rate — otherwise
-                // the deduction can exceed the full day's pay when required hours > 8.
-                $undertimeRate = ($isFlexiSchedule && $expectedHours > 0) ? ($dailyRate / $expectedHours) : $hourlyRate;
-                $metrics['undertime_deduction'] += ($earlyDepartureMin / 60) * $undertimeRate;
+                    // Flexi undertime is deducted at the employee's own required-hours rate
+                    // (daily_rate / required_hours), not the flat /8 hourly rate — otherwise
+                    // the deduction can exceed the full day's pay when required hours > 8.
+                    $undertimeRate = ($isFlexiSchedule && $expectedHours > 0) ? ($dailyRate / $expectedHours) : $hourlyRate;
+                    $metrics['undertime_deduction'] += ($earlyDepartureMin / 60) * $undertimeRate;
+                }
             }
 
             // Count non-absence holidays on scheduled work days as paid days.

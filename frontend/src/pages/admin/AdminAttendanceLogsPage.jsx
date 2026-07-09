@@ -542,9 +542,7 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="absent">Absent</option>
                   <option value="on_leave">On Leave</option>
-                  {getScheduleForEmployee(editLog?.employee_id)?.template?.type === 'flexi' && (
-                    <option value="rest_day">Rest Day</option>
-                  )}
+                  <option value="rest_day">Rest Day</option>
                 </select>
 
                 {(() => {
@@ -749,9 +747,7 @@ export default function AdminAttendanceLogsPage() {
                   <option value="overtime">Overtime</option>
                   <option value="on_leave">On Leave</option>
                   <option value="absent">Absent</option>
-                  {getScheduleForEmployee(parseInt(createForm.employee_id))?.template?.type === 'flexi' && (
-                    <option value="rest_day">Rest Day</option>
-                  )}
+                  <option value="rest_day">Rest Day</option>
                 </select>
 
                 {(() => {

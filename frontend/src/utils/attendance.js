@@ -180,17 +180,16 @@ export const getClockWindow = (schedule, sysClock = null) => {
     }
   }
 
+  // Fixed schedule, day not assigned (disabled day_rule): not a rest day, just not
+  // scheduled — clock-in is blocked. Rest-day pay for fixed only happens when HR
+  // manually sets that status on a log they create/edit themselves.
   if (dayRule && !dayRule.enabled) {
     return {
       isInactiveDay: true,
       currentMinutes,
       workStart: dayRule.clock_in?.substring(0, 5) || template.work_start_time?.substring(0, 5) || '—',
       workEnd: dayRule.clock_out?.substring(0, 5) || template.work_end_time?.substring(0, 5) || '—',
-      formatTime: (m) => {
-        const h = Math.floor(m / 60)
-        const min = m % 60
-        return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
-      },
+      formatTime,
     }
   }
 

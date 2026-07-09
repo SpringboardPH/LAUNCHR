@@ -252,32 +252,24 @@ class AttendanceController extends Controller
 
         // Flexi employees may clock in on a rest day (disabled day_rule) — it's paid
         // as rest-day work (1.30x) by payroll instead of being blocked outright.
-        if ($templateType !== 'flexi') {
-            if ($dayRule !== null) {
-                if (empty($dayRule['enabled'])) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Employee is not scheduled to work today',
-                    ], 400);
-                }
-            } elseif ($schedule && $schedule->template) {
-                $workDays = $schedule->template->work_days ?? [];
-                if (!in_array($today->dayOfWeek, $workDays, true)) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Employee is not scheduled to work today',
-                    ], 400);
-                }
-            } else {
-                // Check if today is a weekday (Monday = 1, Friday = 5)
-                $dayOfWeek = $today->dayOfWeek;
-                if ($dayOfWeek === Carbon::SATURDAY || $dayOfWeek === Carbon::SUNDAY) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Cannot clock in on weekends',
-                    ], 400);
-                }
-            }
+        // Fixed employees cannot: a day not assigned to their schedule is simply not
+        // scheduled — "rest day" pay for fixed only happens when HR manually sets that
+        // status on a log they create/edit themselves.
+        $isRestDay = false;
+        if ($dayRule !== null) {
+            $isRestDay = empty($dayRule['enabled']);
+        } elseif ($schedule && $schedule->template) {
+            $workDays = $schedule->template->work_days ?? [];
+            $isRestDay = !in_array($today->dayOfWeek, $workDays, true);
+        } else {
+            $isRestDay = in_array($today->dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY], true);
+        }
+
+        if ($templateType !== 'flexi' && $isRestDay) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee is not scheduled to work today',
+            ], 400);
         }
 
         // Check if already clocked in today
@@ -326,62 +318,67 @@ class AttendanceController extends Controller
         }
 
         $clockInMinutes = $this->parseTimeToMinutes($clockInTime);
-        $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
-        $clockInGraceEndMinutes = $this->parseTimeToMinutes(self::WORK_START_TIME);
-        $latestClockInMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
+        $initialStatus = 'working';
 
-        if ($dayRule && !empty($dayRule['clock_in'])) {
-            $targetInMinutes = $this->parseTimeToMinutes($dayRule['clock_in']);
-            $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
+        // Rest day: no scheduled window to enforce — clock in any time, like flexi.
+        if (!$isRestDay) {
+            $earlyAllowedMinutes = $this->parseTimeToMinutes(self::EARLY_CLOCK_IN);
+            $clockInGraceEndMinutes = $this->parseTimeToMinutes(self::WORK_START_TIME);
+            $latestClockInMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
-            $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
-            if ($graceEnabled) {
-                $clockInWindow = $this->applyGraceWindow(
-                    $dayRule['clock_in'],
-                    $dayRule['grace_type'] ?? '-/+',
-                    $dayRule['grace_minutes'] ?? 15
-                );
-                $clockOutWindow = !empty($dayRule['clock_out'])
-                    ? $this->applyGraceWindow(
-                        $dayRule['clock_out'],
+            if ($dayRule && !empty($dayRule['clock_in'])) {
+                $targetInMinutes = $this->parseTimeToMinutes($dayRule['clock_in']);
+                $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
+
+                $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+                if ($graceEnabled) {
+                    $clockInWindow = $this->applyGraceWindow(
+                        $dayRule['clock_in'],
                         $dayRule['grace_type'] ?? '-/+',
                         $dayRule['grace_minutes'] ?? 15
-                    )
-                    : ['end' => self::LATE_CLOCK_OUT];
-                
-                $clockInGraceEndMinutes = $this->parseTimeToMinutes($clockInWindow['end']);
-                $latestClockInMinutes = $this->parseTimeToMinutes($clockOutWindow['end']);
-            } else {
-                $exactTime = $targetInMinutes;
-                $clockInGraceEndMinutes = $exactTime;
-                $latestClockInMinutes = !empty($dayRule['clock_out'])
-                    ? $this->parseTimeToMinutes($dayRule['clock_out'])
-                    : $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
-            }
-        } elseif ($schedule && $schedule->template) {
-            $template = $schedule->template;
-            $targetInMinutes = $this->parseTimeToMinutes($template->work_start_time ?? self::WORK_START_TIME);
-            $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
-            
-            $clockInGraceEndMinutes = $this->parseTimeToMinutes($template->clock_in_end ?? $template->work_start_time ?? self::WORK_START_TIME);
-            $latestClockInMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? $template->work_end_time ?? self::LATE_CLOCK_OUT);
-        }
-        
-        if ($clockInMinutes < $earlyAllowedMinutes) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Clock in is earlier than the allowed schedule window',
-            ], 400);
-        }
-        
-        if ($clockInMinutes > $latestClockInMinutes) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Clock in window has already closed for today',
-            ], 400);
-        }
+                    );
+                    $clockOutWindow = !empty($dayRule['clock_out'])
+                        ? $this->applyGraceWindow(
+                            $dayRule['clock_out'],
+                            $dayRule['grace_type'] ?? '-/+',
+                            $dayRule['grace_minutes'] ?? 15
+                        )
+                        : ['end' => self::LATE_CLOCK_OUT];
 
-        $initialStatus = $clockInMinutes > $clockInGraceEndMinutes ? 'late' : 'working';
+                    $clockInGraceEndMinutes = $this->parseTimeToMinutes($clockInWindow['end']);
+                    $latestClockInMinutes = $this->parseTimeToMinutes($clockOutWindow['end']);
+                } else {
+                    $exactTime = $targetInMinutes;
+                    $clockInGraceEndMinutes = $exactTime;
+                    $latestClockInMinutes = !empty($dayRule['clock_out'])
+                        ? $this->parseTimeToMinutes($dayRule['clock_out'])
+                        : $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
+                }
+            } elseif ($schedule && $schedule->template) {
+                $template = $schedule->template;
+                $targetInMinutes = $this->parseTimeToMinutes($template->work_start_time ?? self::WORK_START_TIME);
+                $earlyAllowedMinutes = $targetInMinutes - 60; // Allow 1 hour before scheduled time
+
+                $clockInGraceEndMinutes = $this->parseTimeToMinutes($template->clock_in_end ?? $template->work_start_time ?? self::WORK_START_TIME);
+                $latestClockInMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? $template->work_end_time ?? self::LATE_CLOCK_OUT);
+            }
+
+            if ($clockInMinutes < $earlyAllowedMinutes) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Clock in is earlier than the allowed schedule window',
+                ], 400);
+            }
+
+            if ($clockInMinutes > $latestClockInMinutes) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Clock in window has already closed for today',
+                ], 400);
+            }
+
+            $initialStatus = $clockInMinutes > $clockInGraceEndMinutes ? 'late' : 'working';
+        }
 
         // Create or update attendance log
         $log = AttendanceLog::updateOrCreate(
@@ -550,60 +547,75 @@ class AttendanceController extends Controller
         $earlyThresholdMinutes = $this->parseTimeToMinutes(self::WORK_END_TIME);
         $lateAllowedMinutes = $this->parseTimeToMinutes(self::LATE_CLOCK_OUT);
 
-        if ($dayRule && !empty($dayRule['clock_out'])) {
-            $workEndTime = $dayRule['clock_out'];
-            $targetOutMinutes = $this->parseTimeToMinutes($dayRule['clock_out']);
-            $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
-            
-            if ($graceEnabled) {
-                $window = $this->applyGraceWindow(
-                    $dayRule['clock_out'],
-                    $dayRule['grace_type'] ?? '-/+',
-                    $dayRule['grace_minutes'] ?? 15
-                );
-                $earlyThresholdMinutes = $this->parseTimeToMinutes($window['start']);
-                $lateAllowedMinutes = $this->parseTimeToMinutes($window['end']);
-            } else {
-                $earlyThresholdMinutes = $targetOutMinutes;
-                $lateAllowedMinutes = $targetOutMinutes;
+        // Rest day: no scheduled window to enforce — clock out any time, like flexi.
+        $isRestDay = $dayRule !== null
+            ? empty($dayRule['enabled'])
+            : ($schedule && $schedule->template
+                ? !in_array($today->dayOfWeek, $schedule->template->work_days ?? [], true)
+                : false);
+
+        if (!$isRestDay) {
+            if ($dayRule && !empty($dayRule['clock_out'])) {
+                $workEndTime = $dayRule['clock_out'];
+                $targetOutMinutes = $this->parseTimeToMinutes($dayRule['clock_out']);
+                $graceEnabled = (bool) ($dayRule['grace_enabled'] ?? false);
+
+                if ($graceEnabled) {
+                    $window = $this->applyGraceWindow(
+                        $dayRule['clock_out'],
+                        $dayRule['grace_type'] ?? '-/+',
+                        $dayRule['grace_minutes'] ?? 15
+                    );
+                    $earlyThresholdMinutes = $this->parseTimeToMinutes($window['start']);
+                    $lateAllowedMinutes = $this->parseTimeToMinutes($window['end']);
+                } else {
+                    $earlyThresholdMinutes = $targetOutMinutes;
+                    $lateAllowedMinutes = $targetOutMinutes;
+                }
+            } elseif ($schedule && $schedule->template) {
+                $template = $schedule->template;
+                $workEndTime = $template->work_end_time ?? $template->end_time ?? $template->clock_out_start ?? self::WORK_END_TIME;
+
+                // For templates, we use clock_out_start as the threshold if it exists,
+                // otherwise use work_end_time.
+                $earlyThresholdMinutes = $this->parseTimeToMinutes($template->clock_out_start ?? $workEndTime);
+                $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
             }
-        } elseif ($schedule && $schedule->template) {
-            $template = $schedule->template;
-            $workEndTime = $template->work_end_time ?? $template->end_time ?? $template->clock_out_start ?? self::WORK_END_TIME;
-            
-            // For templates, we use clock_out_start as the threshold if it exists, 
-            // otherwise use work_end_time.
-            $earlyThresholdMinutes = $this->parseTimeToMinutes($template->clock_out_start ?? $workEndTime);
-            $lateAllowedMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? self::LATE_CLOCK_OUT);
         }
 
         $confirmEarlyClockOut = (bool) $request->boolean('confirm_early_clock_out');
 
-        if ($clockOutMinutes < $earlyThresholdMinutes && !$confirmEarlyClockOut) {
+        if (!$isRestDay && $clockOutMinutes < $earlyThresholdMinutes && !$confirmEarlyClockOut) {
             return response()->json([
                 'success' => false,
                 'message' => 'Clocking out now will count as incomplete hours. Confirm if you want to proceed.',
                 'confirm_required' => true,
             ], 422);
         }
-        
+
         // Update with clock out time and calculate status
         $log->clock_out_time = $clockOutTime;
         $log->clock_out_notes = $request->notes;
-        $log->status = $this->calculateStatus(
-            $log->clock_in_time,
-            $clockOutTime,
-            $dayRule && !empty($dayRule['clock_in']) && !empty($dayRule['clock_out'])
-                ? $this->calculateExpectedHoursFromRule($dayRule['clock_in'], $dayRule['clock_out'])
-                : ($schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null),
-            $dayRule && !empty($dayRule['clock_in'])
-                ? $dayRule['clock_in']
-                : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null),
-            $dayRule && isset($dayRule['late_threshold_minutes']) 
-                ? $dayRule['late_threshold_minutes'] 
-                : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0),
-            $dayRule
-        );
+
+        // Rest day is a manual status HR sets on the log — don't let the automatic
+        // status calculation below clobber it when HR pre-creates a log with only a
+        // clock-in time and the employee later closes it out via the normal flow.
+        if ($log->status !== 'rest_day') {
+            $log->status = $this->calculateStatus(
+                $log->clock_in_time,
+                $clockOutTime,
+                $dayRule && !empty($dayRule['clock_in']) && !empty($dayRule['clock_out'])
+                    ? $this->calculateExpectedHoursFromRule($dayRule['clock_in'], $dayRule['clock_out'])
+                    : ($schedule && $schedule->template ? $schedule->template->required_hours_per_day ?? $schedule->template->expected_hours_per_day : null),
+                $dayRule && !empty($dayRule['clock_in'])
+                    ? $dayRule['clock_in']
+                    : ($schedule && $schedule->template ? $schedule->template->work_start_time ?? $schedule->template->start_time : null),
+                $dayRule && isset($dayRule['late_threshold_minutes'])
+                    ? $dayRule['late_threshold_minutes']
+                    : ($schedule && $schedule->template ? $schedule->template->late_threshold_minutes : 0),
+                $dayRule
+            );
+        }
 
         // HR/Admin can explicitly override the OT classification at clock-out
         if ($request->has('is_overtime')) {
