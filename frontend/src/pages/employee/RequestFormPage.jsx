@@ -285,6 +285,7 @@ export default function RequestFormPage() {
             'Certificate of Employment (COE) — no extra fields needed.',
             'Leave — select a leave type, then pick your start and end dates. Your remaining balance is shown per leave type.',
             'Concern — describe any HR-related concern.',
+            'Cash Advance — specify the amount, the number of cutoffs to repay it over, and an optional interest rate. Once approved, it’s repaid automatically as a deduction each payroll cutoff.',
           ]},
           { heading: 'Request History', items: [
             'All previously submitted requests are listed below the form, with their current status: Pending, Approved, or Rejected.',

@@ -201,11 +201,13 @@ export default function RequestsPage() {
             'Click the check icon on a pending row to approve it. A confirmation dialog will appear.',
             'Click the X icon to reject it. A confirmation dialog will appear.',
             'Click the eye icon to view the full details of any request.',
+            'Approving a Cash Advance request creates an active loan for that employee, visible on the Loans page, which is then repaid automatically as a payroll deduction each cutoff.',
           ]},
           { heading: 'New Request (on behalf of employee)', items: [
             'Click New Request to file a request for a specific employee.',
             'Select the employee, choose a category (Request or Leave), and fill in the relevant fields.',
             'Leave requests require selecting a leave type and a date range.',
+            'Cash Advance requests require an amount, a term (number of cutoffs to repay over), and an optional interest rate.',
           ]},
           { heading: 'Leave Details', items: [
             'On the Leaves tab, the start date, end date, and number of working days affected are shown in each row.',

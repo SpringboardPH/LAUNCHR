@@ -146,6 +146,29 @@ export default function LoansPage() {
             <Plus size={14} /> New Government Loan
           </button>
         )}
+        help={[
+          { heading: 'Overview', items: [
+            'This page lists employee loans: HR-entered government loans (SSS, Pag-IBIG) and employee-initiated cash advances approved through Requests.',
+            'Use the status tabs — Active, Paid Off, Pending, Rejected, Cancelled — to filter the list.',
+            'Loans are repaid automatically as a deduction each payroll cutoff, capped so net pay never drops below the configured floor.',
+          ]},
+          { heading: 'Viewing a Loan', items: [
+            'Click the eye icon on any row to see the full loan details plus its payment history — every payroll cutoff that has deducted from it so far.',
+          ]},
+          ...(canManage ? [
+            { heading: 'Creating a Government Loan', items: [
+              'Click New Government Loan to enter an SSS or Pag-IBIG loan directly — these are created active immediately, no approval needed.',
+              'Enter the principal, the fixed installment amount per cutoff, the term (number of cutoffs), and the cutoff it should start deducting from.',
+            ]},
+            { heading: 'Editing a Loan', items: [
+              'Click the pencil icon to edit the installment amount, start cutoff, notes, or status at any time.',
+              'Principal, interest rate, and term can only be edited before any payment has been deducted — once a cutoff has charged the loan, those fields lock to protect what’s already been deducted.',
+            ]},
+            { heading: 'Cancelling a Loan', items: [
+              'Click the cancel icon (only shown on Active loans) to stop future payroll deductions. Past deductions and history are kept — it only stops charging the loan going forward.',
+            ]},
+          ] : []),
+        ]}
       />
 
       <div className="flex flex-wrap items-center gap-3 mb-5">

@@ -3,7 +3,7 @@ import {
   X, ChevronRight, ChevronLeft,
   LayoutDashboard, Clock, ClipboardList, CalendarRange, User,
   FileText, CheckCircle2, Users, Banknote, Settings, UserCog,
-  Building2, Sliders, History,
+  Building2, Sliders, History, Wallet,
 } from 'lucide-react'
 
 // Inline text formatter: **bold**, *italic*, __underline__
@@ -64,6 +64,19 @@ export const EMPLOYEE_STEPS = [
       fmt("**Certificate of Employment (COE)** — request official employment documentation"),
       fmt("**Schedule Change** — ask HR to adjust your assigned schedule for a specific date"),
       fmt("**Concern** — raise any question or issue directly to HR"),
+      fmt("**Cash Advance** — request an amount, choose how many cutoffs to repay it over, and an optional interest rate"),
+    ],
+  },
+  {
+    icon: Wallet,
+    title: 'My Loans',
+    route: '/employee/loans',
+    body: 'Track any cash advances or company loans you have, and see exactly how they’re being repaid.',
+    bullets: [
+      fmt("Once your Cash Advance request is **approved**, it appears here as an active loan"),
+      fmt("See your **balance, installment amount,** and **status** at a glance"),
+      fmt("Click the eye icon on a loan to see its **full payment history** — every cutoff that has deducted from it so far"),
+      fmt("__Repayment is automatic__ — a portion is deducted from your payslip each cutoff until it's paid off"),
     ],
   },
   {
@@ -170,6 +183,7 @@ export const HR_STEPS = [
       fmt("**Approve or reject** leave requests — the employee sees your decision immediately"),
       fmt("Handle overtime, undertime, half-day, **schedule change, COE,** and concerns"),
       fmt("*Approved leaves* are automatically reflected in **attendance and payroll**"),
+      fmt("Approving a **Cash Advance** request creates an active loan, visible on the **Loans** page, repaid automatically each payroll cutoff"),
     ],
   },
   {
@@ -193,6 +207,19 @@ export const HR_STEPS = [
       fmt("**Email paystubs** directly to employees from the payroll detail page"),
       fmt("**13th Month Pay** — calculate and release 13th month pay based on actual days worked"),
       fmt("__Completed payrolls are locked__ to preserve records"),
+    ],
+  },
+  {
+    icon: Wallet,
+    title: 'Loans',
+    route: '/hr/loans',
+    body: 'Track employee cash advances and government loans, and manage them after they’re created.',
+    bullets: [
+      fmt("Lists **cash advances** approved through Requests and **government loans** (SSS, Pag-IBIG) entered directly here"),
+      fmt("Click **New Government Loan** to enter an SSS or Pag-IBIG loan — it's created active immediately, no approval needed"),
+      fmt("Click the **pencil icon** to edit an installment amount, start cutoff, notes, or status"),
+      fmt("Click the **cancel icon** on an active loan to stop future deductions — past history is preserved"),
+      fmt("*Loans are repaid automatically* each payroll cutoff, capped so net pay never drops below the configured floor"),
     ],
   },
   {
@@ -274,6 +301,7 @@ export const ADMIN_STEPS = [
       fmt("The **sidebar badge** shows pending items that need action"),
       fmt("**Approve or reject** leave, overtime, undertime, half-day, schedule change, COE, and concerns"),
       fmt("*Approved leaves* are automatically applied to **attendance and payroll**"),
+      fmt("Approving a **Cash Advance** request creates an active loan, visible on the **Loans** page, repaid automatically each payroll cutoff"),
     ],
   },
   {
@@ -297,6 +325,19 @@ export const ADMIN_STEPS = [
       fmt("**Email paystubs** to employees directly from the payroll detail page"),
       fmt("**13th Month Pay** — calculate and release based on actual days worked in the year"),
       fmt("__Finalized payrolls are locked__ — create a new run to make corrections"),
+    ],
+  },
+  {
+    icon: Wallet,
+    title: 'Loans',
+    route: '/hr/loans',
+    body: 'Track employee cash advances and government loans, and manage them after they’re created.',
+    bullets: [
+      fmt("Lists **cash advances** approved through Requests and **government loans** (SSS, Pag-IBIG) entered directly here"),
+      fmt("Click **New Government Loan** to enter an SSS or Pag-IBIG loan — it's created active immediately, no approval needed"),
+      fmt("Click the **pencil icon** to edit an installment amount, start cutoff, notes, or status"),
+      fmt("Click the **cancel icon** on an active loan to stop future deductions — past history is preserved"),
+      fmt("*Loans are repaid automatically* each payroll cutoff, capped so net pay never drops below the configured floor"),
     ],
   },
   {
