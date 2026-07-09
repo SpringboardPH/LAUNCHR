@@ -18,6 +18,8 @@ const REQUEST_TYPES = [
   { value: 'schedule_change', label: 'Schedule Change' },
   { value: 'coe',             label: 'Certificate of Employment' },
   { value: 'concern',         label: 'Concern' },
+  { value: 'cash_advance',    label: 'Cash Advance' },
+  { value: 'company_loan',    label: 'Company Loan' },
 ]
 
 function formatType(type) {
@@ -33,7 +35,7 @@ function formatMeta(meta) {
   }))
 }
 
-const EMPTY_FORM = { employee_id: '', type: 'request', leave_type: '', start_date: '', end_date: '', reason: '', request_type: 'overtime', subject: '', details: '', date: '', start_time: '', end_time: '', half: 'am', departure_time: '' }
+const EMPTY_FORM = { employee_id: '', type: 'request', leave_type: '', start_date: '', end_date: '', reason: '', request_type: 'overtime', subject: '', details: '', date: '', start_time: '', end_time: '', half: 'am', departure_time: '', principal: '', term_count: '', interest_rate: '' }
 
 export default function RequestsPage() {
   const [tab, setTab]               = useState('requests')
@@ -160,11 +162,13 @@ export default function RequestsPage() {
       if (['overtime', 'half_day', 'undertime', 'schedule_change'].includes(t) && !form.date) return setCreateError('Date is required for this request type.')
       if (t === 'overtime' && (!form.start_time || !form.end_time)) return setCreateError('Start and end time are required for overtime.')
       if (t === 'undertime' && !form.departure_time) return setCreateError('Departure time is required for undertime.')
+      if (['cash_advance', 'company_loan'].includes(t) && (!form.principal || !form.term_count)) return setCreateError('Amount and term are required for loan requests.')
       let meta = null
       if (t === 'overtime')        meta = { date: form.date, start_time: form.start_time, end_time: form.end_time }
       else if (t === 'half_day')   meta = { date: form.date, half: form.half }
       else if (t === 'undertime')  meta = { date: form.date, departure_time: form.departure_time }
       else if (t === 'schedule_change') meta = { date: form.date }
+      else if (['cash_advance', 'company_loan'].includes(t)) meta = { principal: Number(form.principal), term_count: Number(form.term_count), interest_rate: form.interest_rate ? Number(form.interest_rate) : 0 }
       createMutation.mutate({ employee_id: form.employee_id, request_type: form.request_type, subject: form.subject, details: form.details || null, meta })
     }
   }
@@ -510,6 +514,13 @@ export default function RequestsPage() {
                 <FormField label="Departure Time" required>
                   <input type="time" value={form.departure_time} onChange={e => f('departure_time', e.target.value)} className="input" />
                 </FormField>
+              )}
+              {['cash_advance', 'company_loan'].includes(form.request_type) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <FormField label="Amount (₱)" required><input type="number" min="1" step="0.01" value={form.principal} onChange={e => f('principal', e.target.value)} className="input" /></FormField>
+                  <FormField label="Term (cutoffs)" required><input type="number" min="1" step="1" value={form.term_count} onChange={e => f('term_count', e.target.value)} className="input" /></FormField>
+                  <FormField label="Interest Rate"><input type="number" min="0" max="1" step="0.01" value={form.interest_rate} onChange={e => f('interest_rate', e.target.value)} className="input" placeholder="e.g. 0.05" /></FormField>
+                </div>
               )}
               <FormField label="Details"><textarea value={form.details} onChange={e => f('details', e.target.value)} className="input h-16 resize-none" /></FormField>
             </>
