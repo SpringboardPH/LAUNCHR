@@ -37,6 +37,7 @@ const COMMON_NAV = [
     children: [
       { to: '/hr/payroll', label: 'Payroll Runs' },
       { to: '/hr/thirteenth-month', label: '13th Month' },
+      { to: '/hr/loans', label: 'Loans' },
     ],
   },
 ]
