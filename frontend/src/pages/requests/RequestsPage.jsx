@@ -162,7 +162,12 @@ export default function RequestsPage() {
       if (['overtime', 'half_day', 'undertime', 'schedule_change'].includes(t) && !form.date) return setCreateError('Date is required for this request type.')
       if (t === 'overtime' && (!form.start_time || !form.end_time)) return setCreateError('Start and end time are required for overtime.')
       if (t === 'undertime' && !form.departure_time) return setCreateError('Departure time is required for undertime.')
-      if (['cash_advance', 'company_loan'].includes(t) && (!form.principal || !form.term_count)) return setCreateError('Amount and term are required for loan requests.')
+      if (['cash_advance', 'company_loan'].includes(t)) {
+        const principal = Number(form.principal)
+        const termCount = Number(form.term_count)
+        if (!form.principal || isNaN(principal) || principal <= 0) return setCreateError('Amount must be greater than 0.')
+        if (!form.term_count || isNaN(termCount) || termCount < 1 || !Number.isInteger(termCount)) return setCreateError('Term (number of cutoffs) must be a whole number of 1 or more.')
+      }
       let meta = null
       if (t === 'overtime')        meta = { date: form.date, start_time: form.start_time, end_time: form.end_time }
       else if (t === 'half_day')   meta = { date: form.date, half: form.half }
