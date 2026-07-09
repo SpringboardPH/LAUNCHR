@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\ThirteenthMonthController;
 use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
+use App\Http\Controllers\Api\LoanController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -74,6 +75,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [EmployeeRequestController::class, 'show']);
         Route::patch('/{id}/approve', [EmployeeRequestController::class, 'approve'])->middleware('role:admin,hr');
         Route::patch('/{id}/reject', [EmployeeRequestController::class, 'reject'])->middleware('role:admin,hr');
+    });
+
+    // Loans & Cash Advances
+    Route::prefix('loans')->group(function () {
+        Route::get('/', [LoanController::class, 'index']);
+        Route::get('/{id}', [LoanController::class, 'show']);
+        Route::post('/', [LoanController::class, 'store'])->middleware('role:admin,hr,accounting');
     });
 
     Route::get('/leave-types', [LeaveTypeController::class, 'index']);

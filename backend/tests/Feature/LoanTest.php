@@ -74,4 +74,24 @@ class LoanTest extends TestCase
 
         $this->assertNull(Loan::where('request_id', $employeeRequest->id)->first());
     }
+
+    public function test_hr_can_create_government_loan_directly_as_active()
+    {
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-3', 'email' => 'loan-tester-3@example.com']);
+        $hr = User::factory()->create(['role' => 'hr']);
+
+        $response = $this->actingAs($hr)->postJson('/api/loans', [
+            'employee_id' => $employee->id,
+            'loan_type' => 'sss_salary',
+            'principal' => 24000,
+            'installment_amount' => 2000,
+            'term_count' => 12,
+            'start_cutoff' => '2026-07-16',
+        ])->assertCreated();
+
+        $loan = Loan::find($response->json('data.id'));
+        $this->assertSame('active', $loan->status);
+        $this->assertEquals(24000.00, (float) $loan->total_payable);
+        $this->assertEquals(24000.00, (float) $loan->balance);
+    }
 }
