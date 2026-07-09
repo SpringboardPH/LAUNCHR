@@ -2,18 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\Employee;
-use App\Models\Loan;
-use App\Models\LoanPayment;
-use App\Models\Payroll;
 use App\Services\LoanService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class LoanServiceTest extends TestCase
 {
-    use RefreshDatabase;
-
     public function test_compute_schedule_applies_flat_add_on_interest()
     {
         [$totalPayable, $installment] = LoanService::computeSchedule(10000, 0.05, 4);

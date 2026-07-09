@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Loan;
 use App\Models\LoanPayment;
+use Illuminate\Support\Facades\DB;
 
 class LoanService
 {
@@ -29,19 +30,21 @@ class LoanService
      */
     public static function reverseForPayroll(int $payrollId): void
     {
-        $payments = LoanPayment::where('payroll_id', $payrollId)->get();
+        DB::transaction(function () use ($payrollId) {
+            $payments = LoanPayment::where('payroll_id', $payrollId)->get();
 
-        foreach ($payments as $payment) {
-            $loan = Loan::find($payment->loan_id);
-            if ($loan) {
-                $loan->balance = round($loan->balance + $payment->amount, 2);
-                if ($loan->status === 'paid_off' && $loan->balance > 0) {
-                    $loan->status = 'active';
+            foreach ($payments as $payment) {
+                $loan = Loan::find($payment->loan_id);
+                if ($loan) {
+                    $loan->balance = round($loan->balance + $payment->amount, 2);
+                    if ($loan->status === 'paid_off' && $loan->balance > 0) {
+                        $loan->status = 'active';
+                    }
+                    $loan->save();
                 }
-                $loan->save();
+                $payment->delete();
             }
-            $payment->delete();
-        }
+        });
     }
 
     /**
@@ -65,32 +68,35 @@ class LoanService
             ->get();
 
         $deductions = [];
-        $runningNet = $preLoanNet;
 
-        foreach ($loans as $loan) {
-            $netAboveFloor = max(0, $runningNet - $floor);
-            $charge = round(min((float) $loan->installment_amount, (float) $loan->balance, $netAboveFloor), 2);
+        DB::transaction(function () use ($loans, $payrollId, $cutoffStart, $cutoffEnd, $preLoanNet, $floor, &$deductions) {
+            $runningNet = $preLoanNet;
 
-            if ($charge <= 0) {
-                continue;
+            foreach ($loans as $loan) {
+                $netAboveFloor = max(0, $runningNet - $floor);
+                $charge = round(min((float) $loan->installment_amount, (float) $loan->balance, $netAboveFloor), 2);
+
+                if ($charge <= 0) {
+                    continue;
+                }
+
+                LoanPayment::create([
+                    'loan_id' => $loan->id,
+                    'payroll_id' => $payrollId,
+                    'amount' => $charge,
+                    'cutoff_start' => $cutoffStart,
+                    'cutoff_end' => $cutoffEnd,
+                ]);
+
+                $loan->balance = round($loan->balance - $charge, 2);
+                $loan->status = $loan->balance <= 0 ? 'paid_off' : $loan->status;
+                $loan->save();
+
+                $label = self::DEDUCTION_LABELS[$loan->loan_type] ?? 'Cash Advance/Others';
+                $deductions[$label] = round(($deductions[$label] ?? 0) + $charge, 2);
+                $runningNet = round($runningNet - $charge, 2);
             }
-
-            LoanPayment::create([
-                'loan_id' => $loan->id,
-                'payroll_id' => $payrollId,
-                'amount' => $charge,
-                'cutoff_start' => $cutoffStart,
-                'cutoff_end' => $cutoffEnd,
-            ]);
-
-            $loan->balance = round($loan->balance - $charge, 2);
-            $loan->status = $loan->balance <= 0 ? 'paid_off' : $loan->status;
-            $loan->save();
-
-            $label = self::DEDUCTION_LABELS[$loan->loan_type] ?? 'Cash Advance/Others';
-            $deductions[$label] = round(($deductions[$label] ?? 0) + $charge, 2);
-            $runningNet = round($runningNet - $charge, 2);
-        }
+        });
 
         return [
             'deductions' => $deductions,
