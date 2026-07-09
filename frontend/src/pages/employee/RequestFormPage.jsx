@@ -22,6 +22,8 @@ const REQUEST_TYPES = [
   { value: 'coe',             label: 'Certificate of Employment' },
   { value: 'leave',           label: 'Leave' },
   { value: 'concern',         label: 'Concern' },
+  { value: 'cash_advance',    label: 'Cash Advance' },
+  { value: 'company_loan',    label: 'Company Loan' },
 ]
 
 const requestSchema = z.object({
@@ -37,6 +39,9 @@ const requestSchema = z.object({
   start_date:     z.string().optional(),
   end_date:       z.string().optional(),
   reason:         z.string().optional(),
+  principal:      z.string().optional(),
+  term_count:     z.string().optional(),
+  interest_rate:  z.string().optional(),
 }).superRefine((data, ctx) => {
   const t = data.request_type
   if (t === 'leave') {
@@ -64,6 +69,12 @@ const requestSchema = z.object({
     if (['concern', 'coe'].includes(t) && !data.details?.trim()) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Details are required for this request type', path: ['details'] })
     }
+    if (['cash_advance', 'company_loan'].includes(t)) {
+      const principal = Number(data.principal)
+      const termCount = Number(data.term_count)
+      if (!data.principal || isNaN(principal) || principal <= 0) ctx.addIssue({ path: ['principal'], code: z.ZodIssueCode.custom, message: 'Amount must be greater than 0' })
+      if (!data.term_count || isNaN(termCount) || termCount < 1) ctx.addIssue({ path: ['term_count'], code: z.ZodIssueCode.custom, message: 'Term (number of cutoffs) is required' })
+    }
   }
 })
 
@@ -73,6 +84,13 @@ function buildMeta(data) {
   if (t === 'half_day')        return { date: data.date, half: data.half }
   if (t === 'undertime')       return { date: data.date, departure_time: data.departure_time }
   if (t === 'schedule_change') return { date: data.date }
+  if (['cash_advance', 'company_loan'].includes(t)) {
+    return {
+      principal: Number(data.principal),
+      term_count: Number(data.term_count),
+      interest_rate: data.interest_rate ? Number(data.interest_rate) : 0,
+    }
+  }
   return null
 }
 
@@ -130,6 +148,9 @@ export default function RequestFormPage() {
       start_date:     '',
       end_date:       '',
       reason:         '',
+      principal:      '',
+      term_count:     '',
+      interest_rate:  '',
     },
   })
 
@@ -146,6 +167,9 @@ export default function RequestFormPage() {
     setValue('departure_time', '')
     setValue('start_date', '')
     setValue('end_date', '')
+    setValue('principal', '')
+    setValue('term_count', '')
+    setValue('interest_rate', '')
     setLocalError('')
   }, [requestType, setValue])
 
@@ -239,6 +263,7 @@ export default function RequestFormPage() {
   const showStartEndTime = requestType === 'overtime'
   const showHalf         = requestType === 'half_day'
   const showDeparture    = requestType === 'undertime'
+  const showLoanFields   = ['cash_advance', 'company_loan'].includes(requestType)
   const isPending        = requestMutation.isPending || leaveMutation.isPending
   const mutationError    = requestMutation.error || leaveMutation.error
 
@@ -406,6 +431,24 @@ export default function RequestFormPage() {
                         <label className="block text-xs font-medium text-gray-600 mb-1">Departure Time</label>
                         <input type="time" {...register('departure_time')} className="input px-2" />
                         {errors.departure_time && <p className="text-xs text-red-500 mt-1">{errors.departure_time.message}</p>}
+                      </div>
+                    )}
+                    {showLoanFields && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Amount (₱)</label>
+                          <input type="number" min="1" step="0.01" {...register('principal')} className="input px-2" />
+                          {errors.principal && <p className="text-xs text-red-500 mt-1">{errors.principal.message}</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Term (cutoffs)</label>
+                          <input type="number" min="1" step="1" {...register('term_count')} className="input px-2" />
+                          {errors.term_count && <p className="text-xs text-red-500 mt-1">{errors.term_count.message}</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Interest Rate (optional)</label>
+                          <input type="number" min="0" max="1" step="0.01" {...register('interest_rate')} className="input px-2" placeholder="e.g. 0.05 = 5%" />
+                        </div>
                       </div>
                     )}
                     <div>
