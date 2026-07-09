@@ -72,7 +72,7 @@ const requestSchema = z.object({
     if (['cash_advance', 'company_loan'].includes(t)) {
       const principal = Number(data.principal)
       const termCount = Number(data.term_count)
-      if (!data.principal || isNaN(principal) || principal <= 0) ctx.addIssue({ path: ['principal'], code: z.ZodIssueCode.custom, message: 'Amount must be greater than 0' })
+      if (!data.principal || isNaN(principal) || principal < 1) ctx.addIssue({ path: ['principal'], code: z.ZodIssueCode.custom, message: 'Amount must be at least ₱1' })
       if (!data.term_count || isNaN(termCount) || termCount < 1 || !Number.isInteger(termCount)) ctx.addIssue({ path: ['term_count'], code: z.ZodIssueCode.custom, message: 'Term (number of cutoffs) is required' })
     }
   }

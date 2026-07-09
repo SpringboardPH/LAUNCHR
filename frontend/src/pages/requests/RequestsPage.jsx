@@ -165,7 +165,7 @@ export default function RequestsPage() {
       if (['cash_advance', 'company_loan'].includes(t)) {
         const principal = Number(form.principal)
         const termCount = Number(form.term_count)
-        if (!form.principal || isNaN(principal) || principal <= 0) return setCreateError('Amount must be greater than 0.')
+        if (!form.principal || isNaN(principal) || principal < 1) return setCreateError('Amount must be at least ₱1.')
         if (!form.term_count || isNaN(termCount) || termCount < 1 || !Number.isInteger(termCount)) return setCreateError('Term (number of cutoffs) must be a whole number of 1 or more.')
       }
       let meta = null

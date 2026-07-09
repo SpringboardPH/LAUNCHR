@@ -4,7 +4,7 @@ import { format, parseISO } from 'date-fns'
 import {
   getPayrolls, generatePayroll, updatePayroll, payrollKeys,
   getSystemClock, systemClockKeys, sendPaystubs, revertPayrollToDraft, togglePayrollUndertimeCalculation, getAdminSettings, adminSettingsKeys,
-  getEmployeeGroups, employeeKeys
+  getEmployeeGroups, employeeKeys, loanKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, Spinner, AlertModal } from '../../components/ui/index.jsx'
 import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCircle, Download, Mail } from 'lucide-react'
@@ -73,6 +73,7 @@ export default function PayrollPage() {
     mutationFn: generatePayroll,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: payrollKeys.all })
+      qc.invalidateQueries({ queryKey: loanKeys.all })
       // Refresh selectedPayroll if it was part of this generation
       if (selectedPayroll && Array.isArray(data?.data)) {
         const updated = data.data.find(p => p.id === selectedPayroll.id)

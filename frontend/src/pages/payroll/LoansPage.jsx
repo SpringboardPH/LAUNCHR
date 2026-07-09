@@ -34,7 +34,7 @@ export default function LoansPage() {
     queryFn: () => getLoans({ status: statusFilter || undefined, page }),
   })
   const { data: employees } = useQuery({
-    queryKey: employeeKeys.list({}),
+    queryKey: employeeKeys.list({ status: 'active' }),
     queryFn: () => getEmployees({ status: 'active' }),
     enabled: canManage,
   })
