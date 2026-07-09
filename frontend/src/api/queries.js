@@ -495,6 +495,25 @@ export const approveRequest = (id, responseNotes = null) =>
 export const rejectRequest = (id, responseNotes) =>
   api.patch(`/requests/${id}/reject`, { response_notes: responseNotes }).then(r => r.data)
 
+// ─── Loans ──────────────────────────────────────────────────────────
+export const loanKeys = {
+  all: ['loans'],
+  list: (params) => ['loans', 'list', params],
+  detail: (id) => ['loans', id],
+}
+
+export const getLoans = (params = {}) =>
+  api.get('/loans', { params }).then(r => ({
+    data: r.data.data,
+    pagination: r.data.pagination,
+  }))
+
+export const getLoan = (id) =>
+  api.get(`/loans/${id}`).then(r => r.data.data)
+
+export const createLoan = (data) =>
+  api.post('/loans', data).then(r => r.data)
+
 // ─── DTR Uploads ─────────────────────────────────────────────
 export const dtrKeys = {
   all:            ['dtr'],
