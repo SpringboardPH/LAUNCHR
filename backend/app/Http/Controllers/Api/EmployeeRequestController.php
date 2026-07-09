@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\EmployeeRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class EmployeeRequestController extends Controller
 {
@@ -170,64 +171,66 @@ class EmployeeRequestController extends Controller
             ], 422);
         }
 
-        $employeeRequest->update([
-            'status'         => 'approved',
-            'approver_id'    => $request->user()->id,
-            'response_notes' => $request->response_notes,
-        ]);
+        DB::transaction(function () use ($employeeRequest, $request) {
+            $employeeRequest->update([
+                'status'         => 'approved',
+                'approver_id'    => $request->user()->id,
+                'response_notes' => $request->response_notes,
+            ]);
 
-        // If this is a flexi OT request, promote the attendance log to 'overtime'
-        if ($employeeRequest->request_type === 'overtime') {
-            $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
-            if ($logId) {
-                $log = \App\Models\AttendanceLog::where('id', $logId)
-                    ->where('employee_id', $employeeRequest->employee_id)
-                    ->whereNotIn('status', ['absent', 'on_leave'])
-                    ->first();
-                if ($log) {
-                    // Store original status so rejection can revert correctly (D5)
-                    $meta = $employeeRequest->meta ?? [];
-                    $meta['original_status'] = $log->status;
-                    $employeeRequest->update(['meta' => $meta]);
-                    $log->update(['status' => 'overtime']);
+            // If this is a flexi OT request, promote the attendance log to 'overtime'
+            if ($employeeRequest->request_type === 'overtime') {
+                $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
+                if ($logId) {
+                    $log = \App\Models\AttendanceLog::where('id', $logId)
+                        ->where('employee_id', $employeeRequest->employee_id)
+                        ->whereNotIn('status', ['absent', 'on_leave'])
+                        ->first();
+                    if ($log) {
+                        // Store original status so rejection can revert correctly (D5)
+                        $meta = $employeeRequest->meta ?? [];
+                        $meta['original_status'] = $log->status;
+                        $employeeRequest->update(['meta' => $meta]);
+                        $log->update(['status' => 'overtime']);
+                    }
                 }
             }
-        }
 
-        // Half-day approval: mark the attendance log for that date as half_day
-        if ($employeeRequest->request_type === 'half_day') {
-            $date = $employeeRequest->meta['date'] ?? null;
-            if ($date) {
-                \App\Models\AttendanceLog::where('employee_id', $employeeRequest->employee_id)
-                    ->whereDate('date', $date)
-                    ->whereNotIn('status', ['absent', 'on_leave', 'half_day'])
-                    ->update(['status' => 'half_day']);
+            // Half-day approval: mark the attendance log for that date as half_day
+            if ($employeeRequest->request_type === 'half_day') {
+                $date = $employeeRequest->meta['date'] ?? null;
+                if ($date) {
+                    \App\Models\AttendanceLog::where('employee_id', $employeeRequest->employee_id)
+                        ->whereDate('date', $date)
+                        ->whereNotIn('status', ['absent', 'on_leave', 'half_day'])
+                        ->update(['status' => 'half_day']);
+                }
             }
-        }
 
-        // Loan approval: create the loan for employee-initiated cash advances/company loans
-        if (in_array($employeeRequest->request_type, ['cash_advance', 'company_loan'])) {
-            $principal = (float) ($employeeRequest->meta['principal'] ?? 0);
-            $termCount = (int) ($employeeRequest->meta['term_count'] ?? 1);
-            $interestRate = (float) ($employeeRequest->meta['interest_rate'] ?? 0);
+            // Loan approval: create the loan for employee-initiated cash advances/company loans
+            if (in_array($employeeRequest->request_type, ['cash_advance', 'company_loan'])) {
+                $principal = (float) ($employeeRequest->meta['principal'] ?? 0);
+                $termCount = (int) ($employeeRequest->meta['term_count'] ?? 1);
+                $interestRate = (float) ($employeeRequest->meta['interest_rate'] ?? 0);
 
-            [$totalPayable, $installmentAmount] = \App\Services\LoanService::computeSchedule($principal, $interestRate, $termCount);
+                [$totalPayable, $installmentAmount] = \App\Services\LoanService::computeSchedule($principal, $interestRate, $termCount);
 
-            \App\Models\Loan::create([
-                'employee_id' => $employeeRequest->employee_id,
-                'loan_type' => $employeeRequest->request_type,
-                'principal' => $principal,
-                'interest_rate' => $interestRate,
-                'total_payable' => $totalPayable,
-                'installment_amount' => $installmentAmount,
-                'term_count' => $termCount,
-                'balance' => $totalPayable,
-                'status' => 'active',
-                'request_id' => $employeeRequest->id,
-                'start_cutoff' => \App\Helpers\SystemClock::today(),
-                'approver_id' => $request->user()->id,
-            ]);
-        }
+                \App\Models\Loan::create([
+                    'employee_id' => $employeeRequest->employee_id,
+                    'loan_type' => $employeeRequest->request_type,
+                    'principal' => $principal,
+                    'interest_rate' => $interestRate,
+                    'total_payable' => $totalPayable,
+                    'installment_amount' => $installmentAmount,
+                    'term_count' => $termCount,
+                    'balance' => $totalPayable,
+                    'status' => 'active',
+                    'request_id' => $employeeRequest->id,
+                    'start_cutoff' => \App\Helpers\SystemClock::today(),
+                    'approver_id' => $request->user()->id,
+                ]);
+            }
+        });
 
         \App\Models\AuditLog::log(
             'REQUEST_APPROVED',
