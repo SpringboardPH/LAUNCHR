@@ -94,4 +94,78 @@ class LoanTest extends TestCase
         $this->assertEquals(24000.00, (float) $loan->total_payable);
         $this->assertEquals(24000.00, (float) $loan->balance);
     }
+
+    public function test_generate_charges_active_loan_and_regeneration_does_not_double_charge()
+    {
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-4', 'email' => 'loan-tester-4@example.com', 'salary' => 26000]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $loan = Loan::create([
+            'employee_id' => $employee->id,
+            'loan_type' => 'cash_advance',
+            'principal' => 6000,
+            'interest_rate' => 0,
+            'total_payable' => 6000,
+            'installment_amount' => 1000,
+            'term_count' => 6,
+            'balance' => 6000,
+            'status' => 'active',
+            'start_cutoff' => '2026-07-01',
+            'approver_id' => $admin->id,
+        ]);
+
+        $payload = ['cutoff_start' => '2026-07-01', 'cutoff_end' => '2026-07-15'];
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', $payload)->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->first();
+        $this->assertEquals(1000.00, (float) ($payroll->deductions['Cash Advance/Others'] ?? 0));
+        $this->assertEquals(1, \App\Models\LoanPayment::where('loan_id', $loan->id)->count());
+
+        $loan->refresh();
+        $this->assertEquals(5000.00, (float) $loan->balance);
+
+        $netAfterFirstRun = (float) $payroll->net_pay;
+
+        // Regenerate the same cutoff — must reverse-then-reapply, not double-charge
+        $this->actingAs($admin)->postJson('/api/payroll/generate', $payload)->assertOk();
+
+        $loan->refresh();
+        $this->assertEquals(5000.00, (float) $loan->balance);
+        $this->assertEquals(1, \App\Models\LoanPayment::where('loan_id', $loan->id)->count());
+
+        $payroll->refresh();
+        $this->assertEquals($netAfterFirstRun, (float) $payroll->net_pay);
+    }
+
+    public function test_generate_caps_loan_charge_at_net_pay_floor()
+    {
+        \App\Models\SystemSettings::set('loan_min_net_pay_floor', 5000, null, 'integer');
+
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-5', 'email' => 'loan-tester-5@example.com', 'salary' => 5200]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Loan::create([
+            'employee_id' => $employee->id,
+            'loan_type' => 'cash_advance',
+            'principal' => 6000,
+            'interest_rate' => 0,
+            'total_payable' => 6000,
+            'installment_amount' => 3000,
+            'term_count' => 2,
+            'balance' => 6000,
+            'status' => 'active',
+            'start_cutoff' => '2026-07-01',
+            'approver_id' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-07-01', 'cutoff_end' => '2026-07-15',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->first();
+        // Semi-monthly gross for a 5200 salary is 2600 pre-loan net; floor is 5000,
+        // so no charge should be applied (net is already below the floor).
+        $this->assertArrayNotHasKey('Cash Advance/Others', $payroll->deductions ?? []);
+    }
 }

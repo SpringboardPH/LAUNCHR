@@ -75,6 +75,8 @@ class PayrollController extends Controller
         $frequency = \App\Models\SystemSettings::where('key', 'payroll_frequency')->value('value') ?? 'semi_monthly';
         $periods = $frequency === 'monthly' ? 1 : 2;
 
+        $loanFloor = (float) \App\Models\SystemSettings::get('loan_min_net_pay_floor', 0);
+
         $employeeQuery = Employee::where('status', 'active')->where(function ($q) {
             $q->whereDoesntHave('user')->orWhereHas('user', fn($u) => $u->where('role', '!=', 'admin'));
         });
@@ -96,6 +98,16 @@ class PayrollController extends Controller
                 // Add to generated list but don't regenerate
                 $generatedPayrolls[] = $existingPayroll->load('employee');
                 continue;
+            }
+
+            // Regenerating a draft must reverse its prior loan charges first (idempotency)
+            $existingDraft = Payroll::where('employee_id', $employee->id)
+                ->where('cutoff_start', $start)
+                ->where('cutoff_end', $end)
+                ->first();
+
+            if ($existingDraft) {
+                \App\Services\LoanService::reverseForPayroll($existingDraft->id);
             }
 
             $logs = AttendanceLog::where('employee_id', $employee->id)
@@ -479,6 +491,22 @@ class PayrollController extends Controller
                     'processed_at' => \App\Helpers\SystemClock::now(),
                 ]
             );
+
+            $loanResult = \App\Services\LoanService::chargeForPayroll(
+                $employee->id,
+                $start,
+                $end,
+                $payroll->id,
+                (float) $payroll->net_pay,
+                $loanFloor
+            );
+
+            if ($loanResult['total'] > 0) {
+                $payroll->update([
+                    'deductions' => array_merge($deductions, $loanResult['deductions']),
+                    'net_pay' => max(0, round($payroll->net_pay - $loanResult['total'], 2)),
+                ]);
+            }
 
             $generatedPayrolls[] = $payroll->load('employee');
         }
