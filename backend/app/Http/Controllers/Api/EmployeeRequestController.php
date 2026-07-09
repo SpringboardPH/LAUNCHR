@@ -14,12 +14,20 @@ class EmployeeRequestController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'request_type' => 'required|in:overtime,half_day,undertime,concern,schedule_change,coe,other',
+            'request_type' => 'required|in:overtime,half_day,undertime,concern,schedule_change,coe,other,cash_advance,company_loan',
             'subject'      => 'required|string|max:255',
             'details'      => 'nullable|string',
             'meta'         => 'nullable|array',
             'employee_id'  => 'nullable|exists:employees,id',
         ]);
+
+        if (in_array($request->request_type, ['cash_advance', 'company_loan'])) {
+            $request->validate([
+                'meta.principal'      => 'required|numeric|min:1',
+                'meta.term_count'     => 'required|integer|min:1',
+                'meta.interest_rate'  => 'nullable|numeric|min:0|max:1',
+            ]);
+        }
 
         $user     = $request->user();
         $employee = $user?->employee;
@@ -195,6 +203,30 @@ class EmployeeRequestController extends Controller
                     ->whereNotIn('status', ['absent', 'on_leave', 'half_day'])
                     ->update(['status' => 'half_day']);
             }
+        }
+
+        // Loan approval: create the loan for employee-initiated cash advances/company loans
+        if (in_array($employeeRequest->request_type, ['cash_advance', 'company_loan'])) {
+            $principal = (float) ($employeeRequest->meta['principal'] ?? 0);
+            $termCount = (int) ($employeeRequest->meta['term_count'] ?? 1);
+            $interestRate = (float) ($employeeRequest->meta['interest_rate'] ?? 0);
+
+            [$totalPayable, $installmentAmount] = \App\Services\LoanService::computeSchedule($principal, $interestRate, $termCount);
+
+            \App\Models\Loan::create([
+                'employee_id' => $employeeRequest->employee_id,
+                'loan_type' => $employeeRequest->request_type,
+                'principal' => $principal,
+                'interest_rate' => $interestRate,
+                'total_payable' => $totalPayable,
+                'installment_amount' => $installmentAmount,
+                'term_count' => $termCount,
+                'balance' => $totalPayable,
+                'status' => 'active',
+                'request_id' => $employeeRequest->id,
+                'start_cutoff' => \App\Helpers\SystemClock::today(),
+                'approver_id' => $request->user()->id,
+            ]);
         }
 
         \App\Models\AuditLog::log(
