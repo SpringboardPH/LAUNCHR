@@ -170,4 +170,120 @@ class LoanTest extends TestCase
         // so no charge should be applied (net is already below the floor).
         $this->assertArrayNotHasKey('Cash Advance/Others', $payroll->deductions ?? []);
     }
+
+    public function test_update_recomputes_schedule_when_unpaid_but_locks_principal_after_payment()
+    {
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-6', 'email' => 'loan-tester-6@example.com']);
+        $hr = User::factory()->create(['role' => 'hr']);
+
+        $loan = Loan::create([
+            'employee_id' => $employee->id,
+            'loan_type' => 'cash_advance',
+            'principal' => 10000,
+            'interest_rate' => 0.05,
+            'total_payable' => 10500,
+            'installment_amount' => 2625,
+            'term_count' => 4,
+            'balance' => 10500,
+            'status' => 'active',
+            'start_cutoff' => '2026-07-01',
+            'approver_id' => $hr->id,
+        ]);
+
+        // Unpaid (balance == total_payable): editing principal recomputes the schedule
+        $this->actingAs($hr)->putJson("/api/loans/{$loan->id}", [
+            'principal' => 20000,
+            'interest_rate' => 0.05,
+            'term_count' => 4,
+            'installment_amount' => 5250,
+            'start_cutoff' => '2026-07-01',
+        ])->assertOk();
+
+        $loan->refresh();
+        $this->assertEquals(20000.00, (float) $loan->principal);
+        $this->assertEquals(21000.00, (float) $loan->total_payable);
+        $this->assertEquals(5250.00, (float) $loan->installment_amount);
+        $this->assertEquals(21000.00, (float) $loan->balance);
+
+        // Simulate a payment already taken — this locks principal/interest_rate/term_count
+        $loan->update(['balance' => 15000.00]);
+
+        $this->actingAs($hr)->putJson("/api/loans/{$loan->id}", [
+            'principal' => 99999,
+            'installment_amount' => 6000,
+        ])->assertOk();
+
+        $loan->refresh();
+        $this->assertEquals(20000.00, (float) $loan->principal); // unchanged, locked
+        $this->assertEquals(21000.00, (float) $loan->total_payable); // unchanged
+        $this->assertEquals(6000.00, (float) $loan->installment_amount); // always-editable field still applied
+        $this->assertEquals(15000.00, (float) $loan->balance); // untouched by the locked-field attempt
+    }
+
+    public function test_destroy_cancels_loan_and_excludes_it_from_future_charges()
+    {
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-7', 'email' => 'loan-tester-7@example.com']);
+        $hr = User::factory()->create(['role' => 'hr']);
+
+        $loan = Loan::create([
+            'employee_id' => $employee->id,
+            'loan_type' => 'cash_advance',
+            'principal' => 6000,
+            'interest_rate' => 0,
+            'total_payable' => 6000,
+            'installment_amount' => 1000,
+            'term_count' => 6,
+            'balance' => 6000,
+            'status' => 'active',
+            'start_cutoff' => '2026-07-01',
+            'approver_id' => $hr->id,
+        ]);
+
+        $this->actingAs($hr)->deleteJson("/api/loans/{$loan->id}")->assertOk();
+
+        $this->assertNull(Loan::find($loan->id));
+        $trashed = Loan::withTrashed()->find($loan->id);
+        $this->assertSame('cancelled', $trashed->status);
+        $this->assertNotNull($trashed->deleted_at);
+
+        $result = LoanService::chargeForPayroll($employee->id, '2026-07-01', '2026-07-15', 999999, 10000, 0);
+        $this->assertEquals(0, $result['total']);
+        $this->assertArrayNotHasKey('Cash Advance/Others', $result['deductions']);
+    }
+
+    public function test_reverse_for_payroll_restores_balance_for_cancelled_loan()
+    {
+        $employee = $this->makeEmployee(['employee_id' => 'EMP-LOAN-8', 'email' => 'loan-tester-8@example.com', 'salary' => 26000]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $loan = Loan::create([
+            'employee_id' => $employee->id,
+            'loan_type' => 'cash_advance',
+            'principal' => 6000,
+            'interest_rate' => 0,
+            'total_payable' => 6000,
+            'installment_amount' => 1000,
+            'term_count' => 6,
+            'balance' => 6000,
+            'status' => 'active',
+            'start_cutoff' => '2026-07-01',
+            'approver_id' => $admin->id,
+        ]);
+
+        $payload = ['cutoff_start' => '2026-07-01', 'cutoff_end' => '2026-07-15'];
+        $this->actingAs($admin)->postJson('/api/payroll/generate', $payload)->assertOk();
+
+        $loan->refresh();
+        $this->assertEquals(5000.00, (float) $loan->balance);
+
+        // Cancel (soft-delete) the loan after it's already been charged once
+        $this->actingAs($admin)->deleteJson("/api/loans/{$loan->id}")->assertOk();
+
+        // Regenerating must still find + restore the now-trashed loan's balance
+        $this->actingAs($admin)->postJson('/api/payroll/generate', $payload)->assertOk();
+
+        $trashed = Loan::withTrashed()->find($loan->id);
+        $this->assertEquals(6000.00, (float) $trashed->balance);
+        $this->assertEquals(0, LoanPayment::where('loan_id', $loan->id)->count());
+    }
 }
