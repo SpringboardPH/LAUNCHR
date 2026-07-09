@@ -20,6 +20,7 @@ import AttendancePage from './pages/attendance/AttendancePage'
 import PayrollPage from './pages/payroll/PayrollPage'
 import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
 import ThirteenthMonthPage from './pages/payroll/ThirteenthMonthPage'
+import LoansPage from './pages/payroll/LoansPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import RequestFormPage from './pages/employee/RequestFormPage'
@@ -144,6 +145,7 @@ export default function App() {
             <Route path="requests" element={<RequestsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="payroll/:id" element={<PayrollDetailPage />} />
+            <Route path="loans" element={<LoansPage />} />
             <Route path="thirteenth-month" element={<ThirteenthMonthPage />} />
             <Route path="dtr" element={<DtrManagePage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
@@ -171,6 +173,7 @@ export default function App() {
             <Route path="dtr" element={<DtrUploadPage />} />
             <Route path="profile" element={<EmployeeProfilePage />} />
             <Route path="calendar" element={<CalendarPage readOnly={true} />} />
+            <Route path="loans" element={<LoansPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
