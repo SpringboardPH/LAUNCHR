@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\LoanController;
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/auth/request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:10,1');
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:5,1');
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
 Route::get('/theme-color', [AdminSettingsController::class, 'getThemeColor']);
 Route::get('/system-config', [AdminSettingsController::class, 'getSystemConfig']);
 Route::get('/logo/{filename}', [AdminSettingsController::class, 'getLogo']);

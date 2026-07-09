@@ -26,11 +26,18 @@ export default function LoginPage() {
   // Step 2: OTP
   const [otp, setOtp] = useState('')
   const [userId, setUserId] = useState(null)
-  
+
+  // Forgot / reset password
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [info, setInfo] = useState('')
+
   // State
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [step, setStep] = useState('credentials') // 'credentials' or 'otp'
+  const [step, setStep] = useState('credentials') // 'credentials' | 'otp' | 'forgot' | 'reset'
 
   // Initialize state from sessionStorage on mount
   useEffect(() => {
@@ -135,6 +142,45 @@ export default function LoginPage() {
     }
   }
 
+  const handleSubmitForgotPassword = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      const response = await axios.post('/api/auth/forgot-password', { email })
+      setInfo(response.data.message)
+      setStep('reset')
+    } catch (err) {
+      setError(err.response?.data?.message || 'Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSubmitResetPassword = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      const response = await axios.post('/api/auth/reset-password', {
+        email,
+        code: resetCode,
+        password: newPassword,
+        password_confirmation: newPasswordConfirmation,
+      })
+      setInfo(response.data.message)
+      setStep('credentials')
+      setPassword('')
+      setResetCode('')
+      setNewPassword('')
+      setNewPasswordConfirmation('')
+    } catch (err) {
+      setError(err.response?.data?.message || 'Password reset failed. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // Only show loading during initial auth check, not after login submit
   if (loading && !submitting) {
     return (
@@ -187,18 +233,37 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="rememberMe"
-                    checked={rememberMe}
-                    onChange={e => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 text-brand-600 bg-gray-100 border-gray-300 rounded cursor-pointer"
-                  />
-                  <label htmlFor="rememberMe" className="ml-2 text-sm text-gray-700 cursor-pointer">
-                    Remember me for 30 days
-                  </label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="rememberMe"
+                      checked={rememberMe}
+                      onChange={e => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 text-brand-600 bg-gray-100 border-gray-300 rounded cursor-pointer"
+                    />
+                    <label htmlFor="rememberMe" className="ml-2 text-sm text-gray-700 cursor-pointer">
+                      Remember me for 30 days
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-sm text-brand-600 hover:underline"
+                    onClick={() => {
+                      setError('')
+                      setInfo('')
+                      setStep('forgot')
+                    }}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
+
+                {info && (
+                  <div className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                    {info}
+                  </div>
+                )}
 
                 {error && (
                   <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
@@ -211,7 +276,7 @@ export default function LoginPage() {
                 </button>
               </form>
             </>
-          ) : (
+          ) : step === 'otp' ? (
             <>
               <h2 className="text-base font-semibold text-gray-900 mb-5">Verify your identity</h2>
               <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
@@ -259,6 +324,127 @@ export default function LoginPage() {
                   </button>
                   <button type="submit" disabled={submitting || otp.length !== 6} className="btn-primary w-full justify-center">
                     {submitting ? <Spinner size="sm" /> : 'Verify'}
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : step === 'forgot' ? (
+            <>
+              <h2 className="text-base font-semibold text-gray-900 mb-5">Reset your password</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter your account email and we'll send you a code to reset your password.
+              </p>
+              <form onSubmit={handleSubmitForgotPassword} className="space-y-4">
+                <div>
+                  <label className="label">Email address</label>
+                  <input
+                    type="email" className="input" placeholder="user@example.com"
+                    value={email} onChange={e => setEmail(e.target.value)} required
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('credentials'); setError(''); setInfo('') }}
+                    disabled={submitting}
+                    className="btn-secondary w-full justify-center"
+                  >
+                    Back
+                  </button>
+                  <button type="submit" disabled={submitting} className="btn-primary w-full justify-center">
+                    {submitting ? <Spinner size="sm" /> : 'Send code'}
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
+              <h2 className="text-base font-semibold text-gray-900 mb-5">Enter reset code</h2>
+              {info && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                  <p className="text-sm text-blue-900">{info}</p>
+                </div>
+              )}
+              <form onSubmit={handleSubmitResetPassword} className="space-y-4">
+                <div>
+                  <label className="label">Reset code</label>
+                  <input
+                    type="text"
+                    className="input text-center text-2xl tracking-widest font-mono"
+                    placeholder="000000"
+                    value={resetCode}
+                    onChange={e => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength="6"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">New password</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      minLength={8}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Confirm new password</label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="••••••••"
+                      value={newPasswordConfirmation}
+                      onChange={e => setNewPasswordConfirmation(e.target.value)}
+                      minLength={8}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('credentials'); setError(''); setInfo('') }}
+                    disabled={submitting}
+                    className="btn-secondary w-full justify-center"
+                  >
+                    Back
+                  </button>
+                  <button type="submit" disabled={submitting || resetCode.length !== 6} className="btn-primary w-full justify-center">
+                    {submitting ? <Spinner size="sm" /> : 'Reset password'}
                   </button>
                 </div>
               </form>

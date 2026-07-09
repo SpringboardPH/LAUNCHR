@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OtpMail;
+use App\Mail\PasswordResetMail;
 use App\Models\OtpCode;
 use App\Models\SystemSettings;
 use App\Models\User;
@@ -82,7 +83,7 @@ class AuthController extends Controller
         }
 
         // Generate OTP and send email
-        $otp = OtpCode::generateForUser($user);
+        $otp = OtpCode::generateForUser($user, 'login');
         Mail::to($user->email)->queue(new OtpMail($user, $otp->code));
 
         return response()->json([
@@ -109,7 +110,7 @@ class AuthController extends Controller
         $user = User::findOrFail($validated['user_id']);
 
         // Verify OTP
-        if (!OtpCode::verify($user, $validated['code'])) {
+        if (!OtpCode::verify($user, $validated['code'], 'login')) {
             throw ValidationException::withMessages([
                 'code' => ['The OTP code is invalid or expired.'],
             ]);
@@ -161,6 +162,61 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'data' => $request->user()->load('employee'),
+        ]);
+    }
+
+    /**
+     * Step 1: Request a password reset code by email
+     */
+    public function forgotPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|string|email',
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        if ($user) {
+            $otp = OtpCode::generateForUser($user, 'password_reset');
+            Mail::to($user->email)->queue(new PasswordResetMail($user, $otp->code));
+        }
+
+        // Always return the same response so this endpoint can't be used to
+        // discover which emails are registered.
+        return response()->json([
+            'success' => true,
+            'message' => 'If that email exists in our system, a reset code has been sent to it.',
+        ]);
+    }
+
+    /**
+     * Step 2: Reset password using the emailed code
+     */
+    public function resetPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|string|email',
+            'code' => 'required|string|size:6',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        if (!$user || !OtpCode::verify($user, $validated['code'], 'password_reset')) {
+            throw ValidationException::withMessages([
+                'code' => ['The reset code is invalid or expired.'],
+            ]);
+        }
+
+        $user->password = $validated['password'];
+        $user->save();
+
+        // Force re-login everywhere, since the password was forgotten.
+        $user->tokens()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password reset successfully. Please sign in with your new password.',
         ]);
     }
 }

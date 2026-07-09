@@ -11,7 +11,7 @@
         Hi {{ $user->name }},
       </p>
       <p style="color: #374151; font-size: 16px; margin-bottom: 24px;">
-        Your One-Time Password (OTP) for login is:
+        {{ $intro ?? 'Your One-Time Password (OTP) for login is:' }}
       </p>
 
       <!-- OTP Code -->
