@@ -602,7 +602,7 @@ export default function PayrollPage() {
           'O33': Number(getDeductionAmount('Withholding Tax')) || 0,
           'O34': Number(getDeductionAmount('SSS Loan')) || 0,
           'O35': Number(getDeductionAmount('Pag-IBIG Loan')) || 0,
-          'O36': 0,
+          'O36': Number(getDeductionAmount('Cash Advance/Others')) || 0,
           'O39': Number(totalDeductions) || 0,
           'O40': Number(payroll.net_pay) || 0,
         }
