@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\EmployeeLeaveBalanceController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTypeController;
 use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\HrAssistantController;
 use App\Http\Controllers\Api\ThirteenthMonthController;
 use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
@@ -204,4 +205,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/calendar-events/export', [CalendarEventController::class, 'export']);
     });
     Route::get('/admin/employee-schedules/employee/{employeeId}/current', [EmployeeScheduleController::class, 'getCurrentForEmployee']);
+});
+
+// HR-assistant bridge — read-only, service-token auth (NOT a user session). Consumed by
+// Ledgr's assistant so HR can ask about employees. One-way: LAUNCHR never calls Ledgr.
+// The whole group is disabled unless HR_ASSISTANT_BRIDGE_ENABLED=true (see ServiceTokenAuth).
+Route::prefix('hr-assistant')->middleware('service.token')->group(function () {
+    Route::get('/employees', [HrAssistantController::class, 'employees']);
+    Route::get('/employees/{id}', [HrAssistantController::class, 'employee']);
+    Route::get('/employees/{id}/attendance', [HrAssistantController::class, 'employeeAttendance']);
+    Route::get('/employees/{id}/leave', [HrAssistantController::class, 'employeeLeave']);
+    Route::get('/employees/{id}/payroll', [HrAssistantController::class, 'employeePayroll']);
 });

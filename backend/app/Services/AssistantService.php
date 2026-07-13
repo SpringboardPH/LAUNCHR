@@ -122,7 +122,7 @@ class AssistantService
     {
         $today = SystemClock::today()->format('l, F j, Y');
         return implode("\n", [
-            "You are LaunchAssist, the built-in HR assistant for the LAUNCHR HR system.",
+            "You are KathAssist, the built-in HR assistant for the LAUNCHR HR system.",
             "You are speaking with {$employee->full_name} (employee #{$employee->employee_id}).",
             "Today's date is {$today}.",
             "",

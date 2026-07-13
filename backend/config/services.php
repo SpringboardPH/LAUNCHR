@@ -42,4 +42,11 @@ return [
         'model'    => env('MINIMAX_MODEL', 'MiniMax-M2.5'),
     ],
 
+    // HR-assistant bridge — read-only cross-system API consumed by Ledgr's assistant.
+    // Off by default; token lives only in .env (never committed). One-way: LAUNCHR never calls Ledgr.
+    'hr_assistant' => [
+        'enabled' => env('HR_ASSISTANT_BRIDGE_ENABLED', false),
+        'token'   => env('HR_ASSISTANT_SERVICE_TOKEN'),
+    ],
+
 ];

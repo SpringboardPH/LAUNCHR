@@ -26,7 +26,7 @@ class AssistantController extends Controller
         return response()->json([
             'success' => true,
             'data'    => ['reply' => $reply],
-            'message' => 'LaunchAssist replied.',
+            'message' => 'KathAssist replied.',
         ]);
     }
 }

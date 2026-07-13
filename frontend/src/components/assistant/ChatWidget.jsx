@@ -8,7 +8,7 @@ import { Spinner } from '../ui'
 
 const GREETING = {
   role: 'assistant',
-  content: "Hi! I'm LaunchAssist. Ask me about leave, attendance, payslips, or your schedule.",
+  content: "Hi! I'm KathAssist. Ask me about leave, attendance, payslips, or your schedule.",
 }
 
 // Compact markdown styling for the narrow chat bubble. Defined once at module
@@ -91,10 +91,10 @@ export default function ChatWidget() {
         <button
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-white shadow-lg hover:bg-brand-700 transition-colors"
-          aria-label="Open LaunchAssist"
+          aria-label="Open KathAssist"
         >
           <Sparkles size={18} />
-          <span className="text-sm font-medium">Ask LaunchAssist</span>
+          <span className="text-sm font-medium">Ask KathAssist</span>
         </button>
       )}
 
@@ -105,7 +105,7 @@ export default function ChatWidget() {
           <div className="flex items-center gap-2 rounded-t-xl border-b border-gray-100 bg-brand-600 px-4 py-3 text-white">
             <Bot size={18} />
             <div className="min-w-0">
-              <p className="text-sm font-semibold leading-tight">LaunchAssist</p>
+              <p className="text-sm font-semibold leading-tight">KathAssist</p>
               <p className="text-[10px] uppercase tracking-wide opacity-80">Beta</p>
             </div>
             <button onClick={() => setOpen(false)} className="ml-auto rounded p-1 hover:bg-white/15" aria-label="Close">
