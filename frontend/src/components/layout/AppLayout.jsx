@@ -9,6 +9,7 @@ import {
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
 import OnboardingTutorial, { useOnboardingTutorial, HR_STEPS, ADMIN_STEPS } from '../OnboardingTutorial'
+import ChatWidget from '../assistant/ChatWidget'
 
 const COMMON_NAV = [
   { to: '/hr', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -267,6 +268,9 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* KathAssist chatbot — gated on the assistant_enabled system setting (HR/accounting/admin). */}
+      {systemConfig?.assistant_enabled && <ChatWidget />}
     </div>
     </>
   )
