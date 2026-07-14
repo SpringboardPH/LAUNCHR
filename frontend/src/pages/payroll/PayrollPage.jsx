@@ -1556,9 +1556,17 @@ export default function PayrollPage() {
                         Daily Rate / 8 hours
                       </p>
                       <p className="text-[9px] text-gray-400 italic">
-                        {selectedPayroll.employee.rate_type === 'monthly' 
-                          ? `Daily Rate Formula: (Base × 12) / ${Number(selectedPayroll.daily_rate) > 0 ? (Math.round((Number(selectedPayroll.base_salary) * 12) / Number(selectedPayroll.daily_rate))) : 'divisor'}` 
-                          : 'Daily Rate Formula: Base salary as daily rate'}
+                        {(() => {
+                          if (selectedPayroll.employee.rate_type !== 'monthly') return 'Daily Rate Formula: Base salary as daily rate'
+                          // use_undeclared=true means the last "Switch Salary" toggle put this
+                          // payroll on undeclared_salary — must match that basis here too, or
+                          // the reverse-engineered divisor comes out as nonsense (e.g. 174/172
+                          // instead of 261/313) whenever undeclared salary is in use.
+                          const basisLabel = selectedPayroll.use_undeclared ? 'Undeclared' : 'Base'
+                          const basisAmount = Number(selectedPayroll.use_undeclared ? selectedPayroll.undeclared_salary : selectedPayroll.base_salary)
+                          const dRate = Number(selectedPayroll.daily_rate)
+                          return `Daily Rate Formula: (${basisLabel} × 12) / ${dRate > 0 ? Math.round((basisAmount * 12) / dRate) : 'divisor'}`
+                        })()}
                       </p>
                     </div>
                   </div>

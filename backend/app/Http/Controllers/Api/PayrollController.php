@@ -863,8 +863,22 @@ class PayrollController extends Controller
             ? $payroll->base_salary 
             : $payroll->undeclared_salary;
 
-        // Recalculate daily and hourly rates
-        $workDays = $payroll->employee->schedule?->template?->work_days ?? [1, 2, 3, 4, 5];
+        // Recalculate daily and hourly rates. NOTE: Employee::schedule is an array-returning
+        // accessor, not a relation — ->template on it always resolves to null, so this must
+        // go through EmployeeSchedule::getCurrentForEmployee() like generate() does, not
+        // $payroll->employee->schedule.
+        $currentSchedule = EmployeeSchedule::getCurrentForEmployee($payroll->employee_id);
+        $currentTemplate = $currentSchedule?->template;
+        if ($currentTemplate?->day_rules) {
+            $workDays = collect($currentTemplate->day_rules)
+                ->filter(fn($rule) => !empty($rule['enabled']))
+                ->pluck('day')
+                ->map(fn($day) => (int) $day)
+                ->values()
+                ->all();
+        } else {
+            $workDays = $currentTemplate?->work_days ?? [1, 2, 3, 4, 5];
+        }
         $daysInWeek = count($workDays);
         $divisor = ($daysInWeek <= 5) ? 261 : 313;
 
