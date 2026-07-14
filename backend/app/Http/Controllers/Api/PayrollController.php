@@ -186,14 +186,35 @@ class PayrollController extends Controller
                 $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                $isFlexiSchedule = ($log->schedule_type ?? $schedule?->template?->type ?? 'fixed') === 'flexi';
+                $logTemplate = $schedule?->template;
+                if (!$logTemplate && $log->schedule_template_id) {
+                    // No active EmployeeSchedule row for this date (schedules get
+                    // reassigned) — fall back to the template snapshotted on the
+                    // log at clock-in time so history stays stable.
+                    $logTemplate = \App\Models\ScheduleTemplate::find($log->schedule_template_id);
+                }
+                $isFlexiSchedule = ($log->schedule_type ?? $logTemplate?->type ?? 'fixed') === 'flexi';
 
-                // Flexi: rest day is derived from the schedule (disabled day_rule).
+                // Flexi: rest day is derived from the schedule ACTIVE ON THIS DATE (disabled
+                // day_rule) — not the employee's current schedule, which may have been
+                // reassigned since. Using the outer-scope $workDays (current schedule) here
+                // would misclassify old rest days as working days once the day set changes.
                 // Fixed: never inferred from the schedule — a day not assigned to a fixed
                 // schedule is simply not scheduled, not paid rest-day work. Rest day pay for
                 // fixed only applies when HR manually sets that status on the log.
+                $logWorkDays = $workDays;
+                if ($isFlexiSchedule && $logTemplate) {
+                    $logWorkDays = $logTemplate->day_rules
+                        ? collect($logTemplate->day_rules)
+                            ->filter(fn($rule) => !empty($rule['enabled']))
+                            ->pluck('day')
+                            ->map(fn($day) => (int) $day)
+                            ->values()
+                            ->all()
+                        : ($logTemplate->work_days ?? $workDays);
+                }
                 $isRestDay = $isFlexiSchedule
-                    ? !in_array($date->dayOfWeek, $workDays)
+                    ? !in_array($date->dayOfWeek, $logWorkDays)
                     : $log->status === 'rest_day';
 
                 // Track absences and half days for deduction purposes
@@ -224,7 +245,7 @@ class PayrollController extends Controller
                 }
 
                 if ($isFlexiSchedule) {
-                    $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
+                    $expectedHours = $logTemplate?->required_hours_per_day ?? 8;
                     $details = AttendanceService::calculateFlexiDetails(
                         $log->clock_in_time,
                         $log->clock_out_time,
@@ -242,13 +263,7 @@ class PayrollController extends Controller
                     // template — e.g. a Wed 22:00-06:00 night rule judged against a
                     // Mon 06:00-15:00 template-level start produces a phantom ~13h
                     // "late" deduction that wipes out the employee's pay).
-                    $template = $schedule?->template;
-                    if (!$template && $log->schedule_template_id) {
-                        // No active EmployeeSchedule row for this date (schedules get
-                        // reassigned) — fall back to the template snapshotted on the
-                        // log at clock-in time so history stays stable.
-                        $template = \App\Models\ScheduleTemplate::find($log->schedule_template_id);
-                    }
+                    $template = $logTemplate;
 
                     $dayRule = null;
                     if ($template && is_array($template->day_rules)) {

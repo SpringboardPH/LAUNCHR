@@ -29,6 +29,8 @@ class PayrollService
      */
     public static function calculateSSS(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
+
         $setting = \App\Models\SystemSettings::where('key', 'sss_contribution_table')->first();
 
         if ($setting && $setting->value) {
@@ -58,6 +60,8 @@ class PayrollService
      */
     public static function calculateSSS_ER(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
+
         $setting = \App\Models\SystemSettings::where('key', 'sss_contribution_table')->first();
 
         if ($setting && $setting->value) {
@@ -100,6 +104,7 @@ class PayrollService
      */
     public static function calculatePhilHealth_ER(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
         if ($monthlySalary < 10000) return (500.00 * 0.5) / $periods;
         if ($monthlySalary > 100000) return (5000.00 * 0.5) / $periods;
 

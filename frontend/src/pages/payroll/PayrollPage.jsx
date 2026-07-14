@@ -899,12 +899,16 @@ export default function PayrollPage() {
   const calculateERContributions = () => {
     if (!selectedPayroll) return { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
     
-    // Get contribution basis: undeclared for daily rate, base_salary for monthly
+    // Get contribution basis: undeclared for daily rate, base_salary for monthly.
+    // Must match PayrollController's backend basis exactly (no base_salary fallback
+    // for daily employees — base_salary there is a per-day wage, not a monthly figure).
     const isDaily = selectedPayroll.employee?.rate_type === 'daily'
-    const contributionBasis = isDaily 
-      ? Number(selectedPayroll.undeclared_salary || selectedPayroll.base_salary) 
+    const contributionBasis = isDaily
+      ? Number(selectedPayroll.undeclared_salary)
       : Number(selectedPayroll.base_salary)
-    
+
+    if (contributionBasis <= 0) return { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
+
     // Calculate SSS ER from contribution table
     let sssER = 0
     if (adminSettings && Array.isArray(adminSettings)) {
@@ -1172,7 +1176,18 @@ export default function PayrollPage() {
       <Modal
         open={!!selectedPayroll}
         onClose={() => { setSelectedPayroll(null); setIsEditing(false) }}
-        title={isEditing ? "Edit Payroll" : "Payroll Details"}
+        title={
+          isEditing ? "Edit Payroll" : (
+            <span className="flex flex-col gap-0.5">
+              <span>Payroll Details</span>
+              {selectedPayroll?.cutoff_start && selectedPayroll?.cutoff_end && (
+                <span className="text-xs font-bold text-brand-600">
+                  {format(parseISO(selectedPayroll.cutoff_start), 'MMM dd')} – {format(parseISO(selectedPayroll.cutoff_end), 'MMM dd, yyyy')}
+                </span>
+              )}
+            </span>
+          )
+        }
         size="lg"
         headerAction={
           !isEditing && selectedPayroll && (
