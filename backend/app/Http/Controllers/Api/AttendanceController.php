@@ -504,8 +504,6 @@ class AttendanceController extends Controller
 
         // Get today's attendance log
         $today = SystemClock::today();
-        $schedule = $this->getScheduleForDate($employee->id, $today);
-        $dayRule = $this->getDayRuleForDate($schedule, $today);
         $log = AttendanceLog::where('employee_id', $employee->id)
             ->whereDate('date', $today->toDateString())
             ->first();
@@ -531,6 +529,13 @@ class AttendanceController extends Controller
                 'message' => 'Employee has already clocked out today',
             ], 400);
         }
+
+        // Resolve schedule/day rule against the LOG's own date, not today's —
+        // an overnight shift's log is dated yesterday, and on a mixed template
+        // today's day rule can be a completely different (or disabled) shift.
+        $logDate = $log->date instanceof Carbon ? $log->date : Carbon::parse($log->date);
+        $schedule = $this->getScheduleForDate($employee->id, $logDate);
+        $dayRule = $this->getDayRuleForDate($schedule, $logDate);
 
         $clockOutTime = SystemClock::timeString();
 
@@ -602,7 +607,7 @@ class AttendanceController extends Controller
         $isRestDay = $dayRule !== null
             ? empty($dayRule['enabled'])
             : ($schedule && $schedule->template
-                ? !in_array($today->dayOfWeek, $schedule->template->work_days ?? [], true)
+                ? !in_array($logDate->dayOfWeek, $schedule->template->work_days ?? [], true)
                 : false);
 
         if (!$isRestDay) {

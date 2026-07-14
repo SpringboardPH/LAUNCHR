@@ -648,6 +648,16 @@ class NightDifferentialTest extends TestCase
     public function test_canonical_night_shift_pays_10_percent_premium_not_110_percent()
     {
         $employee = $this->makePayEmployee('1');
+        // Attach a real schedule so this exercises the path HR actually uses —
+        // makePayEmployee() previously had no EmployeeSchedule at all, which hid
+        // the C1 phantom-late bug (see the new no-schedule/mixed-template tests
+        // below for the cases that were actually broken).
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+
         AttendanceLog::create([
             'employee_id' => $employee->id,
             'date' => '2026-01-05',
@@ -666,6 +676,121 @@ class NightDifferentialTest extends TestCase
         $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (8 hrs)');
         $this->assertNotNull($ndLine);
         $this->assertEquals(100.00, (float) $ndLine['amount']);
+
+        // C1: a real schedule must not produce a phantom "Late" deduction that
+        // annihilates the employee's day. ₱1,000 base + ₱100 ND = ₱1,100 net.
+        $this->assertArrayNotHasKey('Late', $payroll->deductions);
+        $this->assertEquals(1100.00, (float) $payroll->net_pay);
+    }
+
+    public function test_mixed_template_night_shift_nets_full_pay_and_day_shift_is_unaffected()
+    {
+        // The mixed template (Mon 06:00-15:00 day shift, Wed 22:00-06:00 night
+        // shift) is the worst case for C1: the template-level work_start_time
+        // is a single hardcoded value that cannot be correct for both day rules.
+        $employee = $this->makePayEmployee('11');
+        $template = $this->makeNightTemplate($this->buildMixedWeekDayRules(), [1, 3]);
+        $this->assignSchedule($employee, $template);
+
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05', // Monday — early day shift
+            'clock_in_time' => '06:00:00',
+            'clock_out_time' => '15:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'fixed',
+        ]);
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-07', // Wednesday — overnight shift
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-07',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $this->assertArrayNotHasKey('Late', $payroll->deductions);
+
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (8 hrs)');
+        $this->assertNotNull($ndLine);
+        $this->assertEquals(100.00, (float) $ndLine['amount']);
+
+        $this->assertSame(2, $payroll->days_worked);
+        // 2 days x ₱1,000 base + ₱100 ND, no deductions = ₱2,100 net.
+        $this->assertEquals(2100.00, (float) $payroll->net_pay);
+    }
+
+    public function test_payroll_uses_logs_schedule_template_snapshot_when_no_employee_schedule_row_exists()
+    {
+        // Payroll runs on historical data and schedules get reassigned — the log's
+        // snapshotted schedule_template_id must alone be enough to resolve the
+        // correct day rule, without any active EmployeeSchedule row.
+        $employee = $this->makePayEmployee('12');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+            'schedule_template_id' => $template->id,
+            'schedule_template_name' => $template->name,
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $this->assertArrayNotHasKey('Late', $payroll->deductions);
+        $this->assertEquals(1100.00, (float) $payroll->net_pay);
+    }
+
+    public function test_clock_out_on_mixed_template_uses_the_logs_own_date_not_todays_schedule()
+    {
+        // I1: clockOut() must judge an overnight log against the day rule for
+        // the LOG's date (Wednesday), not SystemClock::today() (Thursday) —
+        // otherwise a mixed template spuriously rejects/flags the clock-out.
+        // Built via the real admin store route (not the makeNightTemplate() test
+        // helper) so work_start_time is derived from the first enabled day rule
+        // (Monday, 06:00) — the realistic HR case where the template-level
+        // fallback also mismatches the actual overnight shift.
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin)->postJson('/api/admin/schedule-templates', [
+            'name' => 'Mixed Week I1 Clock Out',
+            'type' => 'night',
+            'day_rules' => $this->buildMixedWeekDayRules(),
+        ])->assertCreated();
+        $template = ScheduleTemplate::where('name', 'Mixed Week I1 Clock Out')->firstOrFail();
+
+        $employee = $this->makeEmployee('14');
+        $this->assignSchedule($employee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-07 22:00:00')); // Wednesday 22:00
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+
+        $this->travelTo(Carbon::parse('2026-01-08 06:00:00')); // Thursday 06:00
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-out', ['employee_id' => $employee->id]);
+        $response->assertOk();
+        $this->assertNotSame('late', $response->json('data.status'));
+
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-07', $log->date->toDateString());
+        $this->assertSame('06:00:00', $log->clock_out_time);
+        $this->assertNotSame('late', $log->status);
     }
 
     public function test_flexi_employee_earns_night_differential_with_no_schedule_gating()

@@ -236,8 +236,32 @@ class PayrollController extends Controller
                         ? 0
                         : $details['undertime_minutes'];
                 } else {
-                    $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
-                    $workEnd   = $schedule?->template?->work_end_time   ?? '18:00:00';
+                    // Resolve the DAY RULE for the log's date, not the template-level
+                    // work_start_time/work_end_time (which only reflects the FIRST
+                    // enabled day rule and is wrong for any other day on a mixed
+                    // template — e.g. a Wed 22:00-06:00 night rule judged against a
+                    // Mon 06:00-15:00 template-level start produces a phantom ~13h
+                    // "late" deduction that wipes out the employee's pay).
+                    $template = $schedule?->template;
+                    if (!$template && $log->schedule_template_id) {
+                        // No active EmployeeSchedule row for this date (schedules get
+                        // reassigned) — fall back to the template snapshotted on the
+                        // log at clock-in time so history stays stable.
+                        $template = \App\Models\ScheduleTemplate::find($log->schedule_template_id);
+                    }
+
+                    $dayRule = null;
+                    if ($template && is_array($template->day_rules)) {
+                        foreach ($template->day_rules as $rule) {
+                            if ((int) ($rule['day'] ?? -1) === $date->dayOfWeek) {
+                                $dayRule = $rule;
+                                break;
+                            }
+                        }
+                    }
+
+                    $workStart = $dayRule['clock_in']  ?? $template?->work_start_time ?? '09:00:00';
+                    $workEnd   = $dayRule['clock_out'] ?? $template?->work_end_time   ?? '18:00:00';
 
                     $workStartMin = $this->parseTimeToMinutes($workStart);
                     $workEndMin   = $this->parseTimeToMinutes($workEnd);
