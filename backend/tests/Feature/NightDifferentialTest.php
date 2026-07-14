@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\AttendanceLog;
+use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use App\Models\ScheduleTemplate;
 use App\Models\User;
 use App\Services\AttendanceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -227,5 +231,225 @@ class NightDifferentialTest extends TestCase
         $wednesdayRule = collect($template->day_rules)->firstWhere('day', 3);
         $this->assertNotNull($wednesdayRule);
         $this->assertTrue($template->wrapsMidnight($wednesdayRule));
+    }
+
+    /**
+     * Builds a full 7-day day_rules payload where every day in $enabledDays
+     * shares the same clock_in/clock_out.
+     */
+    private function buildWeekDayRules(array $enabledDays, string $clockIn, string $clockOut): array
+    {
+        $rules = [];
+        for ($day = 0; $day <= 6; $day++) {
+            $enabled = in_array($day, $enabledDays, true);
+            $rules[] = [
+                'day' => $day,
+                'enabled' => $enabled,
+                'clock_in' => $enabled ? $clockIn : null,
+                'clock_out' => $enabled ? $clockOut : null,
+                'grace_enabled' => false,
+                'grace_type' => '-/+',
+                'grace_minutes' => 15,
+            ];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Mixed-week day_rules: Monday (day 1) is an early, non-wrapping shift;
+     * Wednesday (day 3) is a wrapping night shift. All other days disabled.
+     */
+    private function buildMixedWeekDayRules(): array
+    {
+        $rules = [];
+        for ($day = 0; $day <= 6; $day++) {
+            if ($day === 1) {
+                $rules[] = [
+                    'day' => 1, 'enabled' => true,
+                    'clock_in' => '06:00:00', 'clock_out' => '15:00:00',
+                    'grace_enabled' => false, 'grace_type' => '-/+', 'grace_minutes' => 15,
+                ];
+            } elseif ($day === 3) {
+                $rules[] = [
+                    'day' => 3, 'enabled' => true,
+                    'clock_in' => '22:00:00', 'clock_out' => '06:00:00',
+                    'grace_enabled' => false, 'grace_type' => '-/+', 'grace_minutes' => 15,
+                ];
+            } else {
+                $rules[] = [
+                    'day' => $day, 'enabled' => false,
+                    'clock_in' => null, 'clock_out' => null,
+                    'grace_enabled' => false, 'grace_type' => '-/+', 'grace_minutes' => 15,
+                ];
+            }
+        }
+
+        return $rules;
+    }
+
+    private function makeEmployee(string $suffix): Employee
+    {
+        return Employee::create([
+            'employee_id' => "EMP-ND-{$suffix}",
+            'first_name'  => 'Night',
+            'last_name'   => "Shift{$suffix}",
+            'email'       => "night-shift-{$suffix}@example.com",
+            'position'    => 'Tester',
+            'hire_date'   => '2026-01-01',
+            'salary'      => 20000,
+            'status'      => 'active',
+        ]);
+    }
+
+    private function makeNightTemplate(array $dayRules, array $workDays): ScheduleTemplate
+    {
+        return ScheduleTemplate::create([
+            'type' => 'night',
+            'name' => 'Night Shift ' . uniqid(),
+            'work_days' => $workDays,
+            'day_rules' => $dayRules,
+            'start_time' => '22:00:00',
+            'end_time' => '06:00:00',
+            'work_start_time' => '22:00:00',
+            'work_end_time' => '06:00:00',
+            'required_hours_per_day' => 8,
+        ]);
+    }
+
+    private function assignSchedule(Employee $employee, ScheduleTemplate $template): EmployeeSchedule
+    {
+        return EmployeeSchedule::create([
+            'employee_id' => $employee->id,
+            'schedule_template_id' => $template->id,
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-01-31',
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_night_shift_clock_in_at_shift_start_succeeds_and_is_not_late()
+    {
+        $employee = $this->makeEmployee('1');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday
+
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-in', [
+            'employee_id' => $employee->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('working', $response->json('data.status'));
+
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-05', $log->date->toDateString());
+    }
+
+    public function test_post_midnight_arrival_resolves_to_yesterdays_shift()
+    {
+        $employee = $this->makeEmployee('2');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-06 00:30:00')); // Tuesday 00:30, shift began Monday 22:00
+
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-in', [
+            'employee_id' => $employee->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('late', $response->json('data.status'));
+
+        $this->assertSame(1, AttendanceLog::where('employee_id', $employee->id)->count());
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-05', $log->date->toDateString());
+    }
+
+    public function test_one_night_shift_produces_exactly_one_attendance_log_row()
+    {
+        $employee = $this->makeEmployee('3');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+
+        $this->travelTo(Carbon::parse('2026-01-06 06:00:00')); // Tuesday
+        $this->actingAs($admin)->postJson('/api/attendance/clock-out', ['employee_id' => $employee->id])
+            ->assertOk();
+
+        $this->assertSame(1, AttendanceLog::where('employee_id', $employee->id)->count());
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-05', $log->date->toDateString());
+        $this->assertSame('22:00:00', $log->clock_in_time);
+        $this->assertSame('06:00:00', $log->clock_out_time);
+    }
+
+    public function test_mixed_week_unwrap_is_per_day_rule_not_per_template()
+    {
+        $employee = $this->makeEmployee('4');
+        $template = $this->makeNightTemplate($this->buildMixedWeekDayRules(), [1, 3]);
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Monday's day rule is 06:00-15:00 (does not wrap) - a 22:00 arrival
+        // is well past its window and must be rejected.
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertStatus(400);
+
+        // Wednesday's day rule is 22:00-06:00 (wraps) - the same clock time succeeds.
+        $this->travelTo(Carbon::parse('2026-01-07 22:00:00')); // Wednesday
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+    }
+
+    public function test_fixed_template_night_time_handling_is_unaffected()
+    {
+        $template = ScheduleTemplate::create([
+            'type' => 'fixed',
+            'name' => 'Fixed 9-6 Regression',
+            'work_days' => [1, 2, 3, 4, 5],
+            'day_rules' => $this->buildWeekDayRules([1, 2, 3, 4, 5], '09:00:00', '18:00:00'),
+            'start_time' => '09:00:00',
+            'end_time' => '18:00:00',
+            'work_start_time' => '09:00:00',
+            'work_end_time' => '18:00:00',
+            'required_hours_per_day' => 9,
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $onTimeEmployee = $this->makeEmployee('5a');
+        $this->assignSchedule($onTimeEmployee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-05 09:15:00')); // Monday
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-in', [
+            'employee_id' => $onTimeEmployee->id,
+        ]);
+        $response->assertCreated();
+        $this->assertSame('late', $response->json('data.status'));
+
+        $lateArrivalEmployee = $this->makeEmployee('5b');
+        $this->assignSchedule($lateArrivalEmployee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday, same day
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', [
+            'employee_id' => $lateArrivalEmployee->id,
+        ])->assertStatus(400);
     }
 }
