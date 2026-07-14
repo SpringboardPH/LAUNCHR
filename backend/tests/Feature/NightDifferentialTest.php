@@ -533,4 +533,98 @@ class NightDifferentialTest extends TestCase
         $log = AttendanceLog::where('employee_id', $employee->id)->sole();
         $this->assertSame('2026-01-05', $log->date->toDateString());
     }
+
+    public function test_mark_absent_does_not_flag_an_in_progress_night_shift()
+    {
+        $employee = $this->makeEmployee('9');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-06 00:00:00')); // Tuesday 00:00
+        $this->artisan('attendance:mark-absent')->run();
+
+        $this->assertSame(0, AttendanceLog::where('employee_id', $employee->id)
+            ->where('date', '2026-01-05')->count());
+    }
+
+    public function test_mark_absent_eventually_flags_a_genuine_night_no_show()
+    {
+        $employee = $this->makeEmployee('10');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-07 00:00:00')); // Wednesday 00:00, shift long over
+        $this->artisan('attendance:mark-absent')->run();
+
+        $log = AttendanceLog::where('employee_id', $employee->id)
+            ->where('date', '2026-01-05')->sole();
+        $this->assertSame('absent', $log->status);
+    }
+
+    public function test_mark_absent_never_flags_an_employee_already_clocked_in_at_shift_start()
+    {
+        $employee = $this->makeEmployee('11');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday 22:00
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+
+        $this->travelTo(Carbon::parse('2026-01-06 00:00:00')); // Tuesday 00:00
+        $this->artisan('attendance:mark-absent')->run();
+
+        $log = AttendanceLog::where('employee_id', $employee->id)
+            ->where('date', '2026-01-05')->sole();
+        $this->assertSame('22:00:00', $log->clock_in_time);
+        $this->assertNotSame('absent', $log->status);
+    }
+
+    public function test_mark_absent_regression_plain_fixed_no_show_still_flagged()
+    {
+        $employee = $this->makeEmployee('12');
+        $template = ScheduleTemplate::create([
+            'type' => 'fixed',
+            'name' => 'Fixed 9-6 Mark Absent Regression',
+            'work_days' => [1, 2, 3, 4, 5],
+            'day_rules' => $this->buildWeekDayRules([1, 2, 3, 4, 5], '09:00:00', '18:00:00'),
+            'start_time' => '09:00:00',
+            'end_time' => '18:00:00',
+            'work_start_time' => '09:00:00',
+            'work_end_time' => '18:00:00',
+            'required_hours_per_day' => 9,
+        ]);
+        $this->assignSchedule($employee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-06 00:00:00')); // Tuesday 00:00
+        $this->artisan('attendance:mark-absent')->run();
+
+        $log = AttendanceLog::where('employee_id', $employee->id)
+            ->where('date', '2026-01-05')->sole();
+        $this->assertSame('absent', $log->status);
+    }
+
+    public function test_mark_absent_mixed_week_non_wrapping_day_still_flagged_like_a_day_shift()
+    {
+        $employee = $this->makeEmployee('13');
+        $template = $this->makeNightTemplate($this->buildMixedWeekDayRules(), [1, 3]);
+        $this->assignSchedule($employee, $template);
+
+        $this->travelTo(Carbon::parse('2026-01-06 00:00:00')); // Tuesday 00:00
+        $this->artisan('attendance:mark-absent')->run();
+
+        $log = AttendanceLog::where('employee_id', $employee->id)
+            ->where('date', '2026-01-05')->sole();
+        $this->assertSame('absent', $log->status);
+    }
 }

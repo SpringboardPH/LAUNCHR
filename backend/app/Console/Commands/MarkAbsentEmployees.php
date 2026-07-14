@@ -23,14 +23,15 @@ class MarkAbsentEmployees extends Command
 
         if ($dateInput) {
             $startDate = Carbon::parse($dateInput)->startOfDay();
+            $endDate = $toInput ? Carbon::parse($toInput)->startOfDay() : $startDate->copy();
         } else {
             $now = SystemClock::now();
-            $startDate = ($now->hour < 4)
+            $anchor = ($now->hour < 4)
                 ? $now->copy()->subDay()->startOfDay()
                 : $now->copy()->startOfDay();
+            $startDate = $anchor->copy()->subDay();
+            $endDate = $toInput ? Carbon::parse($toInput)->startOfDay() : $anchor->copy();
         }
-
-        $endDate = $toInput ? Carbon::parse($toInput)->startOfDay() : $startDate->copy();
 
         // Build date range
         $dates = [];
@@ -80,10 +81,14 @@ class MarkAbsentEmployees extends Command
             $dayOfWeek = $targetDate->dayOfWeek;
             
             $isWorkingDay = false;
+            $dayRule = null;
             if ($template->day_rules) {
                 foreach ($template->day_rules as $rule) {
-                    if ($rule['day'] == $dayOfWeek && $rule['enabled']) {
-                        $isWorkingDay = true;
+                    if ($rule['day'] == $dayOfWeek) {
+                        $dayRule = $rule;
+                        if ($rule['enabled']) {
+                            $isWorkingDay = true;
+                        }
                         break;
                     }
                 }
@@ -94,6 +99,15 @@ class MarkAbsentEmployees extends Command
             } else {
                 // Flexi templates with no day config default to Mon–Fri
                 $isWorkingDay = $dayOfWeek >= Carbon::MONDAY && $dayOfWeek <= Carbon::FRIDAY;
+            }
+
+            if ($isWorkingDay && $template->wrapsMidnight($dayRule)) {
+                // Shift started on $targetDate and ends the next calendar day.
+                $shiftEnd = $targetDate->copy()->addDay()
+                    ->setTimeFrom(Carbon::parse($template->shiftEndFor($dayRule)));
+                if (SystemClock::now()->lt($shiftEnd)) {
+                    continue;
+                }
             }
 
             if ($isWorkingDay) {
