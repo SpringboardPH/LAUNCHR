@@ -3,12 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\ScheduleTemplate;
+use App\Models\User;
 use App\Services\AttendanceService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class NightDifferentialTest extends TestCase
 {
+    use RefreshDatabase;
+
     #[DataProvider('nightHoursProvider')]
     public function test_calculate_night_hours(?string $clockIn, ?string $clockOut, float $expected)
     {
@@ -125,5 +129,103 @@ class NightDifferentialTest extends TestCase
 
         $this->assertTrue($template->wrapsMidnight($disabledRule));
         $this->assertEquals('06:00:00', $template->shiftEndFor($disabledRule));
+    }
+
+    /**
+     * Builds a full 7-day day_rules payload with a single enabled day.
+     */
+    private function buildDayRules(int $enabledDay, ?string $clockIn, ?string $clockOut): array
+    {
+        $rules = [];
+        for ($day = 0; $day <= 6; $day++) {
+            $enabled = $day === $enabledDay;
+            $rules[] = [
+                'day' => $day,
+                'enabled' => $enabled,
+                'clock_in' => $enabled ? $clockIn : null,
+                'clock_out' => $enabled ? $clockOut : null,
+                'grace_enabled' => false,
+                'grace_type' => '-/+',
+                'grace_minutes' => 15,
+            ];
+        }
+
+        return $rules;
+    }
+
+    public function test_store_route_persists_night_type_and_derives_8_hour_wrapping_shift()
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/schedule-templates', [
+            'name' => 'Night Shift Template',
+            'type' => 'night',
+            'day_rules' => $this->buildDayRules(3, '22:00:00', '06:00:00'),
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('night', $response->json('data.type'));
+        $this->assertSame(8, $response->json('data.required_hours_per_day'));
+
+        $this->assertDatabaseHas('schedule_templates', [
+            'name' => 'Night Shift Template',
+            'type' => 'night',
+            'required_hours_per_day' => 8,
+        ]);
+    }
+
+    public function test_store_route_still_defaults_to_fixed_when_type_is_omitted()
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/schedule-templates', [
+            'name' => 'Untyped Template',
+            'day_rules' => $this->buildDayRules(3, '09:00:00', '18:00:00'),
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('fixed', $response->json('data.type'));
+        $this->assertDatabaseHas('schedule_templates', [
+            'name' => 'Untyped Template',
+            'type' => 'fixed',
+        ]);
+    }
+
+    public function test_store_route_persists_fixed_when_type_explicitly_fixed()
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/schedule-templates', [
+            'name' => 'Explicit Fixed Template',
+            'type' => 'fixed',
+            'day_rules' => $this->buildDayRules(3, '09:00:00', '18:00:00'),
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('fixed', $response->json('data.type'));
+        $this->assertDatabaseHas('schedule_templates', [
+            'name' => 'Explicit Fixed Template',
+            'type' => 'fixed',
+        ]);
+    }
+
+    public function test_night_template_created_via_store_route_wraps_midnight_on_its_wednesday_rule()
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)->postJson('/api/admin/schedule-templates', [
+            'name' => 'Night Shift Round Trip',
+            'type' => 'night',
+            'day_rules' => $this->buildDayRules(3, '22:00:00', '06:00:00'),
+        ]);
+
+        $response->assertCreated();
+
+        $template = ScheduleTemplate::where('name', 'Night Shift Round Trip')->firstOrFail();
+        $this->assertSame('night', $template->type);
+
+        $wednesdayRule = collect($template->day_rules)->firstWhere('day', 3);
+        $this->assertNotNull($wednesdayRule);
+        $this->assertTrue($template->wrapsMidnight($wednesdayRule));
     }
 }

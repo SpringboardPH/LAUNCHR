@@ -129,7 +129,7 @@ class ScheduleTemplateController extends Controller
 
         return [
             ...$validated,
-            'type' => 'fixed',
+            'type' => $type,
             'work_days' => $enabledDays,
             'clock_in_start' => $clockInWindow['start'],
             'clock_in_end' => $clockInWindow['end'],
