@@ -479,13 +479,17 @@ class PayrollController extends Controller
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
-            $nightDiffPay =
-                  \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_regular'], $hourlyRate, 1.00)
-                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_ot'], $hourlyRate, 1.25)
-                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_regular'], $hourlyRate, 1.30)
-                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_ot'], $hourlyRate, 1.69);
-            $totalNightHours = $metrics['night_hours_regular'] + $metrics['night_hours_ot']
-                + $metrics['night_hours_rest_regular'] + $metrics['night_hours_rest_ot'];
+            // TEMPORARILY DISABLED — night differential figures were wrong; re-enable
+            // by restoring the calculation below once the underlying issue is fixed.
+            // $nightDiffPay =
+            //       \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_regular'], $hourlyRate, 1.00)
+            //     + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_ot'], $hourlyRate, 1.25)
+            //     + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_regular'], $hourlyRate, 1.30)
+            //     + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_ot'], $hourlyRate, 1.69);
+            // $totalNightHours = $metrics['night_hours_regular'] + $metrics['night_hours_ot']
+            //     + $metrics['night_hours_rest_regular'] + $metrics['night_hours_rest_ot'];
+            $nightDiffPay = 0.0;
+            $totalNightHours = 0.0;
 
             // Paid leave: daily employees need explicit pay added back;
             // monthly employees already receive full salary so no adjustment needed.
