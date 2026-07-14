@@ -46,6 +46,19 @@ class AutoClockOut extends Command
 
     private function performAutoClockOut(int $employeeId)
     {
+        // ponytail: this command is INCOMPATIBLE with overnight shifts and is only safe
+        // because `auto_clock_out_enabled` is currently off (see handle()). Re-enabling it
+        // will guillotine every night shift: it force-closes open logs at 23:59, so an
+        // employee two hours into a 22:00-06:00 shift is clocked out mid-shift and paid
+        // for ~2 hours instead of 8.
+        // Before flipping that setting back on, this method must learn about:
+        //   - fixed/night templates: skip logs where $template->wrapsMidnight($dayRule) is
+        //     true and the shift has not ended; close an abandoned one at
+        //     $template->shiftEndFor($dayRule) rather than 23:59.
+        //   - flexi: has NO end time, so "still working" and "forgot to clock out" are
+        //     indistinguishable at 23:59. Needs its own rule (e.g. defer while hours worked
+        //     < required_hours_per_day) — that is an open product decision, not just code.
+        //
         // This command runs at 23:59 PM daily, so we always clock out any open logs
         $openLogs = AttendanceLog::where('employee_id', $employeeId)
             ->whereNotNull('clock_in_time')

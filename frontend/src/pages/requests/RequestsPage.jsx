@@ -226,10 +226,10 @@ export default function RequestsPage() {
 
       {/* Filter row */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex gap-1 bg-brand-50 p-1 rounded-lg w-fit">
           {[['requests', 'Requests', ClipboardList], ['leaves', 'Leaves', CalendarOff]].map(([t, lbl, Icon]) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t ? 'bg-brand-500 text-white shadow-sm' : 'text-brand-700 hover:text-brand-900'}`}>
               <Icon size={13} />{lbl}
             </button>
           ))}

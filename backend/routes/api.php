@@ -124,6 +124,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/departments', [DepartmentController::class, 'index']);
     });
 
+    // Settings — reads are shared with HR/accounting (payroll needs
+    // sss_contribution_table, payroll_frequency, etc.); writes stay admin-only.
+    Route::prefix('admin/settings')->group(function () {
+        Route::get('/', [AdminSettingsController::class, 'index'])->middleware('role:admin,hr,accounting');
+        Route::get('/defaults', [AdminSettingsController::class, 'getDefaults'])->middleware('role:admin');
+        Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults'])->middleware('role:admin');
+        Route::post('/logo', [AdminSettingsController::class, 'uploadLogo'])->middleware('role:admin');
+        Route::delete('/logo/{filename}', [AdminSettingsController::class, 'deleteLogo'])->middleware('role:admin');
+        Route::post('/payroll-template', [AdminSettingsController::class, 'uploadPayrollTemplate'])->middleware('role:admin');
+        Route::get('/logos', [AdminSettingsController::class, 'listLogos'])->middleware('role:admin');
+        Route::get('/{key}', [AdminSettingsController::class, 'show'])->middleware('role:admin,hr,accounting');
+        Route::put('/{key}', [AdminSettingsController::class, 'update'])->middleware('role:admin');
+    });
+
     // Payroll template
     Route::get('/payroll-template', [AdminSettingsController::class, 'getTemplate']);
 
@@ -150,19 +164,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin Routes (Admin Only)
     Route::middleware('role:admin')->group(function () {
-        // Settings
-        Route::prefix('admin/settings')->group(function () {
-            Route::get('/', [AdminSettingsController::class, 'index']);
-            Route::get('/defaults', [AdminSettingsController::class, 'getDefaults']);
-            Route::post('/initialize', [AdminSettingsController::class, 'initializeDefaults']);
-            Route::post('/logo', [AdminSettingsController::class, 'uploadLogo']);
-            Route::delete('/logo/{filename}', [AdminSettingsController::class, 'deleteLogo']);
-            Route::post('/payroll-template', [AdminSettingsController::class, 'uploadPayrollTemplate']);
-            Route::get('/logos', [AdminSettingsController::class, 'listLogos']);
-            Route::get('/{key}', [AdminSettingsController::class, 'show']);
-            Route::put('/{key}', [AdminSettingsController::class, 'update']);
-        });
-
         Route::prefix('admin/leave-types')->group(function () {
             Route::get('/', [LeaveTypeController::class, 'index']);
             Route::post('/', [LeaveTypeController::class, 'store']);

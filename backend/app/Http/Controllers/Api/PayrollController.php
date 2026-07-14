@@ -155,6 +155,10 @@ class PayrollController extends Controller
                 'absent_days' => 0,
                 'half_days' => 0,
                 'paid_leave_days' => 0,
+                'night_hours_regular' => 0,      // x1.00
+                'night_hours_ot' => 0,           // x1.25
+                'night_hours_rest_regular' => 0, // x1.30
+                'night_hours_rest_ot' => 0,      // x1.69
             ];
 
             // Fetch approved leaves covering this cutoff — used to classify absent logs
@@ -182,14 +186,35 @@ class PayrollController extends Controller
                 $event = $events->get($dateStr);
 
                 $schedule = EmployeeSchedule::getForEmployeeOnDate($employee->id, $date);
-                $isFlexiSchedule = ($log->schedule_type ?? $schedule?->template?->type ?? 'fixed') === 'flexi';
+                $logTemplate = $schedule?->template;
+                if (!$logTemplate && $log->schedule_template_id) {
+                    // No active EmployeeSchedule row for this date (schedules get
+                    // reassigned) — fall back to the template snapshotted on the
+                    // log at clock-in time so history stays stable.
+                    $logTemplate = \App\Models\ScheduleTemplate::find($log->schedule_template_id);
+                }
+                $isFlexiSchedule = ($log->schedule_type ?? $logTemplate?->type ?? 'fixed') === 'flexi';
 
-                // Flexi: rest day is derived from the schedule (disabled day_rule).
+                // Flexi: rest day is derived from the schedule ACTIVE ON THIS DATE (disabled
+                // day_rule) — not the employee's current schedule, which may have been
+                // reassigned since. Using the outer-scope $workDays (current schedule) here
+                // would misclassify old rest days as working days once the day set changes.
                 // Fixed: never inferred from the schedule — a day not assigned to a fixed
                 // schedule is simply not scheduled, not paid rest-day work. Rest day pay for
                 // fixed only applies when HR manually sets that status on the log.
+                $logWorkDays = $workDays;
+                if ($isFlexiSchedule && $logTemplate) {
+                    $logWorkDays = $logTemplate->day_rules
+                        ? collect($logTemplate->day_rules)
+                            ->filter(fn($rule) => !empty($rule['enabled']))
+                            ->pluck('day')
+                            ->map(fn($day) => (int) $day)
+                            ->values()
+                            ->all()
+                        : ($logTemplate->work_days ?? $workDays);
+                }
                 $isRestDay = $isFlexiSchedule
-                    ? !in_array($date->dayOfWeek, $workDays)
+                    ? !in_array($date->dayOfWeek, $logWorkDays)
                     : $log->status === 'rest_day';
 
                 // Track absences and half days for deduction purposes
@@ -220,7 +245,7 @@ class PayrollController extends Controller
                 }
 
                 if ($isFlexiSchedule) {
-                    $expectedHours = $schedule?->template?->required_hours_per_day ?? 8;
+                    $expectedHours = $logTemplate?->required_hours_per_day ?? 8;
                     $details = AttendanceService::calculateFlexiDetails(
                         $log->clock_in_time,
                         $log->clock_out_time,
@@ -232,8 +257,26 @@ class PayrollController extends Controller
                         ? 0
                         : $details['undertime_minutes'];
                 } else {
-                    $workStart = $schedule?->template?->work_start_time ?? '09:00:00';
-                    $workEnd   = $schedule?->template?->work_end_time   ?? '18:00:00';
+                    // Resolve the DAY RULE for the log's date, not the template-level
+                    // work_start_time/work_end_time (which only reflects the FIRST
+                    // enabled day rule and is wrong for any other day on a mixed
+                    // template — e.g. a Wed 22:00-06:00 night rule judged against a
+                    // Mon 06:00-15:00 template-level start produces a phantom ~13h
+                    // "late" deduction that wipes out the employee's pay).
+                    $template = $logTemplate;
+
+                    $dayRule = null;
+                    if ($template && is_array($template->day_rules)) {
+                        foreach ($template->day_rules as $rule) {
+                            if ((int) ($rule['day'] ?? -1) === $date->dayOfWeek) {
+                                $dayRule = $rule;
+                                break;
+                            }
+                        }
+                    }
+
+                    $workStart = $dayRule['clock_in']  ?? $template?->work_start_time ?? '09:00:00';
+                    $workEnd   = $dayRule['clock_out'] ?? $template?->work_end_time   ?? '18:00:00';
 
                     $workStartMin = $this->parseTimeToMinutes($workStart);
                     $workEndMin   = $this->parseTimeToMinutes($workEnd);
@@ -266,6 +309,30 @@ class PayrollController extends Controller
                 $overtimeHours = ($log->status === 'overtime' || (!$isFlexiSchedule && $isRestDay))
                     ? $details['overtime_hours']
                     : 0;
+
+                // Night differential follows clocked hours, not schedule type — accrues for
+                // fixed, flexi, and rest-day logs alike (DOLE Art. 86). Night hours are bucketed
+                // by the rate that applies to them: overtime is the chronological TAIL of the
+                // shift, so the night hours inside that tail get the OT/rest-day-OT rate, and
+                // the rest get the regular/rest-day rate. Reuses $overtimeHours (already gated
+                // to APPROVED overtime above) so unapproved excess hours never get the OT rate.
+                $totalNight = AttendanceService::calculateNightHours($log->clock_in_time, $log->clock_out_time);
+                $otNight = $overtimeHours > 0
+                    ? AttendanceService::calculateNightHours(
+                        AttendanceService::shiftTimeBy($log->clock_out_time, $overtimeHours),
+                        $log->clock_out_time
+                    )
+                    : 0.0;
+                $otNight = min($otNight, $totalNight);
+                $regularNight = max(0, $totalNight - $otNight);
+
+                if ($isRestDay) {
+                    $metrics['night_hours_rest_ot'] += $otNight;
+                    $metrics['night_hours_rest_regular'] += $regularNight;
+                } else {
+                    $metrics['night_hours_ot'] += $otNight;
+                    $metrics['night_hours_regular'] += $regularNight;
+                }
 
                 // Track per-date OT hours for request deduplication
                 if (!$isRestDay && $details['overtime_hours'] > 0) {
@@ -412,6 +479,13 @@ class PayrollController extends Controller
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
+            $nightDiffPay =
+                  \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_regular'], $hourlyRate, 1.00)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_ot'], $hourlyRate, 1.25)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_regular'], $hourlyRate, 1.30)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_ot'], $hourlyRate, 1.69);
+            $totalNightHours = $metrics['night_hours_regular'] + $metrics['night_hours_ot']
+                + $metrics['night_hours_rest_regular'] + $metrics['night_hours_rest_ot'];
 
             // Paid leave: daily employees need explicit pay added back;
             // monthly employees already receive full salary so no adjustment needed.
@@ -431,12 +505,13 @@ class PayrollController extends Controller
             $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis, $periods);
             $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis, $periods);
 
-            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay;
+            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay + $nightDiffPay;
             $finalGross = $grossBase + $totalAllowances;
 
             // Withholding Tax Calculation
             // Taxable base excludes undeclared allowance (off-the-books, not subject to BIR withholding)
-            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay + $leavePay;
+            // Night differential IS taxable compensation, so it belongs in the tax base.
+            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay + $leavePay + $nightDiffPay;
             $earnedTaxableBase = $taxableBase - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
             $taxableIncome = $earnedTaxableBase - ($sss + $philhealth + $pagibig);
             $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $frequency);
@@ -465,6 +540,7 @@ class PayrollController extends Controller
                         ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
                         ['label' => 'Allowance', 'amount' => round($undeclaredAllowance, 2)],
                         ['label' => 'Leave Pay', 'amount' => round($leavePay, 2)],
+                        ['label' => 'Night Differential (' . round($totalNightHours, 2) . ' hrs)', 'amount' => round($nightDiffPay, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(

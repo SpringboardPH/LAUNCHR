@@ -4,12 +4,33 @@ namespace App\Services;
 
 class PayrollService
 {
+    public const NIGHT_DIFF_START = '22:00';
+    public const NIGHT_DIFF_END = '06:00';
+    public const NIGHT_DIFF_RATE = 0.10;
+
+    /**
+     * Night differential pay: a 10% premium on the APPLICABLE hourly rate for hours
+     * worked within the NIGHT_DIFF_START-NIGHT_DIFF_END window (DOLE Art. 86). When
+     * night hours are also overtime or rest-day hours, pass the matching rate
+     * multiplier (1.25 OT, 1.30 rest day, 1.69 rest day OT) so the premium compounds
+     * on the already-inflated rate, not the base rate.
+     * ponytail: overtime that exists only as an approved EmployeeRequest (no clocked
+     * times) earns ₱0 ND — there is no recorded time range to prove it fell in the
+     * night window, so it never reaches this method.
+     */
+    public static function calculateNightDifferential(float $nightHours, float $hourlyRate, float $rateMultiplier = 1.0): float
+    {
+        return $nightHours * $hourlyRate * $rateMultiplier * self::NIGHT_DIFF_RATE;
+    }
+
     /**
      * Calculate SSS Employee Contribution (PH 2024/2025)
      * Fetches from system_settings table to allow HR updates
      */
     public static function calculateSSS(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
+
         $setting = \App\Models\SystemSettings::where('key', 'sss_contribution_table')->first();
 
         if ($setting && $setting->value) {
@@ -39,6 +60,8 @@ class PayrollService
      */
     public static function calculateSSS_ER(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
+
         $setting = \App\Models\SystemSettings::where('key', 'sss_contribution_table')->first();
 
         if ($setting && $setting->value) {
@@ -81,6 +104,7 @@ class PayrollService
      */
     public static function calculatePhilHealth_ER(float $monthlySalary, int $periods = 2): float
     {
+        if ($monthlySalary <= 0) return 0.0;
         if ($monthlySalary < 10000) return (500.00 * 0.5) / $periods;
         if ($monthlySalary > 100000) return (5000.00 * 0.5) / $periods;
 

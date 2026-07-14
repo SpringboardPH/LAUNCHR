@@ -224,7 +224,7 @@ const AdminScheduleTemplatesPage = () => {
       const hoursPerDay = calculateHours(firstRule.clock_in, firstRule.clock_out)
 
       payload = {
-        type: 'fixed',
+        type: formData.type,
         name: formData.name,
         description: formData.description,
         is_temporary: formData.is_temporary,
@@ -363,7 +363,7 @@ const AdminScheduleTemplatesPage = () => {
               <div className="rounded-lg border border-gray-200 p-4">
                 <label className="block text-xs font-medium text-gray-600 mb-2">Schedule Type</label>
                 <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-                  {['fixed', 'flexi'].map(t => (
+                  {['fixed', 'flexi', 'night'].map(t => (
                     <button
                       key={t}
                       type="button"
@@ -372,13 +372,15 @@ const AdminScheduleTemplatesPage = () => {
                         formData.type === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}
                     >
-                      {t === 'fixed' ? 'Fixed Schedule' : 'Flexi Schedule'}
+                      {t === 'fixed' ? 'Fixed Schedule' : t === 'flexi' ? 'Flexi Schedule' : 'Night'}
                     </button>
                   ))}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
                   {formData.type === 'flexi'
                     ? 'Employees can clock in/out at any time — status is based on total hours worked.'
+                    : formData.type === 'night'
+                    ? 'Fixed schedule whose shifts may cross midnight (e.g. 10:00 PM → 6:00 AM). Night-differential pay is automatic for any hours worked between 10 PM and 6 AM and does not require this type.'
                     : 'Employees have fixed clock-in/out windows per day.'}
                 </p>
                 {formData.type === 'flexi' && (
@@ -414,6 +416,8 @@ const AdminScheduleTemplatesPage = () => {
                 <p className="text-xs leading-5">
                   {formData.type === 'flexi'
                     ? 'Enable the days that are working days. Clock-in/out times are not required for flexi schedules.'
+                    : formData.type === 'night'
+                    ? 'Enable the days each shift starts. An overnight shift that begins Friday 10 PM and ends Saturday 6 AM counts as Friday only — do not also tick Saturday.'
                     : 'Enable only the days that should be working days. For each active day, set the clock-in/out time and optionally add a grace rule.'}
                 </p>
               </div>
@@ -438,6 +442,9 @@ const AdminScheduleTemplatesPage = () => {
                         />
                         {dayMeta?.label}
                       </label>
+                      {rule.enabled && formData.type === 'night' && parseTimeToMinutes(rule.clock_out) < parseTimeToMinutes(rule.clock_in) && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">overnight</span>
+                      )}
                       {!rule.enabled && <span className="text-xs text-gray-400">Off</span>}
                     </div>
 
@@ -558,6 +565,9 @@ const AdminScheduleTemplatesPage = () => {
                     {template.type === 'flexi' && (
                       <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Flexi</span>
                     )}
+                    {template.type === 'night' && (
+                      <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Night</span>
+                    )}
                     {template.is_temporary && (
                       <span className="ml-2 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Temporary</span>
                     )}
@@ -572,7 +582,12 @@ const AdminScheduleTemplatesPage = () => {
                             <span className="text-xs text-blue-500">On</span>
                           ) : (
                             <div className="text-xs text-gray-600 leading-4">
-                              <div>In {rule.clock_in}</div>
+                              <div>
+                                In {rule.clock_in}
+                                {template.type === 'night' && parseTimeToMinutes(rule.clock_out) < parseTimeToMinutes(rule.clock_in) && (
+                                  <span className="ml-1 text-[9px] font-semibold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 align-middle">overnight</span>
+                                )}
+                              </div>
                               <div>Out {rule.clock_out}</div>
                               <div>
                                 G {rule.grace_enabled ? `${rule.grace_type} ${rule.grace_minutes ?? 15}m` : 'Off'}

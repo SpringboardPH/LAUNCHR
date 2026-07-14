@@ -236,11 +236,51 @@ class AttendanceController extends Controller
         $dayRule = $this->getDayRuleForDate($schedule, $today);
         $templateType = $schedule?->template?->type ?? 'fixed';
 
+        // A post-midnight arrival belongs to YESTERDAY's shift if yesterday's shift
+        // crosses midnight and has not ended yet (e.g. 00:30 arrival for a
+        // 22:00-06:00 shift). One shift = one attendance_log row, keyed on the
+        // clock-in (shift start) date, so this must be resolved before any other
+        // check in this method.
+        $shiftDate = $today;
+        $adoptedYesterdayShift = false;
+        $yesterday = $today->copy()->subDay();
+        $ySchedule = $this->getScheduleForDate($employee->id, $yesterday);
+        $yRule = $this->getDayRuleForDate($ySchedule, $yesterday);
+
+        if ($ySchedule?->template?->wrapsMidnight($yRule)
+            && $this->parseTimeToMinutes(SystemClock::timeString())
+                < $this->parseTimeToMinutes($ySchedule->template->shiftEndFor($yRule))) {
+            $yLog = AttendanceLog::where('employee_id', $employee->id)
+                ->whereDate('date', $yesterday->toDateString())
+                ->first();
+
+            if ($yLog && $yLog->clock_in_time) {
+                // Yesterday's wrapping shift is still in progress (or just ended)
+                // and already has a clock-in — this arrival is not a new shift,
+                // it's a repeat touch on the same one. Reject explicitly instead
+                // of falling through to today's window checks, which would
+                // otherwise report a misleading "too early" message.
+                return response()->json([
+                    'success' => false,
+                    'message' => $yLog->clock_out_time
+                        ? 'You have already clocked out for the current shift'
+                        : 'You have already clocked in for the current shift',
+                ], 400);
+            }
+
+            // A row with a null clock_in — e.g. pre-marked absent — is still adoptable.
+            $shiftDate = $yesterday;
+            $adoptedYesterdayShift = true;
+            $schedule = $ySchedule;
+            $dayRule = $yRule;
+            $templateType = $ySchedule->template->type ?? 'fixed';
+        }
+
         // Check if employee is on leave today
         $onLeave = \App\Models\LeaveRequest::where('employee_id', $employee->id)
             ->where('status', 'approved')
-            ->whereDate('start_date', '<=', $today->toDateString())
-            ->whereDate('end_date', '>=', $today->toDateString())
+            ->whereDate('start_date', '<=', $shiftDate->toDateString())
+            ->whereDate('end_date', '>=', $shiftDate->toDateString())
             ->exists();
 
         if ($onLeave) {
@@ -260,9 +300,9 @@ class AttendanceController extends Controller
             $isRestDay = empty($dayRule['enabled']);
         } elseif ($schedule && $schedule->template) {
             $workDays = $schedule->template->work_days ?? [];
-            $isRestDay = !in_array($today->dayOfWeek, $workDays, true);
+            $isRestDay = !in_array($shiftDate->dayOfWeek, $workDays, true);
         } else {
-            $isRestDay = in_array($today->dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY], true);
+            $isRestDay = in_array($shiftDate->dayOfWeek, [Carbon::SATURDAY, Carbon::SUNDAY], true);
         }
 
         if ($templateType !== 'flexi' && $isRestDay) {
@@ -274,7 +314,7 @@ class AttendanceController extends Controller
 
         // Check if already clocked in today
         $existingLog = AttendanceLog::where('employee_id', $employee->id)
-            ->whereDate('date', $today->toDateString())
+            ->whereDate('date', $shiftDate->toDateString())
             ->first();
 
         if ($existingLog && $existingLog->clock_in_time) {
@@ -289,7 +329,7 @@ class AttendanceController extends Controller
         // Flexi: no window restrictions — employee can clock in any time, including rest days
         if ($templateType === 'flexi') {
             $log = AttendanceLog::updateOrCreate(
-                ['employee_id' => $employee->id, 'date' => $today->toDateString()],
+                ['employee_id' => $employee->id, 'date' => $shiftDate->toDateString()],
                 [
                     'clock_in_time'          => $clockInTime,
                     'clock_in_notes'         => $request->notes,
@@ -310,7 +350,7 @@ class AttendanceController extends Controller
                     'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
                     'clock_in_time' => (string) $clockInTime,
                     'status'        => 'working',
-                    'date'          => (string) $today->toDateString(),
+                    'date'          => (string) $shiftDate->toDateString(),
                 ]
             );
 
@@ -363,6 +403,17 @@ class AttendanceController extends Controller
                 $latestClockInMinutes = $this->parseTimeToMinutes($template->clock_out_end ?? $template->work_end_time ?? self::LATE_CLOCK_OUT);
             }
 
+            // Night shifts cross midnight: the window minutes above are computed
+            // in minutes-since-midnight of a single day, so a shift that ends
+            // "before" it starts (e.g. 22:00-06:00) needs its end pushed into the
+            // next calendar day, and a post-midnight arrival needs to be read as
+            // that next day too — otherwise the window never spans the arrival.
+            $wraps = (bool) $schedule?->template?->wrapsMidnight($dayRule);
+            if ($wraps) {
+                if ($latestClockInMinutes < $clockInGraceEndMinutes) $latestClockInMinutes += 1440;
+                if ($adoptedYesterdayShift && $clockInMinutes < $earlyAllowedMinutes) $clockInMinutes += 1440;
+            }
+
             if ($clockInMinutes < $earlyAllowedMinutes) {
                 return response()->json([
                     'success' => false,
@@ -382,7 +433,7 @@ class AttendanceController extends Controller
 
         // Create or update attendance log
         $log = AttendanceLog::updateOrCreate(
-            ['employee_id' => $employee->id, 'date' => $today->toDateString()],
+            ['employee_id' => $employee->id, 'date' => $shiftDate->toDateString()],
             [
                 'clock_in_time' => $clockInTime,
                 'clock_in_notes' => $request->notes,
@@ -390,7 +441,7 @@ class AttendanceController extends Controller
                 // Snapshot schedule context so historical logs stay stable.
                 'schedule_template_id'   => $schedule?->schedule_template_id,
                 'schedule_template_name' => $schedule?->template?->name,
-                'schedule_type'          => 'fixed',
+                'schedule_type'          => $templateType,
             ]
         );
 
@@ -405,7 +456,7 @@ class AttendanceController extends Controller
                 'employee_name' => (string) ($employee->first_name . ' ' . $employee->last_name),
                 'clock_in_time' => (string) $clockInTime,
                 'status' => (string) $initialStatus,
-                'date' => (string) $today->toDateString(),
+                'date' => (string) $shiftDate->toDateString(),
             ]
         );
 
@@ -453,8 +504,6 @@ class AttendanceController extends Controller
 
         // Get today's attendance log
         $today = SystemClock::today();
-        $schedule = $this->getScheduleForDate($employee->id, $today);
-        $dayRule = $this->getDayRuleForDate($schedule, $today);
         $log = AttendanceLog::where('employee_id', $employee->id)
             ->whereDate('date', $today->toDateString())
             ->first();
@@ -480,6 +529,13 @@ class AttendanceController extends Controller
                 'message' => 'Employee has already clocked out today',
             ], 400);
         }
+
+        // Resolve schedule/day rule against the LOG's own date, not today's —
+        // an overnight shift's log is dated yesterday, and on a mixed template
+        // today's day rule can be a completely different (or disabled) shift.
+        $logDate = $log->date instanceof Carbon ? $log->date : Carbon::parse($log->date);
+        $schedule = $this->getScheduleForDate($employee->id, $logDate);
+        $dayRule = $this->getDayRuleForDate($schedule, $logDate);
 
         $clockOutTime = SystemClock::timeString();
 
@@ -551,7 +607,7 @@ class AttendanceController extends Controller
         $isRestDay = $dayRule !== null
             ? empty($dayRule['enabled'])
             : ($schedule && $schedule->template
-                ? !in_array($today->dayOfWeek, $schedule->template->work_days ?? [], true)
+                ? !in_array($logDate->dayOfWeek, $schedule->template->work_days ?? [], true)
                 : false);
 
         if (!$isRestDay) {

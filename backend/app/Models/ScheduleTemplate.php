@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\AttendanceService;
 use Illuminate\Database\Eloquent\Model;
 
 class ScheduleTemplate extends Model
@@ -39,6 +40,37 @@ class ScheduleTemplate extends Model
     public function employeeSchedules()
     {
         return $this->hasMany(EmployeeSchedule::class);
+    }
+
+    /**
+     * Whether the shift for a given day rule is allowed to cross midnight.
+     * This is a permission gate on the template's type, not a pay flag —
+     * night differential pay is earned by any schedule type based on
+     * clocked hours (see AttendanceService::calculateNightHours()).
+     */
+    public function wrapsMidnight(?array $dayRule = null): bool
+    {
+        if ($this->type !== 'night') {
+            return false;
+        }
+
+        if ($dayRule !== null && !($dayRule['enabled'] ?? true)) {
+            return false;
+        }
+
+        $in = $dayRule['clock_in'] ?? $this->work_start_time;
+        $out = $dayRule['clock_out'] ?? $this->work_end_time;
+
+        return $in && $out && AttendanceService::parseTimeToMinutes($out)
+                            < AttendanceService::parseTimeToMinutes($in);
+    }
+
+    /**
+     * The day's clock-out time, preferring the day rule over the template default.
+     */
+    public function shiftEndFor(?array $dayRule = null): string
+    {
+        return $dayRule['clock_out'] ?? $this->work_end_time ?? '23:59:59';
     }
 
     /**

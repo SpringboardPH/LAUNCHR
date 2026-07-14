@@ -140,6 +140,28 @@ class ScheduleTemplateSeeder extends Seeder
                 'overtime_threshold_hours' => 8,
                 'expected_hours_per_day' => 8,
             ],
+            [
+                'name' => 'Night Shift (10PM-6AM)',
+                // work_days lists the days a shift STARTS. Mon-Fri means five
+                // shifts, the last of which ends Saturday 06:00 — Saturday
+                // itself is NOT a work day.
+                'description' => 'Overnight schedule: 10 PM to 6 AM, shifts start Mon-Fri',
+                'type' => 'night',
+                'work_days' => [1, 2, 3, 4, 5],
+                'day_rules' => $this->buildDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00', '-/+', 15),
+                'clock_in_start' => '21:45:00',
+                'clock_in_end' => '22:15:00',
+                'clock_out_start' => '06:00:00',
+                'clock_out_end' => '06:15:00',
+                'start_time' => '22:00:00',
+                'end_time' => '06:00:00',
+                'work_start_time' => '22:00:00',
+                'work_end_time' => '06:00:00',
+                'late_threshold_minutes' => 0,
+                'required_hours_per_day' => 8,
+                'overtime_threshold_hours' => 8,
+                'expected_hours_per_day' => 8,
+            ],
         ];
 
         foreach ($templates as $template) {

@@ -129,7 +129,7 @@ class ScheduleTemplateController extends Controller
 
         return [
             ...$validated,
-            'type' => 'fixed',
+            'type' => $type,
             'work_days' => $enabledDays,
             'clock_in_start' => $clockInWindow['start'],
             'clock_in_end' => $clockInWindow['end'],
@@ -152,7 +152,7 @@ class ScheduleTemplateController extends Controller
             'name' => 'required|string|unique:schedule_templates,name' . ($templateId ? ',' . $templateId : ''),
             'description' => 'nullable|string',
             'is_temporary' => 'nullable|boolean',
-            'type' => 'nullable|in:fixed,flexi',
+            'type' => 'nullable|in:fixed,flexi,night',
             'required_hours_per_day' => 'nullable|integer|min:1|max:24',
             'day_rules' => 'required|array|size:7',
             'day_rules.*.day' => 'required|integer|between:0,6',
