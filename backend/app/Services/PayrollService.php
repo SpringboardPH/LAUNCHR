@@ -140,19 +140,27 @@ class PayrollService
      */
     public static function calculateWithholdingTax(float $taxableIncome, string $frequency = 'semi_monthly'): float
     {
-        $tax = 0;
+        if ($taxableIncome <= 0) return 0.0;
+
         $brackets = self::withholdingBrackets($frequency);
 
-        foreach ($brackets as $bracket) {
-            $aboveFrom = $taxableIncome >= $bracket['from'];
-            $belowTo   = $bracket['to'] === null || $taxableIncome <= $bracket['to'];
-            if ($aboveFrom && $belowTo) {
-                $tax = $bracket['fixed'] + ($taxableIncome - $bracket['floor']) * $bracket['rate'];
+        // Match on 'from' only (brackets are ordered ascending, ignore 'to' entirely) — the
+        // seeded/default table's 'to'/'from' pair between brackets doesn't always line up to
+        // the cent (e.g. to: 16666, next from: 16667), which silently taxed anything landing
+        // in that ~1-peso gap at ₱0. Taking the last bracket whose floor the income clears is
+        // immune to that regardless of how the table's boundaries are entered.
+        $bracket = null;
+        foreach ($brackets as $candidate) {
+            if ($taxableIncome >= $candidate['from']) {
+                $bracket = $candidate;
+            } else {
                 break;
             }
         }
 
-        return round($tax, 2);
+        if (!$bracket) return 0.0;
+
+        return round($bracket['fixed'] + ($taxableIncome - $bracket['floor']) * $bracket['rate'], 2);
     }
 
     private static function withholdingBrackets(string $frequency): array
