@@ -242,6 +242,7 @@ class AttendanceController extends Controller
         // clock-in (shift start) date, so this must be resolved before any other
         // check in this method.
         $shiftDate = $today;
+        $adoptedYesterdayShift = false;
         $yesterday = $today->copy()->subDay();
         $ySchedule = $this->getScheduleForDate($employee->id, $yesterday);
         $yRule = $this->getDayRuleForDate($ySchedule, $yesterday);
@@ -255,6 +256,7 @@ class AttendanceController extends Controller
             // (A row with a null clock_in — e.g. pre-marked absent — is still adoptable.)
             if (!$yLog || !$yLog->clock_in_time) {
                 $shiftDate = $yesterday;
+                $adoptedYesterdayShift = true;
                 $schedule = $ySchedule;
                 $dayRule = $yRule;
                 $templateType = $ySchedule->template->type ?? 'fixed';
@@ -396,7 +398,7 @@ class AttendanceController extends Controller
             $wraps = (bool) $schedule?->template?->wrapsMidnight($dayRule);
             if ($wraps) {
                 if ($latestClockInMinutes < $clockInGraceEndMinutes) $latestClockInMinutes += 1440;
-                if ($clockInMinutes < $earlyAllowedMinutes) $clockInMinutes += 1440;
+                if ($adoptedYesterdayShift && $clockInMinutes < $earlyAllowedMinutes) $clockInMinutes += 1440;
             }
 
             if ($clockInMinutes < $earlyAllowedMinutes) {

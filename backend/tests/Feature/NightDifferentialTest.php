@@ -121,7 +121,7 @@ class NightDifferentialTest extends TestCase
         $this->assertEquals('15:00:00', $template->shiftEndFor($earlyRule));
     }
 
-    public function test_wraps_midnight_and_shift_end_for_handle_a_disabled_day_rule_without_crashing()
+    public function test_wraps_midnight_returns_false_for_a_disabled_day_rule()
     {
         $template = new ScheduleTemplate([
             'type' => 'night',
@@ -129,9 +129,10 @@ class NightDifferentialTest extends TestCase
             'work_end_time' => '06:00:00',
         ]);
 
+        // Sunday, disabled: no shift exists that day, so it must not claim to wrap.
         $disabledRule = ['day' => 0, 'enabled' => false, 'clock_in' => null, 'clock_out' => null];
 
-        $this->assertTrue($template->wrapsMidnight($disabledRule));
+        $this->assertFalse($template->wrapsMidnight($disabledRule));
         $this->assertEquals('06:00:00', $template->shiftEndFor($disabledRule));
     }
 
@@ -451,5 +452,35 @@ class NightDifferentialTest extends TestCase
         $this->actingAs($admin)->postJson('/api/attendance/clock-in', [
             'employee_id' => $lateArrivalEmployee->id,
         ])->assertStatus(400);
+    }
+
+    public function test_clock_in_after_already_completing_last_nights_shift_is_rejected_not_a_new_shift()
+    {
+        $employee = $this->makeEmployee('6');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday 22:00
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+
+        $this->travelTo(Carbon::parse('2026-01-06 05:00:00')); // Tuesday 05:00
+        $this->actingAs($admin)->postJson('/api/attendance/clock-out', [
+            'employee_id' => $employee->id,
+            'confirm_early_clock_out' => true,
+        ])->assertOk();
+
+        // Monday's shift is closed. A second arrival at 05:30 is 16.5 hours before
+        // Tuesday's own 22:00 shift and must not be reinterpreted as a post-midnight
+        // arrival for it — that would open a spurious second attendance_log row.
+        $this->travelTo(Carbon::parse('2026-01-06 05:30:00')); // Tuesday 05:30
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertStatus(400);
+
+        $this->assertSame(1, AttendanceLog::where('employee_id', $employee->id)->count());
     }
 }

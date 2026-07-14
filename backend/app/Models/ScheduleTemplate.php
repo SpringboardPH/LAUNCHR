@@ -54,6 +54,10 @@ class ScheduleTemplate extends Model
             return false;
         }
 
+        if ($dayRule !== null && !($dayRule['enabled'] ?? true)) {
+            return false;
+        }
+
         $in = $dayRule['clock_in'] ?? $this->work_start_time;
         $out = $dayRule['clock_out'] ?? $this->work_end_time;
 
