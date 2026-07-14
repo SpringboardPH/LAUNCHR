@@ -155,6 +155,7 @@ class PayrollController extends Controller
                 'absent_days' => 0,
                 'half_days' => 0,
                 'paid_leave_days' => 0,
+                'night_hours' => 0,
             ];
 
             // Fetch approved leaves covering this cutoff — used to classify absent logs
@@ -258,6 +259,12 @@ class PayrollController extends Controller
                         $earlyDepartureMin = max(0, $this->parseTimeToMinutes($workEnd) - $clockOutMin);
                     }
                 }
+
+                // Night differential follows clocked hours, not schedule type — accrues for
+                // fixed, flexi, and rest-day logs alike (DOLE Art. 86).
+                $metrics['night_hours'] += AttendanceService::calculateNightHours(
+                    $log->clock_in_time, $log->clock_out_time
+                );
 
                 // Only count overtime hours if status is actually 'overtime' (not covered by grace
                 // period) — except fixed-schedule rest days, where 'status' is already spent on the
@@ -412,6 +419,9 @@ class PayrollController extends Controller
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
+            $nightDiffPay = \App\Services\PayrollService::calculateNightDifferential(
+                $metrics['night_hours'], $hourlyRate
+            );
 
             // Paid leave: daily employees need explicit pay added back;
             // monthly employees already receive full salary so no adjustment needed.
@@ -431,12 +441,13 @@ class PayrollController extends Controller
             $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis, $periods);
             $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis, $periods);
 
-            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay;
+            $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay + $nightDiffPay;
             $finalGross = $grossBase + $totalAllowances;
 
             // Withholding Tax Calculation
             // Taxable base excludes undeclared allowance (off-the-books, not subject to BIR withholding)
-            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay + $leavePay;
+            // Night differential IS taxable compensation, so it belongs in the tax base.
+            $taxableBase = $grossBase + $overtimePay + $restDayPay + $restDayOTPay + $leavePay + $nightDiffPay;
             $earnedTaxableBase = $taxableBase - ($lateDeduction + $undertimeDeduction + $absentDeduction + $halfDayDeduction);
             $taxableIncome = $earnedTaxableBase - ($sss + $philhealth + $pagibig);
             $wTax = \App\Services\PayrollService::calculateWithholdingTax($taxableIncome, $frequency);
@@ -465,6 +476,7 @@ class PayrollController extends Controller
                         ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
                         ['label' => 'Allowance', 'amount' => round($undeclaredAllowance, 2)],
                         ['label' => 'Leave Pay', 'amount' => round($leavePay, 2)],
+                        ['label' => 'Night Differential (' . round($metrics['night_hours'], 1) . ' hrs)', 'amount' => round($nightDiffPay, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(

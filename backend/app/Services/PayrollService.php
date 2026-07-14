@@ -4,6 +4,22 @@ namespace App\Services;
 
 class PayrollService
 {
+    public const NIGHT_DIFF_START = '22:00';
+    public const NIGHT_DIFF_END = '06:00';
+    public const NIGHT_DIFF_RATE = 0.10;
+
+    /**
+     * Night differential pay: a 10% premium on top of the base hourly rate for
+     * hours worked within the NIGHT_DIFF_START-NIGHT_DIFF_END window (DOLE Art. 86).
+     * ponytail: night hours that overlap overtime are paid ND at the base hourly
+     * rate, not the OT-inflated rate. Upgrade path: pass an OT-hours split into
+     * this method and apply NIGHT_DIFF_RATE to the OT-rate portion separately.
+     */
+    public static function calculateNightDifferential(float $nightHours, float $hourlyRate): float
+    {
+        return $nightHours * $hourlyRate * self::NIGHT_DIFF_RATE;
+    }
+
     /**
      * Calculate SSS Employee Contribution (PH 2024/2025)
      * Fetches from system_settings table to allow HR updates

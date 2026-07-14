@@ -109,7 +109,10 @@ class AttendanceService
             return max(0, min($b, $d) - max($a, $c));
         };
 
-        $minutes = $overlap($inMin, $outMin, 1320, 1800) + $overlap($inMin, $outMin, -120, 360);
+        $startMin = self::parseTimeToMinutes(\App\Services\PayrollService::NIGHT_DIFF_START);
+        $endMin = self::parseTimeToMinutes(\App\Services\PayrollService::NIGHT_DIFF_END);
+
+        $minutes = $overlap($inMin, $outMin, $startMin, $endMin + 1440) + $overlap($inMin, $outMin, $startMin - 1440, $endMin);
 
         return $minutes / 60;
     }

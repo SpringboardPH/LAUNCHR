@@ -627,4 +627,168 @@ class NightDifferentialTest extends TestCase
             ->where('date', '2026-01-05')->sole();
         $this->assertSame('absent', $log->status);
     }
+
+    // ── Night differential PAY (money path) ──────────────────────────────
+
+    private function makePayEmployee(string $suffix): Employee
+    {
+        return Employee::create([
+            'employee_id' => "EMP-NDPAY-{$suffix}",
+            'first_name'  => 'NightPay',
+            'last_name'   => "Case{$suffix}",
+            'email'       => "nd-pay-{$suffix}@example.com",
+            'position'    => 'Tester',
+            'hire_date'   => '2026-01-01',
+            'salary'      => 1000,
+            'rate_type'   => 'daily',
+            'status'      => 'active',
+        ]);
+    }
+
+    public function test_canonical_night_shift_pays_10_percent_premium_not_110_percent()
+    {
+        $employee = $this->makePayEmployee('1');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (8 hrs)');
+        $this->assertNotNull($ndLine);
+        $this->assertEquals(100.00, (float) $ndLine['amount']);
+    }
+
+    public function test_flexi_employee_earns_night_differential_with_no_schedule_gating()
+    {
+        $employee = $this->makePayEmployee('2');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '20:00:00',
+            'clock_out_time' => '04:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'flexi',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (6 hrs)');
+        $this->assertNotNull($ndLine);
+        $this->assertEquals(75.00, (float) $ndLine['amount']);
+    }
+
+    public function test_fixed_day_shift_overtime_into_night_window_earns_partial_night_differential()
+    {
+        $employee = $this->makePayEmployee('3');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '09:00:00',
+            'clock_out_time' => '23:30:00',
+            'status' => 'overtime',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (1.5 hrs)');
+        $this->assertNotNull($ndLine);
+        $this->assertEquals(18.75, (float) $ndLine['amount']);
+    }
+
+    public function test_pure_day_shift_has_no_night_differential_line()
+    {
+        $employee = $this->makePayEmployee('4');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '09:00:00',
+            'clock_out_time' => '18:00:00',
+            'status' => 'completed',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $hasNdLine = collect($payroll->allowances)->contains(
+            fn($a) => str_starts_with($a['label'], 'Night Differential')
+        );
+        $this->assertFalse($hasNdLine);
+    }
+
+    public function test_night_differential_is_included_in_taxable_gross_pay()
+    {
+        $nightEmployee = $this->makePayEmployee('5n');
+        AttendanceLog::create([
+            'employee_id' => $nightEmployee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+        ]);
+
+        $dayEmployee = $this->makePayEmployee('5d');
+        AttendanceLog::create([
+            'employee_id' => $dayEmployee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '09:00:00',
+            'clock_out_time' => '18:00:00',
+            'status' => 'completed',
+        ]);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $nightPayroll = \App\Models\Payroll::where('employee_id', $nightEmployee->id)->sole();
+        $dayPayroll = \App\Models\Payroll::where('employee_id', $dayEmployee->id)->sole();
+
+        $this->assertEquals(
+            100.00,
+            round(((float) $nightPayroll->gross_pay) - ((float) $dayPayroll->gross_pay), 2)
+        );
+    }
+
+    public function test_overnight_shift_counts_as_a_single_day_worked_not_two()
+    {
+        $employee = $this->makePayEmployee('6');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $this->assertSame(1, $payroll->days_worked);
+    }
 }
