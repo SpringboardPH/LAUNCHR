@@ -710,7 +710,154 @@ class NightDifferentialTest extends TestCase
         $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
         $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (1.5 hrs)');
         $this->assertNotNull($ndLine);
-        $this->assertEquals(18.75, (float) $ndLine['amount']);
+        // No schedule assigned -> default work window 09:00-18:00, expectedHours = 9.
+        // hours_worked = 14.5, so overtime_hours = 14.5 - 9 = 5.5. The OT tail is the
+        // last 5.5h of the shift = 18:00->23:30, which contains ALL 1.5 night hours
+        // (22:00-23:30) -> every night hour here is OT-rate, not base-rate.
+        // 1.5h x 125 x 1.25 x 0.10 = 23.4375 -> 23.44
+        $this->assertEquals(23.44, (float) $ndLine['amount']);
+    }
+
+    public function test_rest_day_night_shift_earns_night_differential_at_rest_day_rate()
+    {
+        $employee = $this->makePayEmployee('7');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '22:00:00',
+            'clock_out_time' => '06:00:00',
+            'status' => 'rest_day',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (8 hrs)');
+        $this->assertNotNull($ndLine);
+        // All 8 night hours are rest-day regular hours (no OT approved: 8h worked <
+        // default expected 9h). 8h x 125 x 1.30 x 0.10 = 130.00
+        $this->assertEquals(130.00, (float) $ndLine['amount']);
+    }
+
+    public function test_night_overtime_hours_earn_night_differential_at_ot_rate_mixed_bucket()
+    {
+        $employee = $this->makePayEmployee('8');
+        $template = ScheduleTemplate::create([
+            'type' => 'night',
+            'name' => 'Night OT Bucket Template',
+            'work_days' => [1, 2, 3, 4, 5],
+            'day_rules' => $this->buildWeekDayRules([1, 2, 3, 4, 5], '18:00:00', '02:00:00'),
+            'start_time' => '18:00:00',
+            'end_time' => '02:00:00',
+            'work_start_time' => '18:00:00',
+            'work_end_time' => '02:00:00',
+            'required_hours_per_day' => 8,
+        ]);
+        $this->assignSchedule($employee, $template);
+
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '18:00:00',
+            'clock_out_time' => '04:00:00',
+            'status' => 'overtime',
+            'schedule_type' => 'night',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        // hours_worked = 18:00->04:00 = 10h, overtime_hours = 10 - 8 = 2.
+        // OT tail = shiftTimeBy('04:00:00', 2) = 02:00:00 -> tail is 02:00-04:00.
+        // total night hours (22:00-06:00 overlap of 18:00-04:00) = 22:00-04:00 = 6h.
+        // OT-tail night hours = overlap(02:00-04:00, 22:00-06:00) = 2h.
+        // regular night hours = 6h - 2h = 4h (mixed bucket: both regular and OT).
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (6 hrs)');
+        $this->assertNotNull($ndLine);
+        // 4h regular: 4 x 125 x 1.00 x 0.10 = 50.00
+        // 2h OT:      2 x 125 x 1.25 x 0.10 = 31.25
+        // total = 81.25
+        $this->assertEquals(81.25, (float) $ndLine['amount']);
+    }
+
+    public function test_rest_day_overtime_night_hours_earn_night_differential_at_rest_day_ot_rate()
+    {
+        $employee = $this->makePayEmployee('9');
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '20:00:00',
+            'clock_out_time' => '08:00:00',
+            'status' => 'rest_day',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        // No schedule assigned -> default expected hours = 9. hours_worked = 20:00->08:00
+        // = 12h, so overtime_hours = 12 - 9 = 3 (fixed rest day: excess hours count as OT
+        // directly, no separate approval step). OT tail = shiftTimeBy('08:00:00', 3) =
+        // 05:00:00 -> tail is 05:00-08:00. Total night hours (20:00-08:00 overlap with
+        // 22:00-06:00) = 8h. OT-tail night hours = overlap(05:00-08:00, 22:00-06:00) = 1h.
+        // Rest-day-regular night hours = 8h - 1h = 7h.
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (8 hrs)');
+        $this->assertNotNull($ndLine);
+        // 7h rest-day-regular: 7 x 125 x 1.30 x 0.10 = 113.75
+        // 1h rest-day-OT:      1 x 125 x 1.69 x 0.10 = 21.125
+        // total = 134.875 -> rounds to 134.88
+        $this->assertEquals(134.88, (float) $ndLine['amount']);
+    }
+
+    public function test_unapproved_overtime_night_hours_earn_night_differential_at_base_rate()
+    {
+        $employee = $this->makePayEmployee('10');
+        $template = ScheduleTemplate::create([
+            'type' => 'night',
+            'name' => 'Unapproved OT Night Template',
+            'work_days' => [1, 2, 3, 4, 5],
+            'day_rules' => $this->buildWeekDayRules([1, 2, 3, 4, 5], '18:00:00', '02:00:00'),
+            'start_time' => '18:00:00',
+            'end_time' => '02:00:00',
+            'work_start_time' => '18:00:00',
+            'work_end_time' => '02:00:00',
+            'required_hours_per_day' => 8,
+        ]);
+        $this->assignSchedule($employee, $template);
+
+        // Same clock times as the mixed-bucket OT test above (18:00->04:00, 10h worked,
+        // 2h beyond the 8h expected), but status is NOT 'overtime' -> $overtimeHours is
+        // gated to 0, so none of the night hours may be treated as OT-rate, even though
+        // 2h of the shift is technically beyond the expected hours.
+        AttendanceLog::create([
+            'employee_id' => $employee->id,
+            'date' => '2026-01-05',
+            'clock_in_time' => '18:00:00',
+            'clock_out_time' => '04:00:00',
+            'status' => 'completed',
+            'schedule_type' => 'night',
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)->postJson('/api/payroll/generate', [
+            'cutoff_start' => '2026-01-05', 'cutoff_end' => '2026-01-05',
+        ])->assertOk();
+
+        $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->sole();
+        $ndLine = collect($payroll->allowances)->firstWhere('label', 'Night Differential (6 hrs)');
+        $this->assertNotNull($ndLine);
+        // All 6 night hours at base rate (no approved OT): 6 x 125 x 1.00 x 0.10 = 75.00
+        // (contrast with the mixed-bucket test's 81.25 for the same clock times, where
+        // status = 'overtime' pushed 2h of it into the OT bucket)
+        $this->assertEquals(75.00, (float) $ndLine['amount']);
     }
 
     public function test_pure_day_shift_has_no_night_differential_line()

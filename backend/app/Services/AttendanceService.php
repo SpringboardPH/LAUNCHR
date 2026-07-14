@@ -118,6 +118,20 @@ class AttendanceService
     }
 
     /**
+     * Shift a time string backward by the given number of hours, wrapping across
+     * midnight (e.g. '06:00:00' shifted back 2h -> '04:00:00'; '01:00:00' shifted
+     * back 2h -> '23:00:00'). Used to locate the start of the chronological OT
+     * tail relative to clock-out.
+     */
+    public static function shiftTimeBy(string $time, float $hoursBefore): string
+    {
+        $minutes = self::parseTimeToMinutes($time) - ($hoursBefore * 60);
+        $normalized = ((int) round($minutes) % 1440 + 1440) % 1440;
+
+        return sprintf('%02d:%02d:00', intdiv($normalized, 60), $normalized % 60);
+    }
+
+    /**
      * Parse time string to minutes.
      */
     public static function parseTimeToMinutes(string $time): int

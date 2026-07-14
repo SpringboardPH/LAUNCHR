@@ -155,7 +155,10 @@ class PayrollController extends Controller
                 'absent_days' => 0,
                 'half_days' => 0,
                 'paid_leave_days' => 0,
-                'night_hours' => 0,
+                'night_hours_regular' => 0,      // x1.00
+                'night_hours_ot' => 0,           // x1.25
+                'night_hours_rest_regular' => 0, // x1.30
+                'night_hours_rest_ot' => 0,      // x1.69
             ];
 
             // Fetch approved leaves covering this cutoff — used to classify absent logs
@@ -260,12 +263,6 @@ class PayrollController extends Controller
                     }
                 }
 
-                // Night differential follows clocked hours, not schedule type — accrues for
-                // fixed, flexi, and rest-day logs alike (DOLE Art. 86).
-                $metrics['night_hours'] += AttendanceService::calculateNightHours(
-                    $log->clock_in_time, $log->clock_out_time
-                );
-
                 // Only count overtime hours if status is actually 'overtime' (not covered by grace
                 // period) — except fixed-schedule rest days, where 'status' is already spent on the
                 // manual rest_day flag, so hours beyond the expected day count as OT directly (fixed
@@ -273,6 +270,30 @@ class PayrollController extends Controller
                 $overtimeHours = ($log->status === 'overtime' || (!$isFlexiSchedule && $isRestDay))
                     ? $details['overtime_hours']
                     : 0;
+
+                // Night differential follows clocked hours, not schedule type — accrues for
+                // fixed, flexi, and rest-day logs alike (DOLE Art. 86). Night hours are bucketed
+                // by the rate that applies to them: overtime is the chronological TAIL of the
+                // shift, so the night hours inside that tail get the OT/rest-day-OT rate, and
+                // the rest get the regular/rest-day rate. Reuses $overtimeHours (already gated
+                // to APPROVED overtime above) so unapproved excess hours never get the OT rate.
+                $totalNight = AttendanceService::calculateNightHours($log->clock_in_time, $log->clock_out_time);
+                $otNight = $overtimeHours > 0
+                    ? AttendanceService::calculateNightHours(
+                        AttendanceService::shiftTimeBy($log->clock_out_time, $overtimeHours),
+                        $log->clock_out_time
+                    )
+                    : 0.0;
+                $otNight = min($otNight, $totalNight);
+                $regularNight = max(0, $totalNight - $otNight);
+
+                if ($isRestDay) {
+                    $metrics['night_hours_rest_ot'] += $otNight;
+                    $metrics['night_hours_rest_regular'] += $regularNight;
+                } else {
+                    $metrics['night_hours_ot'] += $otNight;
+                    $metrics['night_hours_regular'] += $regularNight;
+                }
 
                 // Track per-date OT hours for request deduplication
                 if (!$isRestDay && $details['overtime_hours'] > 0) {
@@ -419,9 +440,13 @@ class PayrollController extends Controller
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
-            $nightDiffPay = \App\Services\PayrollService::calculateNightDifferential(
-                $metrics['night_hours'], $hourlyRate
-            );
+            $nightDiffPay =
+                  \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_regular'], $hourlyRate, 1.00)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_ot'], $hourlyRate, 1.25)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_regular'], $hourlyRate, 1.30)
+                + \App\Services\PayrollService::calculateNightDifferential($metrics['night_hours_rest_ot'], $hourlyRate, 1.69);
+            $totalNightHours = $metrics['night_hours_regular'] + $metrics['night_hours_ot']
+                + $metrics['night_hours_rest_regular'] + $metrics['night_hours_rest_ot'];
 
             // Paid leave: daily employees need explicit pay added back;
             // monthly employees already receive full salary so no adjustment needed.
@@ -476,7 +501,7 @@ class PayrollController extends Controller
                         ['label' => 'Rest Day OT Pay', 'amount' => round($restDayOTPay, 2)],
                         ['label' => 'Allowance', 'amount' => round($undeclaredAllowance, 2)],
                         ['label' => 'Leave Pay', 'amount' => round($leavePay, 2)],
-                        ['label' => 'Night Differential (' . round($metrics['night_hours'], 1) . ' hrs)', 'amount' => round($nightDiffPay, 2)],
+                        ['label' => 'Night Differential (' . round($totalNightHours, 2) . ' hrs)', 'amount' => round($nightDiffPay, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
             $payroll = Payroll::updateOrCreate(
