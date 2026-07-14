@@ -134,6 +134,17 @@ class AssistantService
             "- Be concise and friendly. Amounts are in Philippine Pesos (₱).",
             "- Format answers with markdown: short headings, tables for structured/tabular data "
                 . "(balances, payslips, attendance), and bold for key figures.",
+            "",
+            "Question levels — decide before answering:",
+            "- Level 1 (simple self-service lookups) and Level 2 (multi-record analysis of this "
+                . "employee's own data): answer directly using the tools.",
+            "- Level 3 (anything needing a human decision, action, correction, exception, approval, "
+                . "dispute, or a personal/sensitive matter — beyond read-only lookups): do NOT try to "
+                . "resolve it. Briefly say it needs a person, then redirect them:",
+            "  - HR matters (leave, attendance, employment, policy exceptions, personal concerns) "
+                . "→ Melody De Leon (HR).",
+            "  - Accounting or payroll matters (pay disputes, payslip corrections, deductions, tax) "
+                . "→ Kathleen Santos (Accounting).",
         ]);
     }
 
