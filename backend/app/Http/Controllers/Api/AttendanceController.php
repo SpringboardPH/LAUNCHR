@@ -248,19 +248,32 @@ class AttendanceController extends Controller
         $yRule = $this->getDayRuleForDate($ySchedule, $yesterday);
 
         if ($ySchedule?->template?->wrapsMidnight($yRule)
-            && SystemClock::timeString() < $ySchedule->template->shiftEndFor($yRule)) {
+            && $this->parseTimeToMinutes(SystemClock::timeString())
+                < $this->parseTimeToMinutes($ySchedule->template->shiftEndFor($yRule))) {
             $yLog = AttendanceLog::where('employee_id', $employee->id)
                 ->whereDate('date', $yesterday->toDateString())
                 ->first();
-            // Only adopt yesterday's shift if they have not already clocked in for it.
-            // (A row with a null clock_in — e.g. pre-marked absent — is still adoptable.)
-            if (!$yLog || !$yLog->clock_in_time) {
-                $shiftDate = $yesterday;
-                $adoptedYesterdayShift = true;
-                $schedule = $ySchedule;
-                $dayRule = $yRule;
-                $templateType = $ySchedule->template->type ?? 'fixed';
+
+            if ($yLog && $yLog->clock_in_time) {
+                // Yesterday's wrapping shift is still in progress (or just ended)
+                // and already has a clock-in — this arrival is not a new shift,
+                // it's a repeat touch on the same one. Reject explicitly instead
+                // of falling through to today's window checks, which would
+                // otherwise report a misleading "too early" message.
+                return response()->json([
+                    'success' => false,
+                    'message' => $yLog->clock_out_time
+                        ? 'You have already clocked out for the current shift'
+                        : 'You have already clocked in for the current shift',
+                ], 400);
             }
+
+            // A row with a null clock_in — e.g. pre-marked absent — is still adoptable.
+            $shiftDate = $yesterday;
+            $adoptedYesterdayShift = true;
+            $schedule = $ySchedule;
+            $dayRule = $yRule;
+            $templateType = $ySchedule->template->type ?? 'fixed';
         }
 
         // Check if employee is on leave today

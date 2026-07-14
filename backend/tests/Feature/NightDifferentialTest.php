@@ -483,4 +483,54 @@ class NightDifferentialTest extends TestCase
 
         $this->assertSame(1, AttendanceLog::where('employee_id', $employee->id)->count());
     }
+
+    public function test_re_clock_in_while_last_nights_shift_still_open_is_rejected_and_leaves_it_open()
+    {
+        $employee = $this->makeEmployee('7');
+        $template = $this->makeNightTemplate(
+            $this->buildWeekDayRules([1, 2, 3, 4, 5], '22:00:00', '06:00:00'),
+            [1, 2, 3, 4, 5]
+        );
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->travelTo(Carbon::parse('2026-01-05 22:00:00')); // Monday 22:00
+        $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id])
+            ->assertCreated();
+
+        // Monday's row is still open (no clock-out yet). A second arrival at
+        // 03:00 must be recognized as the same shift continuing, not a fresh
+        // clock-in — otherwise it opens a second row and strands Monday's open
+        // forever (clockOut() would match Tuesday's row first).
+        $this->travelTo(Carbon::parse('2026-01-06 03:00:00')); // Tuesday 03:00
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id]);
+        $response->assertStatus(400);
+        $this->assertSame('You have already clocked in for the current shift', $response->json('message'));
+
+        $this->assertSame(1, AttendanceLog::where('employee_id', $employee->id)->count());
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-05', $log->date->toDateString());
+        $this->assertNull($log->clock_out_time);
+    }
+
+    public function test_mixed_week_early_arrival_does_not_wrongly_adopt_a_disabled_sunday()
+    {
+        $employee = $this->makeEmployee('8');
+        $template = $this->makeNightTemplate($this->buildMixedWeekDayRules(), [1, 3]);
+        $this->assignSchedule($employee, $template);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Monday's day rule is 06:00-15:00; Sunday is disabled with null times.
+        // Without the wrapsMidnight() disabled-day fix, this arrival would
+        // wrongly adopt Sunday's (non-existent) wrapping shift via the
+        // template-time fallback and get rejected as an unscheduled rest day.
+        $this->travelTo(Carbon::parse('2026-01-05 05:30:00')); // Monday 05:30, within the 1hr early allowance
+        $response = $this->actingAs($admin)->postJson('/api/attendance/clock-in', ['employee_id' => $employee->id]);
+
+        $response->assertCreated();
+        $this->assertSame('working', $response->json('data.status'));
+
+        $log = AttendanceLog::where('employee_id', $employee->id)->sole();
+        $this->assertSame('2026-01-05', $log->date->toDateString());
+    }
 }
