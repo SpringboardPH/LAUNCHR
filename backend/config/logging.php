@@ -123,6 +123,13 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'otp' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/otp.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

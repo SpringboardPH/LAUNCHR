@@ -9,6 +9,7 @@ use App\Models\SystemSettings;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
@@ -83,7 +84,23 @@ class AuthController extends Controller
 
         // Generate OTP and send email
         $otp = OtpCode::generateForUser($user);
-        Mail::to($user->email)->queue(new OtpMail($user, $otp->code));
+
+        // ponytail: dedicated OTP log — code is recoverable here regardless of mail/queue health
+        Log::channel('otp')->info('OTP generated', [
+            'email' => $user->email,
+            'code' => $otp->code,
+            'expires_at' => (string) $otp->expires_at,
+        ]);
+
+        try {
+            Mail::to($user->email)->queue(new OtpMail($user, $otp->code));
+            Log::channel('otp')->info('OTP mail queued', ['email' => $user->email]);
+        } catch (\Throwable $e) {
+            Log::channel('otp')->error('OTP mail dispatch failed', [
+                'email' => $user->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
