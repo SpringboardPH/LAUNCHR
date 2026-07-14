@@ -23,6 +23,13 @@ class AttendanceService
         $inMinutes = self::parseTimeToMinutes($clockIn);
         $startMinutes = self::parseTimeToMinutes($workStart);
 
+        // Overnight shift: an "early" arrival more than 12h before the shift start
+        // can only mean it is actually the next calendar day (e.g. 22:00 shift start,
+        // 00:30 clock-in). Normalise before computing lateness/duration.
+        if ($startMinutes - $inMinutes > 720) {
+            $inMinutes += 1440;
+        }
+
         // Treat early clock-in within the hour as "normal" start for duration/OT
         $effectiveInMin = $inMinutes;
         if ($inMinutes < $startMinutes && $inMinutes >= ($startMinutes - 60)) {
@@ -30,7 +37,7 @@ class AttendanceService
         }
 
         $outMinutes = $clockOut ? self::parseTimeToMinutes($clockOut) : $inMinutes;
-        
+
         // Handle overnight shifts if necessary
         if ($outMinutes < $inMinutes) {
             $outMinutes += 1440;
@@ -81,6 +88,30 @@ class AttendanceService
         }
 
         return 'completed';
+    }
+
+    /**
+     * Calculate the number of hours the clocked interval overlaps the nightly
+     * 22:00-06:00 night differential window (DOLE Art. 86). Based purely on the
+     * actual clock-in/clock-out times, never the schedule.
+     */
+    public static function calculateNightHours(?string $clockIn, ?string $clockOut): float
+    {
+        if (!$clockIn || !$clockOut) {
+            return 0.0;
+        }
+
+        $inMin = self::parseTimeToMinutes($clockIn);
+        $outMin = self::parseTimeToMinutes($clockOut);
+        if ($outMin < $inMin) $outMin += 1440;
+
+        $overlap = function (int $a, int $b, int $c, int $d): float {
+            return max(0, min($b, $d) - max($a, $c));
+        };
+
+        $minutes = $overlap($inMin, $outMin, 1320, 1800) + $overlap($inMin, $outMin, -120, 360);
+
+        return $minutes / 60;
     }
 
     /**
@@ -165,6 +196,13 @@ class AttendanceService
         $inMin = self::parseTimeToMinutes($clockIn);
         $outMin = self::parseTimeToMinutes($clockOut);
         $startMin = self::parseTimeToMinutes($workStart);
+
+        // Overnight shift: an "early" arrival more than 12h before the shift start
+        // can only mean it is actually the next calendar day (e.g. 22:00 shift start,
+        // 00:30 clock-in). Normalise before computing lateness/duration.
+        if ($startMin - $inMin > 720) {
+            $inMin += 1440;
+        }
 
         // Treat early clock-in within the hour as "normal" start for duration/OT
         $effectiveInMin = $inMin;
