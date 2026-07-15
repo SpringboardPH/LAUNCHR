@@ -367,7 +367,13 @@ class PayrollController extends Controller
                 // undertime deductions don't apply on top of that, since there's no
                 // scheduled window to be late for or leave early from on a day off.
                 if (!$isRestDay) {
-                    $metrics['late_minutes'] += $details['late_minutes'];
+                    // 'completed' means the grace period covered the deviation (see
+                    // AttendanceService::calculateStatus) — calculateDetails()'s
+                    // late_minutes is the raw pre-grace value, so it must be excluded
+                    // here or grace-covered clock-ins still get docked.
+                    if ($log->status !== 'completed') {
+                        $metrics['late_minutes'] += $details['late_minutes'];
+                    }
                     $metrics['undertime_minutes'] += $earlyDepartureMin;
 
                     // Flexi undertime is deducted at the employee's own required-hours rate
