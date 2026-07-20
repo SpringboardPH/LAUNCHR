@@ -11,6 +11,31 @@ import { Plus, Banknote, Calendar, ChevronLeft, ChevronRight, FileDown, CheckCir
 import { getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 import ExcelJS from 'exceljs'
 
+// Earnings with their own dedicated payslip rows (G27–G34)
+const DEDICATED_EARNINGS = ['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday', '13th Month Pay']
+// Predefined allowances that roll into the "Allowances" line (G35)
+const ALLOWANCE_LABELS = ['Bonus', 'Travel Allowance', 'Allowance']
+
+// Splits allowances into the G35 "Allowances" total and the G36 "Others: <names>" line.
+// Anything that isn't a dedicated earning or a predefined allowance is a custom "Other" field.
+function splitAllowanceLines(allowances) {
+  const list = Array.isArray(allowances)
+    ? allowances
+    : Object.entries(allowances || {}).map(([label, amount]) => ({ label, amount }))
+  let allowancesAmt = 0
+  const others = []
+  for (const a of list) {
+    const label = (a?.label || '').trim()
+    const amt = Number(a?.amount || 0)
+    if (!label || DEDICATED_EARNINGS.includes(label) || label === 'Incentives/Others') continue
+    if (ALLOWANCE_LABELS.includes(label)) { allowancesAmt += amt; continue }
+    others.push({ label, amt }) // custom-typed "Other" field
+  }
+  const othersAmt = others.reduce((s, o) => s + o.amt, 0)
+  const othersLabel = others.length ? `Others: ${others.map(o => o.label).join(', ')}` : ''
+  return { allowancesAmt, othersLabel, othersAmt }
+}
+
 export default function PayrollPage() {
   const [navigatedCutoff, setNavigatedCutoff] = useState(() => {
     try { return JSON.parse(localStorage.getItem('payroll_last_cutoff')) } catch { return null }
@@ -559,8 +584,7 @@ export default function PayrollPage() {
         const halfDayAmount = getDeductionAmount('Half Day')
         const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
 
-        const otherAllowances = payroll.allowances?.filter(a => !['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Night Differential', 'Special Holiday', 'Legal Holiday', '13th Month Pay', 'Incentives/Others'].includes(a.label)) || []
-        const customAllowancesAmount = otherAllowances.reduce((sum, a) => sum + Number(a.amount || 0), 0)
+        const { allowancesAmt, othersLabel, othersAmt } = splitAllowanceLines(payroll.allowances)
 
         const fieldsMap = {
           'E13': employeeName,
@@ -588,8 +612,9 @@ export default function PayrollPage() {
           'G32': Number(specialHolidayAmount) || 0,
           'G33': Number(legalHolidayAmount) || 0,
           'G34': Number(getEarningsAmount('13th Month Pay')) || 0,
-          'G35': Number(customAllowancesAmount) || 0,
-          'G36': Number(getEarningsAmount('Incentives/Others')) || 0,
+          'G35': Number(allowancesAmt) || 0,
+          'C36': othersLabel,
+          'G36': Number(othersAmt) || 0,
           'G39': Number(payroll.gross_pay) || 0,
           'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
           'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
@@ -683,8 +708,7 @@ export default function PayrollPage() {
     const absentAmt     = getD('Absent')
     const halfDayAmt    = getD('Half Day')
 
-    const hardcodedLabels = ['overtime pay','rest day pay','rest day ot pay','night differential','special holiday','legal holiday','incentives/others','13th month pay']
-    const generalAllowancesAmt = (payroll.allowances || []).filter(a => !hardcodedLabels.includes(a.label?.trim().toLowerCase())).reduce((s, a) => s + Number(a.amount || 0), 0)
+    const { allowancesAmt, othersLabel, othersAmt } = splitAllowanceLines(payroll.allowances)
 
     const standardDeductionLabels = ['Late','Undertime','Absent','Half Day','SSS EE Contribution','PhilHealth EE Contribution','Pag-IBIG EE Contribution','SSS Loan','Pag-IBIG Loan','Cash Advance/Others','Withholding Tax']
     const customDeductionsAmt = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount }))).filter(d => !standardDeductionLabels.includes(d.label)).reduce((s, d) => s + Number(d.amount || 0), 0)
@@ -716,8 +740,9 @@ export default function PayrollPage() {
       'G32': Number(specialHol) || 0,
       'G33': Number(legalHol) || 0,
       'G34': Number(getE('13th Month Pay')) || 0,
-      'G35': Number(generalAllowancesAmt) || 0,
-      'G36': Number(getE('Incentives/Others')) || 0,
+      'G35': Number(allowancesAmt) || 0,
+      'C36': othersLabel,
+      'G36': Number(othersAmt) || 0,
       'G39': Number(payroll.gross_pay) || 0,
       'N27': (payroll.late_minutes || 0) + (payroll.undertime_minutes || 0) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
       'N28': absentAmt > 0 && dRate > 0 ? `${(absentAmt / dRate).toFixed(2)}d` : '0d',
@@ -1303,7 +1328,7 @@ export default function PayrollPage() {
                         else if (e.target.value) handleAddField('allowances', e.target.value)
                         e.target.value = ''
                       }}
-                      className="text-[10px] text-brand-600 font-bold bg-brand-50 hover:bg-brand-100 px-2 py-1 rounded border-none focus:ring-0"
+                      className="text-[10px] text-blue-600 font-bold bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border-none focus:ring-0"
                     >
                       <option value="">+ Add Item</option>
                       <option value="Overtime Pay">Overtime Pay</option>
