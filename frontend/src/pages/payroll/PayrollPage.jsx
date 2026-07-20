@@ -1565,7 +1565,7 @@ export default function PayrollPage() {
                       </div>
                       {selectedPayroll.undeclared_salary && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Undeclared Salary</span>
+                          <span className="text-gray-500">Benefits</span>
                           <span className="font-bold text-blue-700">₱{Number(selectedPayroll.undeclared_salary).toLocaleString()}</span>
                         </div>
                       )}
@@ -1960,7 +1960,7 @@ export default function PayrollPage() {
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Current Setting</p>
               <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                 <p className="text-sm font-bold text-gray-900">
-                  Using: <span className="text-brand-600">{selectedPayroll?.use_undeclared ? 'Undeclared Salary' : 'Base Salary'}</span>
+                  Using: <span className="text-brand-600">{selectedPayroll?.use_undeclared ? 'Benefits' : 'Base Salary'}</span>
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Daily rate: ₱{Number(selectedPayroll?.daily_rate).toLocaleString()}
@@ -1975,7 +1975,7 @@ export default function PayrollPage() {
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">After Switch</p>
               <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm font-bold text-blue-900">
-                  Will use: <span className="text-blue-600">{selectedPayroll?.use_undeclared ? 'Base Salary' : 'Undeclared Salary'}</span>
+                  Will use: <span className="text-blue-600">{selectedPayroll?.use_undeclared ? 'Base Salary' : 'Benefits'}</span>
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   Daily and hourly rates will be recalculated
