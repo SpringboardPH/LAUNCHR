@@ -1412,8 +1412,6 @@ export default function PayrollPage() {
                       <option value="Special Holiday">Special Holiday</option>
                       <option value="Legal Holiday">Legal Holiday</option>
                       <option value="13th Month Pay">13th Month Pay</option>
-                      <option value="Bonus">Bonus</option>
-                      <option value="Travel Allowance">Travel Allowance</option>
                       <option value="custom">Other (Custom)</option>
                     </select>
                   )}
