@@ -16,8 +16,9 @@ const DEDICATED_EARNINGS = ['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', '
 // Predefined allowances that roll into the "Allowances" line (G35)
 const ALLOWANCE_LABELS = ['Bonus', 'Travel Allowance', 'Allowance']
 
-// Splits allowances into the G35 "Allowances" total and the G36 "Others: <names>" line.
-// Anything that isn't a dedicated earning or a predefined allowance is a custom "Other" field.
+// Splits allowances into the G35 "Allowances" total and the individual custom
+// "Other" earning items. Anything that isn't a dedicated earning or a predefined
+// allowance is a custom "Other" field (rendered as its own payslip line).
 function splitAllowanceLines(allowances) {
   const list = Array.isArray(allowances)
     ? allowances
@@ -31,9 +32,85 @@ function splitAllowanceLines(allowances) {
     if (ALLOWANCE_LABELS.includes(label)) { allowancesAmt += amt; continue }
     others.push({ label, amt }) // custom-typed "Other" field
   }
-  const othersAmt = others.reduce((s, o) => s + o.amt, 0)
-  const othersLabel = others.length ? `Others: ${others.map(o => o.label).join(', ')}` : ''
-  return { allowancesAmt, othersLabel, othersAmt }
+  return { allowancesAmt, others }
+}
+
+// Deductions with their own dedicated payslip rows (O27–O35). Everything else
+// (cash-advance repayments + any custom-typed deduction) is an "Other" deduction
+// that currently lumps into the single O36 total — we itemize these.
+const DEDICATED_DEDUCTIONS = ['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'SSS Loan', 'Pag-IBIG Loan', 'Withholding Tax']
+
+// Custom-typed "Other" fields have editable labels; standard fields (Absent, SSS,
+// Cash Advance, etc.) show a fixed label — only their amount is editable. A blank
+// label means a freshly added custom field, so it stays editable.
+const isCustomEarning = (label) => !DEDICATED_EARNINGS.includes(label) && !ALLOWANCE_LABELS.includes(label) && label !== 'Incentives/Others'
+const isCustomDeduction = (label) => !DEDICATED_DEDUCTIONS.includes(label) && label !== 'Cash Advance/Others'
+
+// Individual "Other" deduction items for the J36/O36 "Cash Advance / Others" line.
+function splitDeductionLines(deductions) {
+  const list = Array.isArray(deductions)
+    ? deductions
+    : Object.entries(deductions || {}).map(([label, amount]) => ({ label, amount }))
+  const others = []
+  for (const d of list) {
+    const label = (d?.label || '').trim()
+    const amt = Number(d?.amount || 0)
+    if (!label || DEDICATED_DEDUCTIONS.includes(label)) continue
+    others.push({ label: label === 'Cash Advance/Others' ? 'Cash Advance' : label, amt })
+  }
+  return { others }
+}
+
+// Row 36 is the static "Others" header line (C36 earnings side, J36 deductions
+// side, both set in the template). When either side has custom items, list each
+// one on its own row inserted directly below — earnings in C/G, deductions in
+// J/O, aligned row-by-row. Item rows are cloned from row 35 (the "Allowances" /
+// loan line), a normal split label+amount row — NOT the header row 36, which the
+// template merges full-width. ExcelJS's spliceRows mishandles merged cells on
+// shift, so we clear all merges first, let it move values/styles cleanly, then
+// rebuild every merge at its shifted position and add the item-row merges.
+const OTHERS_ROW = 36
+const ITEM_STYLE_ROW = OTHERS_ROW - 1 // row 35: a normal split label+amount line
+const CURRENCY_FMT = '"₱"#,##0.00;-"₱"#,##0.00'
+// Merge groups on an item row: label spans right up to the amount (C:F earnings,
+// J:N deductions) so there's no gap between particulars and amount — matching the
+// total rows. Amount cells: G:H earnings, O:P deductions.
+const OTHERS_MERGE_GROUPS = [[3, 6], [7, 8], [10, 14], [15, 16]]
+function insertOthersBreakdown(worksheet, earningsOthers, deductionOthers) {
+  const eN = earningsOthers?.length || 0
+  const dN = deductionOthers?.length || 0
+  const n = Math.max(eN, dN)
+  if (n === 0) return
+
+  const merges = Object.values(worksheet._merges || {}).map(m => ({ top: m.top, left: m.left, bottom: m.bottom, right: m.right }))
+  merges.forEach(m => worksheet.unMergeCells(m.top, m.left, m.bottom, m.right))
+  worksheet.spliceRows(OTHERS_ROW + 1, 0, ...Array(n).fill([]))
+  // Merges below the insertion point shift down by n; those above stay put.
+  merges.forEach(m => {
+    const shift = m.top > OTHERS_ROW ? n : 0
+    try { worksheet.mergeCells(m.top + shift, m.left, m.bottom + shift, m.right) } catch (_) { /* noop */ }
+  })
+
+  const srcRow = worksheet.getRow(ITEM_STYLE_ROW)
+  const setItem = (destRow, labelCol, amtCol, item) => {
+    destRow.getCell(labelCol).value = `   ${item.label}`
+    const amt = destRow.getCell(amtCol)
+    amt.value = Number(item.amt) || 0
+    amt.numFmt = CURRENCY_FMT
+  }
+  for (let k = 0; k < n; k++) {
+    const r = OTHERS_ROW + 1 + k
+    const destRow = worksheet.getRow(r)
+    if (srcRow.height) destRow.height = srcRow.height
+    srcRow.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (cell.style) destRow.getCell(col).style = JSON.parse(JSON.stringify(cell.style))
+    })
+    OTHERS_MERGE_GROUPS.forEach(([c1, c2]) => {
+      try { worksheet.mergeCells(r, c1, r, c2) } catch (_) { /* already merged */ }
+    })
+    if (k < eN) setItem(destRow, 3, 7, earningsOthers[k])   // C label, G amount
+    if (k < dN) setItem(destRow, 10, 15, deductionOthers[k]) // J label, O amount
+  }
 }
 
 export default function PayrollPage() {
@@ -584,7 +661,8 @@ export default function PayrollPage() {
         const halfDayAmount = getDeductionAmount('Half Day')
         const halfDayDays = halfDayAmount > 0 && dRate > 0 ? halfDayAmount / (dRate / 2) : 0
 
-        const { allowancesAmt, othersLabel, othersAmt } = splitAllowanceLines(payroll.allowances)
+        const { allowancesAmt, others } = splitAllowanceLines(payroll.allowances)
+        const { others: deductionOthers } = splitDeductionLines(payroll.deductions)
 
         const fieldsMap = {
           'E13': employeeName,
@@ -613,8 +691,6 @@ export default function PayrollPage() {
           'G33': Number(legalHolidayAmount) || 0,
           'G34': Number(getEarningsAmount('13th Month Pay')) || 0,
           'G35': Number(allowancesAmt) || 0,
-          'C36': othersLabel,
-          'G36': Number(othersAmt) || 0,
           'G39': Number(payroll.gross_pay) || 0,
           'N27': ((payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
           'N28': absentDays ? `${Number(absentDays).toFixed(2)}d` : '0d',
@@ -628,7 +704,6 @@ export default function PayrollPage() {
           'O33': Number(getDeductionAmount('Withholding Tax')) || 0,
           'O34': Number(getDeductionAmount('SSS Loan')) || 0,
           'O35': Number(getDeductionAmount('Pag-IBIG Loan')) || 0,
-          'O36': Number(getDeductionAmount('Cash Advance/Others')) || 0,
           'O39': Number(totalDeductions) || 0,
           'O40': Number(payroll.net_pay) || 0,
         }
@@ -647,6 +722,8 @@ export default function PayrollPage() {
             }
           }
         })
+
+        insertOthersBreakdown(worksheet, others, deductionOthers)
 
         // Protect sheet before sending — prevents employee from editing the paystub
         worksheet.protect('', { selectLockedCells: true, selectUnlockedCells: true })
@@ -708,10 +785,7 @@ export default function PayrollPage() {
     const absentAmt     = getD('Absent')
     const halfDayAmt    = getD('Half Day')
 
-    const { allowancesAmt, othersLabel, othersAmt } = splitAllowanceLines(payroll.allowances)
-
-    const standardDeductionLabels = ['Late','Undertime','Absent','Half Day','SSS EE Contribution','PhilHealth EE Contribution','Pag-IBIG EE Contribution','SSS Loan','Pag-IBIG Loan','Cash Advance/Others','Withholding Tax']
-    const customDeductionsAmt = (Array.isArray(payroll.deductions) ? payroll.deductions : Object.entries(payroll.deductions || {}).map(([label, amount]) => ({ label, amount }))).filter(d => !standardDeductionLabels.includes(d.label)).reduce((s, d) => s + Number(d.amount || 0), 0)
+    const { allowancesAmt, others } = splitAllowanceLines(payroll.allowances)
 
     const fieldsMap = {
       'E13': employeeName,
@@ -741,8 +815,6 @@ export default function PayrollPage() {
       'G33': Number(legalHol) || 0,
       'G34': Number(getE('13th Month Pay')) || 0,
       'G35': Number(allowancesAmt) || 0,
-      'C36': othersLabel,
-      'G36': Number(othersAmt) || 0,
       'G39': Number(payroll.gross_pay) || 0,
       'N27': (payroll.late_minutes || 0) + (payroll.undertime_minutes || 0) ? `${(payroll.late_minutes || 0) + (payroll.undertime_minutes || 0)}m` : '0m',
       'N28': absentAmt > 0 && dRate > 0 ? `${(absentAmt / dRate).toFixed(2)}d` : '0d',
@@ -756,7 +828,6 @@ export default function PayrollPage() {
       'O33': Number(getD('Withholding Tax')) || 0,
       'O34': Number(getD('SSS Loan')) || 0,
       'O35': Number(getD('Pag-IBIG Loan')) || 0,
-      'O36': Number(getD('Cash Advance/Others')) + Number(customDeductionsAmt) || 0,
       'O39': Number(totalDeductions) || 0,
       'O40': Number(payroll.net_pay) || 0,
     }
@@ -775,6 +846,9 @@ export default function PayrollPage() {
       cellRef.value = value
       if (currencyCells.includes(cell)) cellRef.numFmt = '"₱"#,##0.00;-"₱"#,##0.00'
     })
+    const { others } = splitAllowanceLines(payroll.allowances)
+    const { others: deductionOthers } = splitDeductionLines(payroll.deductions)
+    insertOthersBreakdown(worksheet, others, deductionOthers)
   }
 
   // Fetches the paystub template ArrayBuffer (called once per export operation)
@@ -1377,12 +1451,16 @@ export default function PayrollPage() {
                     <div key={idx} className="flex justify-between items-center text-sm p-3 bg-blue-50/50 rounded-lg border border-blue-100 group">
                       {isEditing ? (
                         <>
-                          <input 
-                            className="bg-transparent text-blue-700 placeholder:text-blue-300 focus:outline-none flex-1 mr-2"
-                            value={item.label}
-                            placeholder="Description"
-                            onChange={(e) => handleFieldChange('allowances', idx, 'label', e.target.value)}
-                          />
+                          {isCustomEarning(item.label) ? (
+                            <input
+                              className="bg-transparent text-blue-700 placeholder:text-blue-300 focus:outline-none flex-1 mr-2"
+                              value={item.label}
+                              placeholder="Description"
+                              onChange={(e) => handleFieldChange('allowances', idx, 'label', e.target.value)}
+                            />
+                          ) : (
+                            <span className="text-blue-700 capitalize flex-1 mr-2">{item.label.replace('_', ' ')}</span>
+                          )}
                           <div className="flex items-center gap-2">
                             <input 
                               type="number" 
@@ -1444,12 +1522,16 @@ export default function PayrollPage() {
                     <div key={idx} className="flex justify-between items-center text-sm p-3 bg-red-50/50 rounded-lg border border-red-100 group">
                       {isEditing ? (
                         <>
-                          <input 
-                            className="bg-transparent text-red-700 placeholder:text-red-300 focus:outline-none flex-1 mr-2"
-                            value={item.label}
-                            placeholder="Description"
-                            onChange={(e) => handleFieldChange('deductions', idx, 'label', e.target.value)}
-                          />
+                          {isCustomDeduction(item.label) ? (
+                            <input
+                              className="bg-transparent text-red-700 placeholder:text-red-300 focus:outline-none flex-1 mr-2"
+                              value={item.label}
+                              placeholder="Description"
+                              onChange={(e) => handleFieldChange('deductions', idx, 'label', e.target.value)}
+                            />
+                          ) : (
+                            <span className="text-red-700 capitalize flex-1 mr-2">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : item.label.replace('_', ' ')}</span>
+                          )}
                           <div className="flex items-center gap-2">
                             <input 
                               type="number" 
@@ -1464,7 +1546,7 @@ export default function PayrollPage() {
                         </>
                       ) : (
                         <>
-                          <span className="text-red-700 capitalize">{item.label.replace('_', ' ')}</span>
+                          <span className="text-red-700 capitalize">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : item.label.replace('_', ' ')}</span>
                           <span className="font-semibold text-red-800">-₱{Number(item.amount).toLocaleString()}</span>
                         </>
                       )}
