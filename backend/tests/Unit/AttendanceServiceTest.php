@@ -49,4 +49,15 @@ class AttendanceServiceTest extends TestCase
     {
         $this->assertEquals('overtime', AttendanceService::calculateStatus('09:00:00', '18:00:00', 8, '09:00:00'));
     }
+
+    public function test_overtime_hours_rounded_to_one_decimal()
+    {
+        // 09:00–18:32 = 9h32m on an 8h day -> 1.5333h OT, billed as 1.5h
+        $fixed = AttendanceService::calculateDetails('09:00:00', '18:32:00', 8, '09:00:00');
+        $this->assertSame(1.5, $fixed['overtime_hours']);
+
+        // 09:00–18:37 -> 1.6166h OT, rounds up to 1.6h
+        $flexi = AttendanceService::calculateFlexiDetails('09:00:00', '18:37:00', 8);
+        $this->assertSame(1.6, $flexi['overtime_hours']);
+    }
 }

@@ -436,7 +436,7 @@ class PayrollController extends Controller
                         $reqOtHours    = Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)) / 60;
                         $attendOtHours = $dateOtHours[$reqDate] ?? 0;
                         // Add only the delta beyond what attendance already captured
-                        $additionalOtHours = max(0, $reqOtHours - $attendOtHours);
+                        $additionalOtHours = round(max(0, $reqOtHours - $attendOtHours), 1);
                         $requestOvertimePay += $additionalOtHours * ($dailyRate * 1.25 / 8);
                     }
                 }

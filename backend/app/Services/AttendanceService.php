@@ -183,7 +183,9 @@ class AttendanceService
 
         $minutesWorked = $outMin - $inMin;
         $hoursWorked   = $minutesWorked / 60;
-        $overtimeHours = max(0, $hoursWorked - $requiredHours);
+        // ponytail: OT billed to the nearest 0.1h (6 min) — matches how it's displayed
+        // and paid, so hours * rate always reconciles on the payslip.
+        $overtimeHours = round(max(0, $hoursWorked - $requiredHours), 1);
         $undertimeMin  = max(0, ($requiredHours * 60) - $minutesWorked);
 
         return [
@@ -233,7 +235,8 @@ class AttendanceService
         $hoursWorked = $minutesWorked / 60;
         $lateMin = max(0, $inMin - $startMin);
         
-        $overtimeHours = max(0, $hoursWorked - $expectedHours);
+        // ponytail: nearest 0.1h — see calculateFlexiDetails()
+        $overtimeHours = round(max(0, $hoursWorked - $expectedHours), 1);
         $expectedMinutes = $expectedHours * 60;
         $undertimeMin = max(0, $expectedMinutes - $minutesWorked);
 

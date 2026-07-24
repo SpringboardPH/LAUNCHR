@@ -548,7 +548,7 @@ class AttendanceController extends Controller
             $outMin = $this->parseTimeToMinutes($clockOutTime);
             if ($outMin < $inMin) $outMin += 1440;
             $hoursWorked   = ($outMin - $inMin) / 60;
-            $overtimeHours = max(0, round($hoursWorked - $requiredHours, 2));
+            $overtimeHours = max(0, round($hoursWorked - $requiredHours, 1));
             $isRestDay     = !($dayRule['enabled'] ?? false);
 
             // OT requires HR approval before it's paid — record as completed and
