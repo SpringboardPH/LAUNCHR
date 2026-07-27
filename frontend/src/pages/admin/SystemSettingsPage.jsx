@@ -37,6 +37,62 @@ const WEEKDAYS = [
   { iso: 4, label: 'Thu' }, { iso: 5, label: 'Fri' }, { iso: 6, label: 'Sat' }, { iso: 7, label: 'Sun' },
 ]
 
+// Normalize the server settings array into the flat set of editable values the
+// form holds. Used both to populate the form and to compute the clean baseline.
+const settingsToValues = (settings) => {
+  const now = new Date()
+  const find = (k) => settings.find(s => s.key === k)?.value
+  const asBool = (k, def = false) => {
+    const v = find(k)
+    return v === undefined ? def : (v === 'true' || v === true || v === '1')
+  }
+  const asJsonText = (k) => {
+    const v = find(k)
+    if (v === undefined) return ''
+    return typeof v === 'string' ? v : JSON.stringify(v, null, 2)
+  }
+  return {
+    date: find('system_date') || formatDateForInput(now),
+    time: normalizeTimeValue(find('system_time') || formatTimeForInput(now)),
+    absentMarkingTime: (find('absent_marking_time') || '23:59').substring(0, 5),
+    systemName: find('system_name') || 'LAUNCHR',
+    systemLogo: find('system_logo') || 'launchr_black.svg',
+    payrollTemplate: find('payroll_template') || 'payrolltemplate.xlsx',
+    autoClockOut: asBool('auto_clock_out_enabled'),
+    requireLoginOtp: asBool('login_otp_required'),
+    dtrPageEnabled: asBool('dtr_page_enabled'),
+    dtrUploadFrequency: find('dtr_upload_frequency') ?? 'semi_monthly',
+    dtrPerEmployeeRestriction: asBool('dtr_per_employee_restriction'),
+    dtrCutoff1Day: parseInt(find('dtr_cutoff1_day') ?? '10'),
+    dtrCutoff2Day: parseInt(find('dtr_cutoff2_day') ?? '25'),
+    sssTable: asJsonText('sss_contribution_table'),
+    withholdingTable: asJsonText('withholding_tax_table'),
+    themeColor: find('theme_color') || 'sienna',
+    payrollFrequency: find('payroll_frequency') ?? 'semi_monthly',
+    p1Start: parseInt(find('payroll_period1_start_day') ?? '1'),
+    p1End: parseInt(find('payroll_period1_end_day') ?? '15'),
+    p2Start: parseInt(find('payroll_period2_start_day') ?? '16'),
+    p2End: parseInt(find('payroll_period2_end_day') ?? '31'),
+    pMonthlyStart: parseInt(find('payroll_monthly_start_day') ?? '1'),
+    pMonthlyEnd: parseInt(find('payroll_monthly_end_day') ?? '31'),
+    geoCaptureEnabled: asBool('geo_capture_enabled', true),
+    geofenceEnabled: asBool('geofence_enabled'),
+    geofenceMode: find('geofence_mode') ?? 'enforce',
+    captureDays: parseDays(find('geo_capture_days')),
+    offices: parseOffices(find('office_locations')),
+  }
+}
+
+// Stable serialization of the form values for dirty comparison (fixed key order).
+const snapshotOf = (v) => JSON.stringify([
+  v.date, v.time, v.absentMarkingTime, v.systemName, v.systemLogo, v.payrollTemplate,
+  v.autoClockOut, v.requireLoginOtp, v.dtrPageEnabled, v.dtrUploadFrequency, v.dtrPerEmployeeRestriction,
+  v.dtrCutoff1Day, v.dtrCutoff2Day, v.sssTable, v.withholdingTable, v.themeColor, v.payrollFrequency,
+  v.p1Start, v.p1End, v.p2Start, v.p2End, v.pMonthlyStart, v.pMonthlyEnd,
+  v.geoCaptureEnabled, v.geofenceEnabled, v.geofenceMode, v.captureDays, v.offices,
+  v.hasNewLogo ?? false, v.hasNewTemplate ?? false,
+])
+
 const themePresets = [
   { id: 'green', name: 'Emerald Green', colorClass: 'bg-emerald-600' },
   { id: 'blue', name: 'Ocean Blue', colorClass: 'bg-blue-600' },
@@ -81,8 +137,7 @@ export default function SystemSettingsPage() {
   const [offices, setOffices] = useState([])
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
-  const [dirty, setDirty] = useState(false)
-  const skipDirtyRef = useRef(true)
+  const baselineRef = useRef(null)
 
   const { data: settings = [], isLoading } = useQuery({
     queryKey: adminSettingsKeys.all,
@@ -94,97 +149,41 @@ export default function SystemSettingsPage() {
     queryFn: getLogos,
   })
 
+  // Push a normalized values object into the form's state.
+  const applyValues = (v) => {
+    setDateTime({ date: v.date, time: v.time })
+    setAbsentMarkingTime(v.absentMarkingTime)
+    setSystemName(v.systemName)
+    setSystemLogo(v.systemLogo); setLogoPreview(null); setSelectedFile(null)
+    setPayrollTemplate(v.payrollTemplate); setSelectedTemplateFile(null)
+    setAutoClockOut(v.autoClockOut)
+    setRequireLoginOtp(v.requireLoginOtp)
+    setDtrPageEnabled(v.dtrPageEnabled)
+    setDtrUploadFrequency(v.dtrUploadFrequency)
+    setDtrPerEmployeeRestriction(v.dtrPerEmployeeRestriction)
+    setDtrCutoff1Day(v.dtrCutoff1Day)
+    setDtrCutoff2Day(v.dtrCutoff2Day)
+    setSssTable(v.sssTable)
+    setWithholdingTable(v.withholdingTable)
+    setThemeColor(v.themeColor)
+    setPayrollFrequency(v.payrollFrequency)
+    setP1Start(v.p1Start); setP1End(v.p1End); setP2Start(v.p2Start); setP2End(v.p2End)
+    setPMonthlyStart(v.pMonthlyStart); setPMonthlyEnd(v.pMonthlyEnd)
+    setGeoCaptureEnabled(v.geoCaptureEnabled)
+    setGeofenceEnabled(v.geofenceEnabled)
+    setGeofenceMode(v.geofenceMode)
+    setCaptureDays(v.captureDays)
+    setOffices(v.offices)
+  }
+
   useEffect(() => {
     if (settings.length > 0) {
-      // Loading server values — the watcher below should treat this as the clean baseline.
-      skipDirtyRef.current = true
-      setDirty(false)
-      const now = new Date()
-      const defaultDate = formatDateForInput(now)
-      const defaultTime = formatTimeForInput(now)
-
-      const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
-      const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
-      setDateTime({ date: sysDate, time: sysTime })
-      
-      const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
-      setAbsentMarkingTime(markingTime.substring(0, 5))
-
-      const nameSetting = settings.find(s => s.key === 'system_name')?.value || 'LAUNCHR'
-      setSystemName(nameSetting)
-
-      const logoSetting = settings.find(s => s.key === 'system_logo')?.value || 'launchr_black.svg'
-      setSystemLogo(logoSetting)
-
-      const templateSetting = settings.find(s => s.key === 'payroll_template')?.value || 'payrolltemplate.xlsx'
-      setPayrollTemplate(templateSetting)
-
-      const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')
-      if (autoClockOutSetting) {
-        setAutoClockOut(autoClockOutSetting.value === 'true' || autoClockOutSetting.value === true || autoClockOutSetting.value === '1')
-      } else {
-        setAutoClockOut(false)
-      }
-
-      const loginOtpSetting = settings.find(s => s.key === 'login_otp_required')
-      if (loginOtpSetting) {
-        setRequireLoginOtp(loginOtpSetting.value === 'true' || loginOtpSetting.value === true || loginOtpSetting.value === '1')
-      } else {
-        setRequireLoginOtp(false)
-      }
-
-      const dtrEnabled = settings.find(s => s.key === 'dtr_page_enabled')
-      setDtrPageEnabled(dtrEnabled?.value === 'true' || dtrEnabled?.value === true)
-      setDtrUploadFrequency(settings.find(s => s.key === 'dtr_upload_frequency')?.value ?? 'semi_monthly')
-      const dtrPerEmp = settings.find(s => s.key === 'dtr_per_employee_restriction')
-      setDtrPerEmployeeRestriction(dtrPerEmp?.value === 'true' || dtrPerEmp?.value === true)
-      setDtrCutoff1Day(parseInt(settings.find(s => s.key === 'dtr_cutoff1_day')?.value ?? '10'))
-      setDtrCutoff2Day(parseInt(settings.find(s => s.key === 'dtr_cutoff2_day')?.value ?? '25'))
-
-      const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
-      if (sssSetting) {
-        setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
-      }
-
-      const withholdingSetting = settings.find(s => s.key === 'withholding_tax_table')
-      if (withholdingSetting) {
-        setWithholdingTable(typeof withholdingSetting.value === 'string' ? withholdingSetting.value : JSON.stringify(withholdingSetting.value, null, 2))
-      }
-
-      const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
-      setThemeColor(themeSetting)
-
-      setPayrollFrequency(settings.find(s => s.key === 'payroll_frequency')?.value ?? 'semi_monthly')
-      setP1Start(parseInt(settings.find(s => s.key === 'payroll_period1_start_day')?.value ?? '1'))
-      setP1End(parseInt(settings.find(s => s.key === 'payroll_period1_end_day')?.value ?? '15'))
-      setP2Start(parseInt(settings.find(s => s.key === 'payroll_period2_start_day')?.value ?? '16'))
-      setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
-      setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
-      setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
-
-      const gcEnabled = settings.find(s => s.key === 'geo_capture_enabled')
-      setGeoCaptureEnabled(gcEnabled ? (gcEnabled.value === 'true' || gcEnabled.value === true) : true)
-      const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
-      setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
-      setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
-      setCaptureDays(parseDays(settings.find(s => s.key === 'geo_capture_days')?.value))
-      setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
+      const v = settingsToValues(settings)
+      applyValues(v)
+      // Capture the clean baseline these values serialize to (no pending uploads).
+      baselineRef.current = snapshotOf({ ...v, hasNewLogo: false, hasNewTemplate: false })
     }
-  }, [settings])
-
-  // Flag unsaved changes on any edit. The first run after a (re)load is the
-  // baseline populate, which skipDirtyRef swallows.
-  useEffect(() => {
-    if (skipDirtyRef.current) { skipDirtyRef.current = false; return }
-    setDirty(true)
-  }, [
-    dateTime, absentMarkingTime, systemName, systemLogo, payrollTemplate,
-    autoClockOut, requireLoginOtp, dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction,
-    dtrCutoff1Day, dtrCutoff2Day, sssTable, withholdingTable, themeColor, payrollFrequency,
-    p1Start, p1End, p2Start, p2End, pMonthlyStart, pMonthlyEnd,
-    geoCaptureEnabled, geofenceEnabled, geofenceMode, captureDays, offices,
-    selectedFile, selectedTemplateFile,
-  ])
+  }, [settings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadLogoMutation = useMutation({
     mutationFn: uploadLogo,
@@ -287,7 +286,6 @@ export default function SystemSettingsPage() {
       )
     },
     onSuccess: async () => {
-      setDirty(false)
       // Invalidate settings, system clock, AND all attendance queries so
       // the attendance clock page immediately reflects the new virtual time.
       await Promise.all([
@@ -346,76 +344,7 @@ export default function SystemSettingsPage() {
       title: 'Discard Changes',
       message: 'Are you sure you want to discard your changes and reset to the last saved settings?',
       type: 'warning',
-      onConfirm: () => {
-        // Resetting to saved values — don't let the watcher flag this as an edit.
-        skipDirtyRef.current = true
-        setDirty(false)
-        const now = new Date()
-        const defaultDate = formatDateForInput(now)
-        const defaultTime = formatTimeForInput(now)
-
-        const sysDate = settings.find(s => s.key === 'system_date')?.value || defaultDate
-        const sysTime = normalizeTimeValue(settings.find(s => s.key === 'system_time')?.value || defaultTime)
-        setDateTime({ date: sysDate, time: sysTime })
-        
-        const markingTime = settings.find(s => s.key === 'absent_marking_time')?.value || '23:59'
-        setAbsentMarkingTime(markingTime.substring(0, 5))
-
-        const nameSetting = settings.find(s => s.key === 'system_name')?.value || 'LAUNCHR'
-        setSystemName(nameSetting)
-
-        const logoSetting = settings.find(s => s.key === 'system_logo')?.value || 'launchr_black.svg'
-        setSystemLogo(logoSetting)
-        setLogoPreview(null)
-        setSelectedFile(null)
-
-        const templateSetting = settings.find(s => s.key === 'payroll_template')?.value || 'payrolltemplate.xlsx'
-        setPayrollTemplate(templateSetting)
-        setSelectedTemplateFile(null)
-
-        const autoClockOutSetting = settings.find(s => s.key === 'auto_clock_out_enabled')?.value
-        setAutoClockOut(autoClockOutSetting === 'true' || autoClockOutSetting === '1')
-
-        const loginOtpSetting = settings.find(s => s.key === 'login_otp_required')?.value
-        setRequireLoginOtp(loginOtpSetting === 'true' || loginOtpSetting === '1')
-
-        const dtrEnabled = settings.find(s => s.key === 'dtr_page_enabled')
-        setDtrPageEnabled(dtrEnabled?.value === 'true' || dtrEnabled?.value === true)
-        setDtrUploadFrequency(settings.find(s => s.key === 'dtr_upload_frequency')?.value ?? 'semi_monthly')
-        const dtrPerEmp = settings.find(s => s.key === 'dtr_per_employee_restriction')
-        setDtrPerEmployeeRestriction(dtrPerEmp?.value === 'true' || dtrPerEmp?.value === true)
-        setDtrCutoff1Day(parseInt(settings.find(s => s.key === 'dtr_cutoff1_day')?.value ?? '10'))
-        setDtrCutoff2Day(parseInt(settings.find(s => s.key === 'dtr_cutoff2_day')?.value ?? '25'))
-
-        const sssSetting = settings.find(s => s.key === 'sss_contribution_table')
-        if (sssSetting) {
-          setSssTable(typeof sssSetting.value === 'string' ? sssSetting.value : JSON.stringify(sssSetting.value, null, 2))
-        }
-
-        const withholdingSetting = settings.find(s => s.key === 'withholding_tax_table')
-        if (withholdingSetting) {
-          setWithholdingTable(typeof withholdingSetting.value === 'string' ? withholdingSetting.value : JSON.stringify(withholdingSetting.value, null, 2))
-        }
-
-        const themeSetting = settings.find(s => s.key === 'theme_color')?.value || 'sienna'
-        setThemeColor(themeSetting)
-
-        setPayrollFrequency(settings.find(s => s.key === 'payroll_frequency')?.value ?? 'semi_monthly')
-        setP1Start(parseInt(settings.find(s => s.key === 'payroll_period1_start_day')?.value ?? '1'))
-        setP1End(parseInt(settings.find(s => s.key === 'payroll_period1_end_day')?.value ?? '15'))
-        setP2Start(parseInt(settings.find(s => s.key === 'payroll_period2_start_day')?.value ?? '16'))
-        setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
-        setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
-        setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
-
-        const gcEnabled = settings.find(s => s.key === 'geo_capture_enabled')
-        setGeoCaptureEnabled(gcEnabled ? (gcEnabled.value === 'true' || gcEnabled.value === true) : true)
-        const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
-        setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
-        setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
-        setCaptureDays(parseDays(settings.find(s => s.key === 'geo_capture_days')?.value))
-        setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
-      }
+      onConfirm: () => applyValues(settingsToValues(settings)),
     })
   }
 
@@ -496,6 +425,18 @@ export default function SystemSettingsPage() {
           ]
     )
   }, [payrollFrequency, p1Start, p1End, p2Start, p2End, pMonthlyStart, pMonthlyEnd])
+
+  // Derived unsaved-changes flag: current form values vs the baseline captured on load.
+  const currentSnapshot = snapshotOf({
+    date: dateTime.date, time: dateTime.time, absentMarkingTime,
+    systemName, systemLogo, payrollTemplate, autoClockOut, requireLoginOtp,
+    dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction, dtrCutoff1Day, dtrCutoff2Day,
+    sssTable, withholdingTable, themeColor, payrollFrequency,
+    p1Start, p1End, p2Start, p2End, pMonthlyStart, pMonthlyEnd,
+    geoCaptureEnabled, geofenceEnabled, geofenceMode, captureDays, offices,
+    hasNewLogo: !!selectedFile, hasNewTemplate: !!selectedTemplateFile,
+  })
+  const dirty = baselineRef.current !== null && currentSnapshot !== baselineRef.current
 
   if (isLoading) {
     return (
