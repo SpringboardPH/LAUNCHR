@@ -26,7 +26,7 @@ class ThirteenthMonthController extends Controller
         $employeeIds = $employees->pluck('id');
 
         $payrolls = Payroll::whereIn('employee_id', $employeeIds)
-            ->whereYear('cutoff_start', $year)
+            ->whereYear('cutoff_end', $year)
             ->whereDate('cutoff_end', '<=', SystemClock::today())
             ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'deductions', 'allowances']);
         // Note: removeContainedPeriods is applied per-employee inside buildEmployeeRow
@@ -132,7 +132,7 @@ class ThirteenthMonthController extends Controller
         // Use DATE() to return plain YYYY-MM-DD strings, avoiding Carbon UTC serialization.
         $periods = \DB::table('payrolls')
             ->where('status', 'draft')
-            ->whereYear('cutoff_start', $year)
+            ->whereYear('cutoff_end', $year)
             ->selectRaw('DATE(cutoff_start) as cutoff_start, DATE(cutoff_end) as cutoff_end')
             ->groupBy('cutoff_start', 'cutoff_end')
             ->orderBy('cutoff_start')
@@ -277,7 +277,7 @@ class ThirteenthMonthController extends Controller
                 continue;
             }
 
-            $periodPayrolls = $empPayrolls->filter(fn($p) => $p->cutoff_start->month === $m);
+            $periodPayrolls = $empPayrolls->filter(fn($p) => $p->cutoff_end->month === $m);
 
             if ($periodPayrolls->isEmpty()) {
                 $months[$m] = ['amount' => null, 'is_override' => false, 'has_payroll' => false];
@@ -324,7 +324,7 @@ class ThirteenthMonthController extends Controller
 
         $payrolls = $this->removeContainedPeriods(
             Payroll::where('employee_id', $employeeId)
-                ->whereYear('cutoff_start', $year)
+                ->whereYear('cutoff_end', $year)
                 ->whereDate('cutoff_end', '<=', SystemClock::today())
                 ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'deductions', 'allowances'])
         );
@@ -341,7 +341,7 @@ class ThirteenthMonthController extends Controller
                 $total += (float) $override->basic_pay;
                 continue;
             }
-            foreach ($payrolls->filter(fn($p) => $p->cutoff_start->month === $m) as $p) {
+            foreach ($payrolls->filter(fn($p) => $p->cutoff_end->month === $m) as $p) {
                 $total += $this->periodBase($p, $mode);
             }
         }
