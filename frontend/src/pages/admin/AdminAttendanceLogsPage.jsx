@@ -349,6 +349,10 @@ export default function AdminAttendanceLogsPage() {
             'Click the pencil icon on any row to edit that record\'s clock-in/out times, status, and notes.',
             'A system-detected status hint is shown if the computed status differs from the selected one.',
           ]},
+          { heading: 'Location', items: [
+            'When location check-in is enabled (System Settings → Geolocation on Clock-In), the Location column shows a "View" link to the map of where the employee clocked in.',
+            'A dash means no location was recorded — the feature was off that day, the employee is exempt, or they denied location access.',
+          ]},
           { heading: 'Deleting a Log', items: [
             'Click the trash icon to permanently delete an attendance record. A confirmation dialog will appear.',
           ]},

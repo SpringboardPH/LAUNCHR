@@ -530,6 +530,14 @@ export default function SystemSettingsPage() {
             'Enable Auto Clock-Out to automatically close open shifts after the shift\'s end time has passed.',
             'Set the Absent Marking Time — the daily time at which employees with no clock-in record are marked absent.',
           ]},
+          { heading: 'Geolocation on Clock-In', items: [
+            'Enable Location Clock-In is the master switch — when off, no clock-in anywhere asks for a location.',
+            'Location Capture Days chooses which weekdays employees are prompted for their location; on other days they clock in normally with no prompt.',
+            'Enforce Geofencing restricts clock-in to configured office zones. Add each location by name with a latitude/longitude and radius — use "Use current" or paste a "lat, lng" from Google Maps. The map preview shows the radius circle.',
+            'Enforce mode blocks out-of-range clock-ins; Warn mode allows them but still records the location.',
+            'Individual employees can be exempted from location capture on their profile ("Capture location on clock-in").',
+            'Device GPS requires an HTTPS connection in production.',
+          ]},
           { heading: 'Visual Theme', items: [
             'Choose one of the five preset color themes. The selection is applied instantly across the entire application.',
           ]},

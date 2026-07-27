@@ -49,6 +49,8 @@ export const EMPLOYEE_STEPS = [
       fmt("The **timer** tracks your elapsed work time in real time"),
       fmt("Your **assigned schedule** is shown so you know your expected shift"),
       fmt("Browse past logs by **cutoff period** using the Prev / Next buttons"),
+      fmt("If your company uses **location check-in**, clicking Clock In opens a *map of your location* — confirm it to clock in. Allow location access when your browser asks"),
+      fmt("On days location isn't required (or if you're exempted), you *clock in normally* with no prompt"),
       fmt("__Note:__ late arrivals and absences are *automatically deducted from payroll*"),
     ],
   },
@@ -137,6 +139,7 @@ export const HR_STEPS = [
       fmt("**Weekly attendance trend chart** across the whole company"),
       fmt("**Department-level attendance rates** with color-coded health indicators"),
       fmt("**Pending leave requests** listed for immediate action"),
+      fmt("**Upcoming work anniversaries** — employees nearing a service milestone in the next 30 days"),
     ],
   },
   {
@@ -159,6 +162,7 @@ export const HR_STEPS = [
     bullets: [
       fmt("**Attendance Logs** — view every clock-in and clock-out entry, filterable by date and employee"),
       fmt("Statuses are *calculated automatically*: completed, late, undertime, absent, on leave"),
+      fmt("When location check-in is enabled, a **Location** column links to the map of *where each employee clocked in*"),
       fmt("**DTR Management** — (if enabled) review and manage employee-submitted Daily Time Records"),
     ],
   },
@@ -255,7 +259,7 @@ export const ADMIN_STEPS = [
     bullets: [
       fmt("**Today's critical metrics:** present, absent, late, on leave, and short-hour counts"),
       fmt("**Weekly attendance trend chart** and **department-level attendance rates**"),
-      fmt("**Pending leave requests** and quick stats — new hires, last payroll, and more"),
+      fmt("**Pending leave requests** and **upcoming work anniversaries** of employees"),
     ],
   },
   {
@@ -277,6 +281,7 @@ export const ADMIN_STEPS = [
     bullets: [
       fmt("**Attendance Logs** — browse and filter all clock-in/out records by employee or date"),
       fmt("Statuses (*completed, late, absent*, etc.) are *calculated automatically* by the system"),
+      fmt("A **Location** column links to the map of where an employee clocked in, when location check-in is enabled"),
       fmt("**DTR Management** — review employee-submitted Daily Time Records when the feature is enabled"),
       fmt("**Raw Attendance Logs** (under System) — an unfiltered audit-level view of all attendance events"),
     ],
@@ -349,6 +354,7 @@ export const ADMIN_STEPS = [
       fmt("**Company identity** — set the system name, upload a logo, and choose the theme color"),
       fmt("**Payroll configuration** — set cutoff dates, overtime rules, and payroll frequency"),
       fmt("**DTR feature toggle** — enable or disable employee DTR file uploads system-wide"),
+      fmt("**Geolocation on Clock-In** — capture where employees clock in; choose which days it applies, and optionally *enforce a workplace radius* (geofencing)"),
       fmt("__Changes here affect all users immediately__"),
     ],
   },

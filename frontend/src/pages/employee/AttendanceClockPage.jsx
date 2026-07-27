@@ -487,6 +487,12 @@ export default function AttendanceClockPage() {
             'Click the red Clock Out button at the end of your shift. Clocking out too early may trigger "Undertime" status.',
             'An optional Notes field appears before confirming — use it to add context for your HR team.',
           ]},
+          { heading: 'Location Check-In', items: [
+            'If your company has enabled location check-in, clicking Clock In opens a map showing your current location — confirm it to record your clock-in.',
+            'The first time, your browser will ask permission to access your location; allow it. If you deny it (or on days location is not required), you can still clock in normally.',
+            'If your workplace uses a geofence, you must be within the allowed area to clock in — the map shows whether you are inside the zone, and Confirm is disabled if you are outside it.',
+            'Location check-in needs a secure (HTTPS) connection to read your device GPS.',
+          ]},
           { heading: "Today's Record", items: [
             'Once clocked in, your clock-in time and elapsed hours are displayed on this page.',
             'After clocking out, your total hours worked for the day are shown.',
