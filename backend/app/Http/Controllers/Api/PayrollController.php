@@ -100,6 +100,22 @@ class PayrollController extends Controller
                 continue;
             }
 
+            // Not yet hired as of this cutoff → earned nothing for a period before their
+            // hire date. Skip, and remove any stale (non-finalized) draft so regenerating
+            // cleans up an erroneously-generated pre-hire payroll.
+            if ($employee->hire_date && $employee->hire_date->gt(Carbon::parse($end))) {
+                $stale = Payroll::where('employee_id', $employee->id)
+                    ->where('cutoff_start', $start)
+                    ->where('cutoff_end', $end)
+                    ->whereNotIn('status', ['finalized', 'paid'])
+                    ->first();
+                if ($stale) {
+                    \App\Services\LoanService::reverseForPayroll($stale->id);
+                    $stale->delete();
+                }
+                continue;
+            }
+
             // Regenerating a draft must reverse its prior loan charges first (idempotency)
             $existingDraft = Payroll::where('employee_id', $employee->id)
                 ->where('cutoff_start', $start)
