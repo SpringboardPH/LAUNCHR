@@ -930,20 +930,19 @@ class AttendanceController extends Controller
                             $log->holiday_name = $events->get($dateStr)->title;
                         }
 
-                        // Reconcile absent/on_leave with the current approved-leave state.
-                        // mark-absent may have run before a leave was approved, or an old
-                        // code path may have written on_leave directly to the DB.
-                        if ($log->status === 'absent' || $log->status === 'on_leave') {
+                        // Upgrade a stale 'absent' to 'on_leave' when an approved leave now
+                        // covers the date (mark-absent may have run before the leave was
+                        // approved). A manually-set 'on_leave' is left as-is — nothing else
+                        // writes on_leave to the DB, so we must not override an HR edit.
+                        if ($log->status === 'absent') {
                             $coveredByLeave = $employeeLeaves->some(function ($leave) use ($date) {
                                 return $date->between(
                                     Carbon::parse($leave->start_date)->startOfDay(),
                                     Carbon::parse($leave->end_date)->endOfDay()
                                 );
                             });
-                            if ($log->status === 'absent' && $coveredByLeave) {
+                            if ($coveredByLeave) {
                                 $log->status = 'on_leave';
-                            } elseif ($log->status === 'on_leave' && !$coveredByLeave) {
-                                $log->status = 'absent';
                             }
                         }
 
@@ -1305,18 +1304,18 @@ class AttendanceController extends Controller
                     $log->holiday_name = $events->get($dateStr)->title;
                 }
 
-                // Reconcile absent/on_leave with the current approved-leave state.
-                if ($log->status === 'absent' || $log->status === 'on_leave') {
+                // Upgrade a stale 'absent' to 'on_leave' when an approved leave now covers
+                // the date. A manually-set 'on_leave' is left as-is (nothing else writes
+                // on_leave to the DB, so an HR edit must not be overridden).
+                if ($log->status === 'absent') {
                     $coveredByLeave = $leaves->some(function ($leave) use ($date) {
                         return $date->between(
                             Carbon::parse($leave->start_date)->startOfDay(),
                             Carbon::parse($leave->end_date)->endOfDay()
                         );
                     });
-                    if ($log->status === 'absent' && $coveredByLeave) {
+                    if ($coveredByLeave) {
                         $log->status = 'on_leave';
-                    } elseif ($log->status === 'on_leave' && !$coveredByLeave) {
-                        $log->status = 'absent';
                     }
                 }
 
