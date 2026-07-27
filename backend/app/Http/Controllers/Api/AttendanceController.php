@@ -201,6 +201,77 @@ class AttendanceController extends Controller
     /**
      * Clock in - record employee arrival
      */
+    /**
+     * Enforce the workplace geofence at clock-in.
+     * Returns a JsonResponse to abort with, or null to allow the clock-in to proceed.
+     */
+    private function enforceGeofence(Request $request, Employee $employee): ?\Illuminate\Http\JsonResponse
+    {
+        if (!\App\Models\SystemSettings::get('geofence_enabled', false)) return null;
+        // Per-employee exemption (field / remote staff) reuses the geo-tracking toggle.
+        if ($employee->geo_tracking_enabled === false) return null;
+
+        $offices = \App\Models\SystemSettings::get('office_locations', []);
+        if (empty($offices)) return null; // nothing configured → nothing to enforce
+
+        $mode = \App\Models\SystemSettings::get('geofence_mode', 'enforce');
+        $lat = $request->input('latitude');
+        $lng = $request->input('longitude');
+
+        if ($lat === null || $lng === null) {
+            if ($mode === 'enforce') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Location is required to clock in at a geofenced workplace. Please enable location access and try again.',
+                ], 422);
+            }
+            return null; // warn mode: allow without a location fix
+        }
+
+        $nearest = null;
+        $nearestDist = INF;
+        foreach ($offices as $o) {
+            if (!isset($o['lat'], $o['lng'])) continue;
+            $d = $this->haversineMeters((float) $lat, (float) $lng, (float) $o['lat'], (float) $o['lng']);
+            if ($d < $nearestDist) {
+                $nearestDist = $d;
+                $nearest = $o;
+            }
+        }
+        if ($nearest === null) return null;
+
+        $radius = (float) ($nearest['radius_m'] ?? 200);
+        if ($nearestDist > $radius && $mode === 'enforce') {
+            return response()->json([
+                'success' => false,
+                'message' => sprintf(
+                    'You appear to be %s from %s (allowed radius %dm). Clock-in blocked.',
+                    $this->formatDistance($nearestDist),
+                    $nearest['name'] ?? 'the nearest office',
+                    (int) $radius
+                ),
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /** Great-circle distance between two lat/lng points, in meters. */
+    private function haversineMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $earth = 6371000.0; // meters
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2
+            + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+        return $earth * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    private function formatDistance(float $m): string
+    {
+        return $m >= 1000 ? round($m / 1000, 1) . ' km' : round($m) . ' m';
+    }
+
     public function clockIn(Request $request)
     {
         $request->validate([
@@ -324,6 +395,11 @@ class AttendanceController extends Controller
                 'success' => false,
                 'message' => 'Employee has already clocked in today',
             ], 400);
+        }
+
+        // Geofence: block (or in warn mode, allow) based on distance to configured offices.
+        if ($geoResponse = $this->enforceGeofence($request, $employee)) {
+            return $geoResponse;
         }
 
         $clockInTime = SystemClock::timeString();

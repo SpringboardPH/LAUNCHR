@@ -9,8 +9,10 @@ import {
   getCalendarEvents, calendarEventKeys,
   getCalendarEventTypes, calendarEventTypeKeys,
   getPayrollConfig, payrollConfigKeys,
+  getGeofenceConfig, geofenceConfigKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal, AlertModal, Modal } from '../../components/ui/index.jsx'
+import GeofenceMapPreview from '../../components/GeofenceMapPreview.jsx'
 import { Clock, LogOut, AlertCircle, CalendarDays, Sparkles, MapPin } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
@@ -26,6 +28,20 @@ const getClockInCoords = () =>
       { timeout: 10000, enableHighAccuracy: true }
     )
   })
+
+// Great-circle distance in meters — mirrors the backend haversine for UX only
+// (the server re-checks and is authoritative).
+const distanceMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000
+  const toRad = (d) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const formatMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`)
 
 const calculateHours = (clockInTime, clockOutTime) => {
   if (!clockInTime || !clockOutTime) return '—'
@@ -75,6 +91,12 @@ export default function AttendanceClockPage() {
     queryFn: getPayrollConfig,
     staleTime: 0,
     refetchOnWindowFocus: true,
+  })
+
+  const { data: geofence } = useQuery({
+    queryKey: geofenceConfigKeys.all,
+    queryFn: getGeofenceConfig,
+    staleTime: 60_000,
   })
 
   const [navigatedCutoff, setNavigatedCutoff] = useState(null)
@@ -305,6 +327,30 @@ export default function AttendanceClockPage() {
     }
   })()
 
+  // ── Geofence (UX preview; backend is authoritative) ──────────
+  const geoOffices = geofence?.offices ?? []
+  const geoActive = Boolean(geofence?.enabled)
+    && user?.employee?.geo_tracking_enabled !== false
+    && geoOffices.length > 0
+  const geoMode = geofence?.mode ?? 'enforce'
+
+  const evalGeofence = (coords) => {
+    if (!geoActive) return null
+    if (!coords) return { ok: geoMode !== 'enforce', reason: 'no-location' }
+    let best = null
+    for (const o of geoOffices) {
+      if (o.lat == null || o.lng == null) continue
+      const dist = distanceMeters(coords.latitude, coords.longitude, Number(o.lat), Number(o.lng))
+      if (!best || dist < best.dist) best = { office: o, dist }
+    }
+    if (!best) return null
+    const inside = best.dist <= Number(best.office.radius_m ?? 200)
+    return { ok: inside || geoMode !== 'enforce', inside, office: best.office, dist: best.dist }
+  }
+
+  const geoStatus = locationModal.open ? evalGeofence(locationModal.coords) : null
+  const geoBlocked = Boolean(geoStatus && !geoStatus.ok)
+
   return (
     <div>
       <AlertModal
@@ -324,11 +370,11 @@ export default function AttendanceClockPage() {
           <div className="flex gap-2">
             <button
               onClick={() => inMutation.mutate(locationModal.coords)}
-              disabled={locationModal.loading || inMutation.isPending}
-              className="btn-primary flex-1 h-11 text-sm"
+              disabled={locationModal.loading || inMutation.isPending || geoBlocked}
+              className={`btn flex-1 h-11 text-sm ${geoBlocked ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'btn-primary'}`}
             >
               <Clock size={16} />
-              {inMutation.isPending ? 'Clocking in...' : 'Confirm Clock In'}
+              {geoBlocked ? 'Outside allowed area' : (inMutation.isPending ? 'Clocking in...' : 'Confirm Clock In')}
             </button>
             <button
               onClick={() => setLocationModal({ open: false, loading: false, coords: null })}
@@ -346,27 +392,37 @@ export default function AttendanceClockPage() {
           </div>
         ) : locationModal.coords ? (
           <div>
-            <div className="rounded-lg overflow-hidden border border-gray-200">
-              <iframe
-                title="Clock-in location"
-                width="100%"
-                height="320"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps?q=${locationModal.coords.latitude},${locationModal.coords.longitude}&z=16&output=embed`}
-              />
-            </div>
+            <GeofenceMapPreview
+              lat={locationModal.coords.latitude}
+              lng={locationModal.coords.longitude}
+              zoom={16}
+              height={320}
+              radiusM={geoStatus?.office ? Number(geoStatus.office.radius_m ?? 200) : 0}
+              circleLat={geoStatus?.office?.lat}
+              circleLng={geoStatus?.office?.lng}
+            />
             <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
               <MapPin size={12} className="text-brand-500" />
               {locationModal.coords.latitude.toFixed(6)}, {locationModal.coords.longitude.toFixed(6)}
             </p>
+            {geoStatus && geoStatus.office && (
+              <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-medium border ${geoStatus.inside ? 'bg-green-50 border-green-200 text-green-700' : (geoMode === 'enforce' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-700')}`}>
+                {geoStatus.inside
+                  ? `✓ Inside ${geoStatus.office.name || 'the workplace'} (${formatMeters(geoStatus.dist)} away)`
+                  : geoMode === 'enforce'
+                    ? `✗ ${formatMeters(geoStatus.dist)} from ${geoStatus.office.name || 'the nearest office'} — outside the ${Number(geoStatus.office.radius_m ?? 200)}m radius. Clock-in is blocked here.`
+                    : `⚠ ${formatMeters(geoStatus.dist)} from ${geoStatus.office.name || 'the nearest office'} — outside the allowed radius. This will be recorded.`}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
-            <MapPin size={28} className="text-gray-300 mb-3" />
+            <MapPin size={28} className={geoBlocked ? 'text-red-300 mb-3' : 'text-gray-300 mb-3'} />
             <p className="text-sm font-medium text-gray-700">Location unavailable</p>
             <p className="text-xs text-gray-500 mt-1 max-w-xs">
-              We couldn't access your location. You can still clock in — it just won't be geo-tagged.
+              {geoBlocked
+                ? 'Your workplace requires a location to clock in. Enable location access in your browser and try again.'
+                : "We couldn't access your location. You can still clock in — it just won't be geo-tagged."}
             </p>
           </div>
         )}

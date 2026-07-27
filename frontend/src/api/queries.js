@@ -258,6 +258,13 @@ export const payrollConfigKeys = {
 export const getPayrollConfig = () =>
   api.get('/payroll-config').then(r => r.data.data)
 
+export const geofenceConfigKeys = {
+  all: ['geofence-config'],
+}
+
+export const getGeofenceConfig = () =>
+  api.get('/geofence-config').then(r => r.data.data)
+
 export const getThemeColor = () =>
   api.get('/theme-color').then(r => r.data.data)
 

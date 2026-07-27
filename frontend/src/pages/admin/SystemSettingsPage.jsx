@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, AlertModal, Spinner } from '../../components/ui/index.jsx'
-import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, deleteLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys } from '../../api/queries'
-import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2, FileText } from 'lucide-react'
+import GeofenceMapPreview from '../../components/GeofenceMapPreview.jsx'
+import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, deleteLogo, uploadPayrollTemplate, getLogos, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys, geofenceConfigKeys } from '../../api/queries'
+import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2, FileText, MapPin, Plus, LocateFixed } from 'lucide-react'
 
 const formatDateForInput = (date) => date.toLocaleDateString('en-CA')
 
@@ -11,6 +12,15 @@ const formatTimeForInput = (date) => date.toTimeString().split(' ')[0]
 const normalizeTimeValue = (timeValue) => {
   if (!timeValue) return ''
   return timeValue.length === 5 ? `${timeValue}:00` : timeValue
+}
+
+// office_locations may arrive as an array (json-cast) or a raw JSON string.
+const parseOffices = (value) => {
+  if (Array.isArray(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    try { const p = JSON.parse(value); return Array.isArray(p) ? p : [] } catch { return [] }
+  }
+  return []
 }
 
 const themePresets = [
@@ -50,6 +60,9 @@ export default function SystemSettingsPage() {
   const [p2End, setP2End] = useState(31)
   const [pMonthlyStart, setPMonthlyStart] = useState(1)
   const [pMonthlyEnd, setPMonthlyEnd] = useState(31)
+  const [geofenceEnabled, setGeofenceEnabled] = useState(false)
+  const [geofenceMode, setGeofenceMode] = useState('enforce')
+  const [offices, setOffices] = useState([])
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
 
@@ -127,6 +140,11 @@ export default function SystemSettingsPage() {
       setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
       setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
       setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
+
+      const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
+      setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
+      setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
+      setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
     }
   }, [settings])
 
@@ -216,6 +234,17 @@ export default function SystemSettingsPage() {
       await updateAdminSetting('dtr_per_employee_restriction',    dtrPerEmployeeRestriction,  'When true, DTR upload availability is controlled per employee',       'boolean')
       await updateAdminSetting('dtr_cutoff1_day',                 dtrCutoff1Day,              'DTR first cutoff day of month (used when frequency is semi_monthly)', 'integer')
       await updateAdminSetting('dtr_cutoff2_day',                 dtrCutoff2Day,              'DTR second cutoff day of month (used when frequency is semi_monthly)','integer')
+
+      await updateAdminSetting('geofence_enabled', geofenceEnabled, 'Whether clock-in is restricted to configured office locations', 'boolean')
+      await updateAdminSetting('geofence_mode',    geofenceMode,    'Geofence behavior: enforce (block) or warn (allow but record)',   'string')
+      await updateAdminSetting(
+        'office_locations',
+        offices
+          .filter(o => o.name?.trim() && o.lat !== '' && o.lng !== '')
+          .map(o => ({ name: o.name.trim(), lat: Number(o.lat), lng: Number(o.lng), radius_m: Number(o.radius_m) || 200 })),
+        'Allowed clock-in zones: [{name, lat, lng, radius_m}]',
+        'json'
+      )
     },
     onSuccess: async () => {
       // Invalidate settings, system clock, AND all attendance queries so
@@ -228,6 +257,7 @@ export default function SystemSettingsPage() {
         qc.invalidateQueries({ queryKey: employeeLeaveBalanceKeys.all }),
         qc.invalidateQueries({ queryKey: themeColorKeys.all }),
         qc.invalidateQueries({ queryKey: systemConfigKeys.all }),
+        qc.invalidateQueries({ queryKey: geofenceConfigKeys.all }),
       ])
       await Promise.all([
         qc.refetchQueries({ queryKey: systemClockKeys.all, type: 'active' }),
@@ -333,8 +363,41 @@ export default function SystemSettingsPage() {
         setP2End(parseInt(settings.find(s => s.key === 'payroll_period2_end_day')?.value ?? '31'))
         setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
         setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
+
+        const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
+        setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
+        setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
+        setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
       }
     })
+  }
+
+  const updateOffice = (i, field, val) => setOffices(prev => prev.map((o, idx) => idx === i ? { ...o, [field]: val } : o))
+  const addOffice = () => setOffices(prev => [...prev, { name: '', lat: '', lng: '', radius_m: 200 }])
+  const removeOffice = (i) => setOffices(prev => prev.filter((_, idx) => idx !== i))
+
+  // Accept a pasted "lat, lng" string in the latitude field and split it across both.
+  const handleCoordInput = (i, raw) => {
+    const m = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/)
+    if (m) {
+      setOffices(prev => prev.map((o, idx) => idx === i ? { ...o, lat: m[1], lng: m[2] } : o))
+    } else {
+      updateOffice(i, 'lat', raw)
+    }
+  }
+
+  const useCurrentLocation = (i) => {
+    if (!navigator.geolocation) {
+      setAlertConfig({ open: true, title: 'Not Supported', message: 'This browser cannot access location.', type: 'error' })
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setOffices(prev => prev.map((o, idx) => idx === i
+        ? { ...o, lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) }
+        : o)),
+      () => setAlertConfig({ open: true, title: 'Location Blocked', message: 'Could not get your location. Check browser permissions — and note device GPS only works on HTTPS or localhost.', type: 'error' }),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
   }
 
   const handleSetCurrent = () => {
@@ -785,6 +848,172 @@ export default function SystemSettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="card overflow-hidden">
+          <div className="border-b border-gray-100 bg-gray-50/50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600">
+                <MapPin size={20} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Clock-In Geofencing</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Restrict clock-ins to configured office locations. Employees exempted via their profile are unaffected.</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Enable Geofencing</p>
+                <p className="text-xs text-gray-500">When off, location is still captured but never blocks a clock-in.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGeofenceEnabled(!geofenceEnabled)}
+                className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${geofenceEnabled ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${geofenceEnabled ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
+
+            {geofenceEnabled && (
+              <>
+                <div className="p-4 border rounded-lg space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Enforcement Mode</p>
+                    <p className="text-xs text-gray-500">Enforce blocks out-of-range clock-ins. Warn allows them but records the location.</p>
+                  </div>
+                  <select value={geofenceMode} onChange={e => setGeofenceMode(e.target.value)} className="input h-10">
+                    <option value="enforce">Enforce — block clock-in outside the radius</option>
+                    <option value="warn">Warn — allow but record the location</option>
+                  </select>
+                </div>
+
+                <div className="p-4 border rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Office Locations</p>
+                      <p className="text-xs text-gray-500">Each zone has its own radius. A clock-in inside any zone is allowed.</p>
+                    </div>
+                    <button type="button" onClick={addOffice} className="btn-primary-soft text-[11px] px-3 py-1.5 flex items-center gap-1">
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+
+                  {offices.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic py-2">No locations yet. Add one — enforce mode does nothing until at least one zone exists.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {offices.map((o, i) => {
+                        const latNum = Number(o.lat)
+                        const lngNum = Number(o.lng)
+                        const hasCoords = o.lat !== '' && o.lng !== '' && Number.isFinite(latNum) && Number.isFinite(lngNum)
+                        return (
+                          <div key={i} className="rounded-xl border border-gray-200 bg-gray-50/40 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                              <input
+                                className="input h-10 flex-1 font-medium"
+                                placeholder="Location name (e.g. HQ)"
+                                value={o.name ?? ''}
+                                onChange={e => updateOffice(i, 'name', e.target.value)}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeOffice(i)}
+                                className="w-10 h-10 shrink-0 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-400 hover:text-red-600 hover:border-red-200 transition-colors"
+                                title="Remove location"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                              <div className="flex-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Latitude</label>
+                                <input
+                                  className="input h-10"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder='14.5995  (or paste "lat, lng")'
+                                  value={o.lat ?? ''}
+                                  onChange={e => handleCoordInput(i, e.target.value)}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Longitude</label>
+                                <input
+                                  className="input h-10"
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="120.9842"
+                                  value={o.lng ?? ''}
+                                  onChange={e => updateOffice(i, 'lng', e.target.value)}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => useCurrentLocation(i)}
+                                className="btn-secondary h-10 text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"
+                              >
+                                <LocateFixed size={14} /> Use current
+                              </button>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Radius</label>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative w-28">
+                                  <input
+                                    className="input h-10 pr-7"
+                                    type="number"
+                                    min="1"
+                                    placeholder="200"
+                                    value={o.radius_m ?? ''}
+                                    onChange={e => updateOffice(i, 'radius_m', e.target.value)}
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">m</span>
+                                </div>
+                                <div className="flex gap-1">
+                                  {[100, 200, 500, 1000].map(r => (
+                                    <button
+                                      key={r}
+                                      type="button"
+                                      onClick={() => updateOffice(i, 'radius_m', r)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${Number(o.radius_m) === r ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400 hover:text-brand-600'}`}
+                                    >
+                                      {r}m
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {hasCoords && (
+                              <div className="space-y-1.5">
+                                <GeofenceMapPreview
+                                  lat={latNum}
+                                  lng={lngNum}
+                                  zoom={15}
+                                  radiusM={Number(o.radius_m) || 0}
+                                  height={180}
+                                />
+                                <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
+                                  <span className="inline-block w-3 h-3 rounded-full" style={{ background: 'rgba(37,99,235,0.15)', border: '1.5px solid rgba(37,99,235,0.75)' }} />
+                                  Blue circle shows the {Number(o.radius_m) || 0}m clock-in radius.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-400 italic">Tip: right-click a spot in Google Maps → click the “lat, lng” at the top to copy it → paste into the Latitude field. Requires HTTPS in production for device GPS.</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

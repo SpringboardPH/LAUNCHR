@@ -61,6 +61,19 @@ class AdminSettingsController extends Controller
         return response()->json(['success' => true, 'data' => $settings]);
     }
 
+    // Geofence config — needed by the employee clock-in page, not admin-restricted.
+    public function getGeofenceConfig()
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'enabled' => (bool) SystemSettings::get('geofence_enabled', false),
+                'mode' => SystemSettings::get('geofence_mode', 'enforce'),
+                'offices' => SystemSettings::get('office_locations', []),
+            ],
+        ]);
+    }
+
     public function show(string $key)
     {
         $setting = SystemSettings::where('key', $key)->first();

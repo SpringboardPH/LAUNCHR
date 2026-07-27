@@ -145,6 +145,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/system-clock', [AdminSettingsController::class, 'systemClock']);
     // Payroll cutoff config — needed by employee attendance page, not admin-restricted
     Route::get('/payroll-config', [AdminSettingsController::class, 'getPayrollConfig']);
+    // Geofence config — needed by employee clock-in page, not admin-restricted
+    Route::get('/geofence-config', [AdminSettingsController::class, 'getGeofenceConfig']);
     
     // DTR Uploads
     Route::prefix('dtr')->group(function () {

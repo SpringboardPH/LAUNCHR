@@ -222,6 +222,9 @@ class SystemSettingsSeeder extends Seeder
             ['key' => 'dtr_per_employee_restriction', 'value' => 'false',        'description' => 'When true, DTR upload availability is controlled per employee',               'type' => 'boolean'],
             ['key' => 'dtr_cutoff1_day',              'value' => '10',           'description' => 'DTR first cutoff day of month (used when frequency is semi_monthly)',         'type' => 'integer'],
             ['key' => 'dtr_cutoff2_day',              'value' => '25',           'description' => 'DTR second cutoff day of month (used when frequency is semi_monthly)',        'type' => 'integer'],
+            ['key' => 'geofence_enabled', 'value' => 'false',   'description' => 'Whether clock-in is restricted to configured office locations',            'type' => 'boolean'],
+            ['key' => 'geofence_mode',    'value' => 'enforce', 'description' => 'Geofence behavior: enforce (block out-of-range clock-ins) or warn (allow but record)', 'type' => 'string'],
+            ['key' => 'office_locations', 'value' => json_encode([]), 'description' => 'Allowed clock-in zones: [{name, lat, lng, radius_m}]',                'type' => 'json'],
         ];
 
         foreach ($settings as $setting) {
