@@ -240,6 +240,20 @@ class PayrollController extends Controller
                     continue;
                 }
 
+                // Rest days only count in payroll when the employee GENUINELY worked them —
+                // a real clock-in AND a self-initiated clock-out. Skip rest-day logs that were
+                // never truly worked: an open punch (no clock-out) or one force-closed by
+                // auto-clock-out. Such logs then neither pay nor deduct.
+                // ponytail: a system close is identified by the '[System] Automatically clocked
+                // out' marker auto-clock-out writes; clear that note on a log to re-include it.
+                if ($isRestDay) {
+                    $selfClockedOut = $log->clock_out_time
+                        && !str_contains((string) $log->clock_out_notes, '[System] Automatically clocked out');
+                    if (!$selfClockedOut) {
+                        continue;
+                    }
+                }
+
                 if ($log->status === 'half_day') {
                     $metrics['half_days']++;
                 }
