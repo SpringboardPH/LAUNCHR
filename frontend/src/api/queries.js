@@ -220,6 +220,9 @@ export const pushThirteenthMonthToPayroll = (data) =>
 export const setThirteenthMonthMode = (data) =>
   api.post('/thirteenth-month/set-mode', data).then(r => r.data)
 
+export const setThirteenthMonthExcludedMonths = (data) =>
+  api.post('/thirteenth-month/set-excluded-months', data).then(r => r.data)
+
 // ─── Dashboard ───────────────────────────────────────────────
 export const dashboardKeys = { all: ['dashboard'] }
 

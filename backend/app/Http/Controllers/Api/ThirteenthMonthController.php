@@ -35,13 +35,15 @@ class ThirteenthMonthController extends Controller
             ->whereIn('employee_id', $employeeIds)
             ->get()->groupBy('employee_id');
 
-        $modes = ThirteenthMonthSetting::where('year', $year)
+        $settings = ThirteenthMonthSetting::where('year', $year)
             ->whereIn('employee_id', $employeeIds)
-            ->pluck('mode', 'employee_id');
+            ->get()->keyBy('employee_id');
 
-        $data = $employees->map(function ($emp) use ($payrolls, $saved, $modes, $year) {
-            $mode = $modes->get($emp->id, 'declared');
-            return $this->buildEmployeeRow($emp, $payrolls, $saved, $year, $mode);
+        $data = $employees->map(function ($emp) use ($payrolls, $saved, $settings, $year) {
+            $setting  = $settings->get($emp->id);
+            $mode     = $setting->mode ?? 'declared';
+            $excluded = $setting->excluded_months ?? [];
+            return $this->buildEmployeeRow($emp, $payrolls, $saved, $year, $mode, $excluded);
         });
 
         return response()->json([
@@ -101,6 +103,26 @@ class ThirteenthMonthController extends Controller
         );
 
         return response()->json(['success' => true, 'mode' => $validated['mode']]);
+    }
+
+    public function setExcludedMonths(Request $request)
+    {
+        $validated = $request->validate([
+            'employee_id' => 'required|integer|exists:employees,id',
+            'year'        => 'required|integer|min:2000|max:2100',
+            'months'      => 'present|array',
+            'months.*'    => 'integer|min:1|max:12',
+        ]);
+
+        $months = array_values(array_unique(array_map('intval', $validated['months'])));
+        sort($months);
+
+        ThirteenthMonthSetting::updateOrCreate(
+            ['employee_id' => $validated['employee_id'], 'year' => $validated['year']],
+            ['excluded_months' => $months]
+        );
+
+        return response()->json(['success' => true, 'excluded_months' => $months]);
     }
 
     public function payrollPeriods(Request $request)
@@ -241,7 +263,7 @@ class ThirteenthMonthController extends Controller
         });
     }
 
-    private function buildEmployeeRow($emp, $payrolls, $saved, $year, string $mode): array
+    private function buildEmployeeRow($emp, $payrolls, $saved, $year, string $mode, array $excluded = []): array
     {
         $empPayrolls = $this->removeContainedPeriods($payrolls->where('employee_id', $emp->id));
         $empSaved    = $saved->get($emp->id, collect());
@@ -282,20 +304,23 @@ class ThirteenthMonthController extends Controller
         }
 
         return [
-            'id'          => $emp->id,
-            'employee_id' => $emp->employee_id,
-            'name'        => "{$emp->first_name} {$emp->last_name}",
-            'group'       => $emp->group,
-            'mode'        => $mode,
-            'months'      => $months,
+            'id'              => $emp->id,
+            'employee_id'     => $emp->employee_id,
+            'name'            => "{$emp->first_name} {$emp->last_name}",
+            'group'           => $emp->group,
+            'mode'            => $mode,
+            'excluded_months' => array_values(array_map('intval', $excluded)),
+            'months'          => $months,
         ];
     }
 
     private function computeThirteenth(int $employeeId, int $year): float
     {
-        $mode = ThirteenthMonthSetting::where('employee_id', $employeeId)
+        $setting = ThirteenthMonthSetting::where('employee_id', $employeeId)
             ->where('year', $year)
-            ->value('mode') ?? 'declared';
+            ->first();
+        $mode = $setting->mode ?? 'declared';
+        $excluded = array_map('intval', $setting->excluded_months ?? []);
 
         $payrolls = $this->removeContainedPeriods(
             Payroll::where('employee_id', $employeeId)
@@ -310,6 +335,7 @@ class ThirteenthMonthController extends Controller
 
         $total = 0;
         for ($m = 1; $m <= 12; $m++) {
+            if (in_array($m, $excluded, true)) continue; // deselected — not in the total
             $override = $saved->get($m);
             if ($override && $override->is_override) {
                 $total += (float) $override->basic_pay;

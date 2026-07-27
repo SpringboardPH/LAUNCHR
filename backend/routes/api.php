@@ -112,6 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [ThirteenthMonthController::class, 'index']);
         Route::post('/save', [ThirteenthMonthController::class, 'save']);
         Route::post('/set-mode', [ThirteenthMonthController::class, 'setMode']);
+        Route::post('/set-excluded-months', [ThirteenthMonthController::class, 'setExcludedMonths']);
         Route::get('/payroll-periods', [ThirteenthMonthController::class, 'payrollPeriods']);
         Route::post('/push-to-payroll', [ThirteenthMonthController::class, 'pushToPayroll']);
     });

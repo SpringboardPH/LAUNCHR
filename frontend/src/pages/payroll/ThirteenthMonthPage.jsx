@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, RefreshCw, Copy, Check, Upload, ChevronRight, ChevronDown } from 'lucide-react'
+import { Save, RefreshCw, Copy, Check, Upload, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import {
   thirteenthMonthKeys, getThirteenthMonth, saveThirteenthMonth,
-  setThirteenthMonthMode, employeeKeys, getEmployeeGroups,
+  setThirteenthMonthMode, setThirteenthMonthExcludedMonths, employeeKeys, getEmployeeGroups,
 } from '../../api/queries'
 import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
 import PushToPayrollModal from './PushToPayrollModal'
@@ -48,7 +48,7 @@ function CopyCell({ value }) {
 }
 
 // Inline editable cell — shows formatted text, becomes an input on click
-function MonthCell({ value, isOverride, hasPayroll, disabled, onChange }) {
+function MonthCell({ value, isOverride, hasPayroll, disabled, excluded, onChange }) {
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState('')
   const inputRef = useRef(null)
@@ -98,7 +98,8 @@ function MonthCell({ value, isOverride, hasPayroll, disabled, onChange }) {
     <button
       onClick={disabled ? undefined : startEdit}
       className={`w-full text-right text-xs px-2 py-1.5 rounded tabular-nums transition-opacity ${bg} ${textColor}
-        ${disabled ? 'cursor-default opacity-30' : 'hover:opacity-80 cursor-text'}`}
+        ${disabled ? 'cursor-default opacity-30' : 'hover:opacity-80 cursor-text'}
+        ${excluded ? 'line-through opacity-40' : ''}`}
     >
       {value != null ? fmt(value) : <span className="text-gray-300 select-none">—</span>}
     </button>
@@ -111,13 +112,13 @@ export default function ThirteenthMonthPage() {
   const [page, setPage] = useState(1)
   const [showPush, setShowPush] = useState(false)
   const [expanded, setExpanded] = useState(new Set())
-  const [included, setIncluded] = useState(() => new Set(Array.from({ length: 12 }, (_, i) => i + 1)))
   const [overrides, setOverrides] = useState({})
+  const [excludedLocal, setExcludedLocal] = useState({}) // empId -> array of excluded month numbers
   const [dirty, setDirty] = useState(false)
   const qc = useQueryClient()
 
-  useEffect(() => { setPage(1); setOverrides({}); setDirty(false); setExpanded(new Set()) }, [year, group])
-  useEffect(() => { setOverrides({}); setDirty(false); setExpanded(new Set()) }, [page])
+  useEffect(() => { setPage(1); setOverrides({}); setExcludedLocal({}); setDirty(false); setExpanded(new Set()) }, [year, group])
+  useEffect(() => { setOverrides({}); setExcludedLocal({}); setDirty(false); setExpanded(new Set()) }, [page])
 
   const params = { year, page, ...(group && { group }) }
 
@@ -149,13 +150,21 @@ export default function ThirteenthMonthPage() {
     },
   })
 
+  const excludeMut = useMutation({
+    mutationFn: setThirteenthMonthExcludedMonths,
+    onSuccess: () => qc.invalidateQueries({ queryKey: thirteenthMonthKeys.list(params) }),
+  })
+
   const employees = data?.data ?? []
 
-  const toggleMonth = (m) => setIncluded(prev => {
-    const next = new Set(prev)
-    next.has(m) ? next.delete(m) : next.add(m)
-    return next
-  })
+  const getExcluded = (emp) => excludedLocal[emp.id] ?? emp.excluded_months ?? []
+  const isExcluded = (emp, m) => getExcluded(emp).includes(m)
+  const toggleExclude = (emp, m) => {
+    const curr = getExcluded(emp)
+    const next = curr.includes(m) ? curr.filter(x => x !== m) : [...curr, m].sort((a, b) => a - b)
+    setExcludedLocal(prev => ({ ...prev, [emp.id]: next }))
+    excludeMut.mutate({ employee_id: emp.id, year, months: next })
+  }
 
   const cellKey = (empId, m) => `${empId}-${m}`
 
@@ -179,8 +188,12 @@ export default function ThirteenthMonthPage() {
   }
 
   const compute13th = (emp) => {
+    const excl = getExcluded(emp)
     let sum = 0
-    for (let m = 1; m <= 12; m++) sum += getVal(emp, m) || 0
+    for (let m = 1; m <= 12; m++) {
+      if (excl.includes(m)) continue
+      sum += getVal(emp, m) || 0
+    }
     return sum / 12
   }
 
@@ -214,7 +227,7 @@ export default function ThirteenthMonthPage() {
     <div>
       <PageHeader
         title="13th Month Pay"
-        description="Click any cell to override a monthly value. 13th month = sum of all 12 months ÷ 12 (DOLE formula). Month toggles highlight months for review only."
+        description="Click any cell to override a monthly value. Untick a month to exclude it from that employee's total. 13th month = sum of included months ÷ 12 (DOLE formula)."
         help={[
           { heading: 'Year & Group Filters', items: [
             'Use the year dropdown to select the calendar year for 13th month computation.',
@@ -229,8 +242,14 @@ export default function ThirteenthMonthPage() {
             'In Manual mode, click any amount cell to type a value override.',
             'Overridden cells are highlighted so you can tell which values were manually set.',
           ]},
+          { heading: 'Including / Excluding Months', items: [
+            'Hover an amount cell and click "exclude" to leave that month out of the employee\'s 13th month total.',
+            'Excluded months show struck-through with an amber "excluded" tag — click the tag to include them again.',
+            'The selection is per employee and saves immediately — different employees can include different months.',
+            'The divisor stays ÷ 12 (DOLE), so excluding a month lowers the total.',
+          ]},
           { heading: 'Total Column', items: [
-            'The rightmost column shows the computed 13th month pay: sum of all 12 monthly values ÷ 12.',
+            'The rightmost column shows the computed 13th month pay: sum of included monthly values ÷ 12.',
             'Hover over a total to copy the exact value to your clipboard.',
           ]},
           { heading: 'Save & Push to Payroll', items: [
@@ -273,6 +292,10 @@ export default function ThirteenthMonthPage() {
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">U</span>
             Undeclared
           </span>
+          <span className="flex items-center gap-1.5 border-l border-gray-200 pl-3">
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase bg-amber-100 text-amber-700">excluded</span>
+            Left out of total
+          </span>
           {dirty && (
             <div className="flex items-center gap-2 ml-2">
               <button onClick={() => { setOverrides({}); setDirty(false) }} className="btn-ghost text-gray-500">
@@ -284,26 +307,6 @@ export default function ThirteenthMonthPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Month toggles */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {MONTHS.map((label, i) => {
-          const m = i + 1
-          const on = included.has(m)
-          return (
-            <button
-              key={m}
-              onClick={() => toggleMonth(m)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                on ? 'bg-brand-600 text-white border-brand-600'
-                   : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
-              }`}
-            >
-              {label}
-            </button>
-          )
-        })}
       </div>
 
       {isLoading ? <PageSpinner /> : (<>
@@ -321,12 +324,7 @@ export default function ThirteenthMonthPage() {
                   {MONTHS.map((label, i) => {
                     const m = i + 1
                     return (
-                      <th
-                        key={m}
-                        className={`px-1.5 py-2.5 text-center font-medium min-w-[96px] transition-colors ${
-                          included.has(m) ? 'text-gray-700' : 'text-gray-300'
-                        }`}
-                      >
+                      <th key={m} className="px-1.5 py-2.5 text-center font-medium min-w-[96px] text-gray-700">
                         {label}
                       </th>
                     )
@@ -382,15 +380,38 @@ export default function ThirteenthMonthPage() {
                       </td>
                       {Array.from({ length: 12 }, (_, i) => {
                         const m = i + 1
+                        const val = getVal(emp, m)
+                        const excluded = isExcluded(emp, m)
                         return (
-                          <td key={m} className="px-1 py-1.5">
+                          <td key={m} className="px-1 py-1.5 align-top group/cell">
                             <MonthCell
-                              value={getVal(emp, m)}
+                              value={val}
                               isOverride={getIsOverride(emp, m)}
                               hasPayroll={getHasPayroll(emp, m)}
-                              disabled={!included.has(m)}
-                              onChange={(val) => handleChange(emp, m, val)}
+                              excluded={excluded}
+                              onChange={(v) => handleChange(emp, m, v)}
                             />
+                            {val != null && (
+                              <div className="h-4 mt-0.5 flex justify-end items-center">
+                                {excluded ? (
+                                  <button
+                                    onClick={() => toggleExclude(emp, m)}
+                                    title="Excluded from the total — click to include"
+                                    className="inline-flex items-center gap-0.5 px-1.5 rounded text-[9px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors"
+                                  >
+                                    <X size={9} strokeWidth={3} /> excluded
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => toggleExclude(emp, m)}
+                                    title="Included in the total — click to exclude"
+                                    className="text-[9px] text-gray-300 hover:text-red-500 opacity-0 group-hover/cell:opacity-100 focus:opacity-100 transition-opacity"
+                                  >
+                                    exclude
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                         )
                       })}
