@@ -207,12 +207,19 @@ class AttendanceController extends Controller
      */
     private function enforceGeofence(Request $request, Employee $employee): ?\Illuminate\Http\JsonResponse
     {
+        // Master switch: no location captured → nothing to enforce.
+        if (!\App\Models\SystemSettings::get('geo_capture_enabled', true)) return null;
         if (!\App\Models\SystemSettings::get('geofence_enabled', false)) return null;
         // Per-employee exemption (field / remote staff) reuses the geo-tracking toggle.
         if ($employee->geo_tracking_enabled === false) return null;
 
         $offices = \App\Models\SystemSettings::get('office_locations', []);
         if (empty($offices)) return null; // nothing configured → nothing to enforce
+
+        // Geofencing can only apply on days where location is actually captured.
+        $days = \App\Models\SystemSettings::get('geo_capture_days', [1, 2, 3, 4, 5, 6, 7]);
+        $days = array_map('intval', is_array($days) ? $days : []);
+        if (!in_array(SystemClock::today()->dayOfWeekIso, $days, true)) return null;
 
         $mode = \App\Models\SystemSettings::get('geofence_mode', 'enforce');
         $lat = $request->input('latitude');

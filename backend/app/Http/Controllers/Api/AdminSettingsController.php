@@ -67,9 +67,11 @@ class AdminSettingsController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'capture_enabled' => (bool) SystemSettings::get('geo_capture_enabled', true),
                 'enabled' => (bool) SystemSettings::get('geofence_enabled', false),
                 'mode' => SystemSettings::get('geofence_mode', 'enforce'),
                 'offices' => SystemSettings::get('office_locations', []),
+                'capture_days' => SystemSettings::get('geo_capture_days', [1, 2, 3, 4, 5, 6, 7]),
             ],
         ]);
     }

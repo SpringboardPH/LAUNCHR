@@ -196,9 +196,16 @@ export default function AttendanceClockPage() {
   }
 
   // Open the location preview modal, acquiring GPS coords in the background.
-  // If geo-tracking is disabled for this employee, clock in directly with no location.
+  // Skip it entirely (clock in normally, no location) when the employee is
+  // exempt or today isn't a selected location-capture day.
   const startClockIn = async () => {
-    if (user?.employee?.geo_tracking_enabled === false) {
+    const days = (geofence?.capture_days ?? [1, 2, 3, 4, 5, 6, 7]).map(Number)
+    const jsDay = new Date(`${sysClock?.date ?? new Date().toISOString().slice(0, 10)}T00:00:00`).getDay()
+    const todayIso = jsDay === 0 ? 7 : jsDay
+    const captureToday = geofence?.capture_enabled !== false
+      && user?.employee?.geo_tracking_enabled !== false
+      && days.includes(todayIso)
+    if (!captureToday) {
       inMutation.mutate(null)
       return
     }
@@ -327,10 +334,18 @@ export default function AttendanceClockPage() {
     }
   })()
 
-  // ── Geofence (UX preview; backend is authoritative) ──────────
+  // ── Geolocation on clock-in (UX preview; backend is authoritative) ──
   const geoOffices = geofence?.offices ?? []
-  const geoActive = Boolean(geofence?.enabled)
+  const captureDays = (geofence?.capture_days ?? [1, 2, 3, 4, 5, 6, 7]).map(Number)
+  // Today's ISO weekday (1=Mon .. 7=Sun) from the virtual system clock.
+  const geoJsDay = new Date(`${sysClock?.date ?? new Date().toISOString().slice(0, 10)}T00:00:00`).getDay()
+  const geoTodayIso = geoJsDay === 0 ? 7 : geoJsDay
+  // Is location captured at all today? (master switch + per-employee exemption + selected days)
+  const captureActiveToday = geofence?.capture_enabled !== false
     && user?.employee?.geo_tracking_enabled !== false
+    && captureDays.includes(geoTodayIso)
+  const geoActive = captureActiveToday
+    && Boolean(geofence?.enabled)
     && geoOffices.length > 0
   const geoMode = geofence?.mode ?? 'enforce'
 

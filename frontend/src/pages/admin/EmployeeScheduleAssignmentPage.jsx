@@ -58,6 +58,7 @@ const EmployeeScheduleAssignmentPage = () => {
     () => (sysClock?.date ? parseISO(sysClock.date) : new Date()),
     [sysClock?.date]
   )
+  const [page, setPage] = useState(1)
   const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     employee_id: '',
@@ -96,6 +97,8 @@ const EmployeeScheduleAssignmentPage = () => {
       ...getWeekRange(baseDate, 0),
     }))
   }, [baseDate])
+
+  useEffect(() => { setPage(1) }, [activeTab])
 
   const createMutation = useMutation({
     mutationFn: createEmployeeSchedule,
@@ -318,6 +321,11 @@ const EmployeeScheduleAssignmentPage = () => {
     ? uniqueFutureSchedules.filter((schedule) => !dismissedSuggestedSchedules.includes(schedule.id))
     : currentSchedulesWithDefaults.filter((schedule) => !dismissedSuggestedSchedules.includes(schedule.id))
 
+  const PAGE_SIZE = 10
+  const totalPages = Math.max(1, Math.ceil(shownSchedules.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const paginatedSchedules = shownSchedules.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
   return (
     <div>
       <PageHeader
@@ -500,7 +508,7 @@ const EmployeeScheduleAssignmentPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {shownSchedules.map((schedule) => (
+              {paginatedSchedules.map((schedule) => (
                 <tr key={schedule.id} className="hover:bg-gray-50">
                   <td className="py-2.5 pr-4 font-medium text-gray-900 text-sm">
                     {getEmployeeName(schedule.employee_id, schedule.employee)}
@@ -534,6 +542,34 @@ const EmployeeScheduleAssignmentPage = () => {
               ))}
             </tbody>
           </table>
+          </div>
+        )}
+        {shownSchedules.length > 0 && (
+          <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-500">
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, shownSchedules.length)} of {shownSchedules.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={safePage <= 1}
+                className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <span className="text-xs font-medium text-gray-700 min-w-[80px] text-center">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

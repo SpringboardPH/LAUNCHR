@@ -23,6 +23,20 @@ const parseOffices = (value) => {
   return []
 }
 
+// geo_capture_days: array of ISO weekday numbers (1=Mon .. 7=Sun).
+const parseDays = (value, fallback = [1, 2, 3, 4, 5, 6, 7]) => {
+  if (Array.isArray(value)) return value.map(Number)
+  if (typeof value === 'string' && value.trim()) {
+    try { const p = JSON.parse(value); return Array.isArray(p) ? p.map(Number) : fallback } catch { return fallback }
+  }
+  return fallback
+}
+
+const WEEKDAYS = [
+  { iso: 1, label: 'Mon' }, { iso: 2, label: 'Tue' }, { iso: 3, label: 'Wed' },
+  { iso: 4, label: 'Thu' }, { iso: 5, label: 'Fri' }, { iso: 6, label: 'Sat' }, { iso: 7, label: 'Sun' },
+]
+
 const themePresets = [
   { id: 'green', name: 'Emerald Green', colorClass: 'bg-emerald-600' },
   { id: 'blue', name: 'Ocean Blue', colorClass: 'bg-blue-600' },
@@ -60,11 +74,15 @@ export default function SystemSettingsPage() {
   const [p2End, setP2End] = useState(31)
   const [pMonthlyStart, setPMonthlyStart] = useState(1)
   const [pMonthlyEnd, setPMonthlyEnd] = useState(31)
+  const [geoCaptureEnabled, setGeoCaptureEnabled] = useState(true)
   const [geofenceEnabled, setGeofenceEnabled] = useState(false)
   const [geofenceMode, setGeofenceMode] = useState('enforce')
+  const [captureDays, setCaptureDays] = useState([1, 2, 3, 4, 5, 6, 7])
   const [offices, setOffices] = useState([])
   const [confirmConfig, setConfirmConfig] = useState({ open: false, onConfirm: () => {}, message: '', title: '', type: 'info' })
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
+  const [dirty, setDirty] = useState(false)
+  const skipDirtyRef = useRef(true)
 
   const { data: settings = [], isLoading } = useQuery({
     queryKey: adminSettingsKeys.all,
@@ -78,6 +96,9 @@ export default function SystemSettingsPage() {
 
   useEffect(() => {
     if (settings.length > 0) {
+      // Loading server values — the watcher below should treat this as the clean baseline.
+      skipDirtyRef.current = true
+      setDirty(false)
       const now = new Date()
       const defaultDate = formatDateForInput(now)
       const defaultTime = formatTimeForInput(now)
@@ -141,12 +162,29 @@ export default function SystemSettingsPage() {
       setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
       setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
 
+      const gcEnabled = settings.find(s => s.key === 'geo_capture_enabled')
+      setGeoCaptureEnabled(gcEnabled ? (gcEnabled.value === 'true' || gcEnabled.value === true) : true)
       const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
       setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
       setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
+      setCaptureDays(parseDays(settings.find(s => s.key === 'geo_capture_days')?.value))
       setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
     }
   }, [settings])
+
+  // Flag unsaved changes on any edit. The first run after a (re)load is the
+  // baseline populate, which skipDirtyRef swallows.
+  useEffect(() => {
+    if (skipDirtyRef.current) { skipDirtyRef.current = false; return }
+    setDirty(true)
+  }, [
+    dateTime, absentMarkingTime, systemName, systemLogo, payrollTemplate,
+    autoClockOut, requireLoginOtp, dtrPageEnabled, dtrUploadFrequency, dtrPerEmployeeRestriction,
+    dtrCutoff1Day, dtrCutoff2Day, sssTable, withholdingTable, themeColor, payrollFrequency,
+    p1Start, p1End, p2Start, p2End, pMonthlyStart, pMonthlyEnd,
+    geoCaptureEnabled, geofenceEnabled, geofenceMode, captureDays, offices,
+    selectedFile, selectedTemplateFile,
+  ])
 
   const uploadLogoMutation = useMutation({
     mutationFn: uploadLogo,
@@ -235,8 +273,10 @@ export default function SystemSettingsPage() {
       await updateAdminSetting('dtr_cutoff1_day',                 dtrCutoff1Day,              'DTR first cutoff day of month (used when frequency is semi_monthly)', 'integer')
       await updateAdminSetting('dtr_cutoff2_day',                 dtrCutoff2Day,              'DTR second cutoff day of month (used when frequency is semi_monthly)','integer')
 
+      await updateAdminSetting('geo_capture_enabled', geoCaptureEnabled, 'Master switch: whether clock-in captures employee location at all', 'boolean')
       await updateAdminSetting('geofence_enabled', geofenceEnabled, 'Whether clock-in is restricted to configured office locations', 'boolean')
       await updateAdminSetting('geofence_mode',    geofenceMode,    'Geofence behavior: enforce (block) or warn (allow but record)',   'string')
+      await updateAdminSetting('geo_capture_days', [...captureDays].sort((a, b) => a - b), 'Days clock-in prompts employees for their location (1=Mon .. 7=Sun)', 'json')
       await updateAdminSetting(
         'office_locations',
         offices
@@ -247,6 +287,7 @@ export default function SystemSettingsPage() {
       )
     },
     onSuccess: async () => {
+      setDirty(false)
       // Invalidate settings, system clock, AND all attendance queries so
       // the attendance clock page immediately reflects the new virtual time.
       await Promise.all([
@@ -306,6 +347,9 @@ export default function SystemSettingsPage() {
       message: 'Are you sure you want to discard your changes and reset to the last saved settings?',
       type: 'warning',
       onConfirm: () => {
+        // Resetting to saved values — don't let the watcher flag this as an edit.
+        skipDirtyRef.current = true
+        setDirty(false)
         const now = new Date()
         const defaultDate = formatDateForInput(now)
         const defaultTime = formatTimeForInput(now)
@@ -364,13 +408,20 @@ export default function SystemSettingsPage() {
         setPMonthlyStart(parseInt(settings.find(s => s.key === 'payroll_monthly_start_day')?.value ?? '1'))
         setPMonthlyEnd(parseInt(settings.find(s => s.key === 'payroll_monthly_end_day')?.value ?? '31'))
 
+        const gcEnabled = settings.find(s => s.key === 'geo_capture_enabled')
+        setGeoCaptureEnabled(gcEnabled ? (gcEnabled.value === 'true' || gcEnabled.value === true) : true)
         const gfEnabled = settings.find(s => s.key === 'geofence_enabled')
         setGeofenceEnabled(gfEnabled?.value === 'true' || gfEnabled?.value === true)
         setGeofenceMode(settings.find(s => s.key === 'geofence_mode')?.value ?? 'enforce')
+        setCaptureDays(parseDays(settings.find(s => s.key === 'geo_capture_days')?.value))
         setOffices(parseOffices(settings.find(s => s.key === 'office_locations')?.value))
       }
     })
   }
+
+  const toggleCaptureDay = (iso) => setCaptureDays(prev =>
+    prev.includes(iso) ? prev.filter(d => d !== iso) : [...prev, iso].sort((a, b) => a - b)
+  )
 
   const updateOffice = (i, field, val) => setOffices(prev => prev.map((o, idx) => idx === i ? { ...o, [field]: val } : o))
   const addOffice = () => setOffices(prev => [...prev, { name: '', lat: '', lng: '', radius_m: 200 }])
@@ -858,16 +909,53 @@ export default function SystemSettingsPage() {
                 <MapPin size={20} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Clock-In Geofencing</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Restrict clock-ins to configured office locations. Employees exempted via their profile are unaffected.</p>
+                <h2 className="text-sm font-semibold text-gray-900">Geolocation on Clock-In</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Capture where employees clock in from on selected days. Optionally enforce a workplace radius.</p>
               </div>
             </div>
           </div>
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div>
-                <p className="text-sm font-medium text-gray-900">Enable Geofencing</p>
-                <p className="text-xs text-gray-500">When off, location is still captured but never blocks a clock-in.</p>
+                <p className="text-sm font-medium text-gray-900">Enable Location Clock-In</p>
+                <p className="text-xs text-gray-500">Master switch. When off, no clock-in ever asks for location and geofencing does nothing.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGeoCaptureEnabled(!geoCaptureEnabled)}
+                className={`w-12 h-6 rounded-full flex items-center p-1 transition-colors ${geoCaptureEnabled ? 'bg-brand-600' : 'bg-gray-300'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${geoCaptureEnabled ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
+
+            {geoCaptureEnabled && (<>
+            <div className="p-4 border rounded-lg space-y-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Location Capture Days</p>
+                <p className="text-xs text-gray-500">Clock-in asks for the employee's location on these days. On other days, employees clock in normally with no location prompt.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAYS.map(d => (
+                  <button
+                    key={d.iso}
+                    type="button"
+                    onClick={() => toggleCaptureDay(d.iso)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${captureDays.includes(d.iso) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-400 hover:text-brand-600'}`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+              {captureDays.length === 0 && (
+                <p className="text-[11px] text-amber-600">No days selected — location is never captured; all clock-ins proceed normally.</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Enforce Geofencing</p>
+                <p className="text-xs text-gray-500">On capture days, restrict clock-in to a workplace radius. When off, location is still recorded but never blocks.</p>
               </div>
               <button
                 type="button"
@@ -1014,6 +1102,7 @@ export default function SystemSettingsPage() {
                 </div>
               </>
             )}
+            </>)}
           </div>
         </div>
 
@@ -1234,7 +1323,7 @@ export default function SystemSettingsPage() {
           </div>
         </div>
 
-        <div className="card p-4">
+        <div className="card p-4 sticky bottom-4 z-20 shadow-lg border border-gray-200">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <button
               type="button"
@@ -1246,6 +1335,9 @@ export default function SystemSettingsPage() {
             </button>
 
             <div className="flex items-center gap-3 w-full sm:w-auto">
+              {dirty && !updateSettingMutation.isPending && (
+                <span className="text-xs italic text-amber-600 whitespace-nowrap">Unsaved changes</span>
+              )}
               <button
                 type="button"
                 onClick={handleCancel}
