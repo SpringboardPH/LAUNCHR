@@ -30,6 +30,7 @@ const schema = z.object({
   pagibig_number:    z.string().nullable().optional(),
   tin_number:        z.string().nullable().optional(),
   group:             z.string().nullable().optional(),
+  geo_tracking_enabled: z.boolean().optional(),
 })
 
 export default function EmployeeFormPage() {
@@ -67,7 +68,7 @@ export default function EmployeeFormPage() {
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
-    defaultValues: { salary: 0, undeclared_salary: 0, rate_type: 'monthly', role: 'employee', password: '' },
+    defaultValues: { salary: 0, undeclared_salary: 0, rate_type: 'monthly', role: 'employee', password: '', geo_tracking_enabled: true },
   })
 
   const rateType = watch('rate_type')
@@ -190,6 +191,14 @@ export default function EmployeeFormPage() {
             </div>
           )}
         </FormField>
+
+        <label className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50">
+          <input type="checkbox" {...register('geo_tracking_enabled')} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+          <span>
+            <span className="block text-sm font-medium text-gray-800">Capture location on clock-in</span>
+            <span className="block text-xs text-gray-500 mt-0.5">When on, this employee is shown a map to confirm their location when clocking in. Turn off to disable location capture for them.</span>
+          </span>
+        </label>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <FormField label="Hire date" error={errors.hire_date?.message} required>

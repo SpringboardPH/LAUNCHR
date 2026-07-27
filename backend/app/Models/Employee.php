@@ -35,6 +35,7 @@ class Employee extends Model
         'tin_number',
         'group',
         'dtr_upload_enabled',
+        'geo_tracking_enabled',
     ];
 
     protected $casts = [
@@ -42,6 +43,7 @@ class Employee extends Model
         'salary'              => 'decimal:2',
         'undeclared_salary'   => 'decimal:2',
         'dtr_upload_enabled'  => 'boolean',
+        'geo_tracking_enabled' => 'boolean',
     ];
 
     protected $appends = ['full_name', 'schedule'];

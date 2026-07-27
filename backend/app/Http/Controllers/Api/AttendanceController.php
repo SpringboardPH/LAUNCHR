@@ -206,6 +206,8 @@ class AttendanceController extends Controller
         $request->validate([
             'notes' => 'nullable|string|max:255',
             'employee_id' => 'nullable|exists:employees,id',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
         $user = $request->user();
@@ -333,6 +335,8 @@ class AttendanceController extends Controller
                 [
                     'clock_in_time'          => $clockInTime,
                     'clock_in_notes'         => $request->notes,
+                    'clock_in_lat'           => $request->input('latitude'),
+                    'clock_in_lng'           => $request->input('longitude'),
                     'status'                 => 'working',
                     'schedule_template_id'   => $schedule?->schedule_template_id,
                     'schedule_template_name' => $schedule?->template?->name,
@@ -437,6 +441,8 @@ class AttendanceController extends Controller
             [
                 'clock_in_time' => $clockInTime,
                 'clock_in_notes' => $request->notes,
+                'clock_in_lat' => $request->input('latitude'),
+                'clock_in_lng' => $request->input('longitude'),
                 'status' => $initialStatus,
                 // Snapshot schedule context so historical logs stay stable.
                 'schedule_template_id'   => $schedule?->schedule_template_id,

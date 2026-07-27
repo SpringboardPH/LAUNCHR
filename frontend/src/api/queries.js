@@ -66,8 +66,13 @@ export const getAttendance = (params) =>
 export const getMonthlyAttendance = (employeeId, startDate, endDate) =>
   api.get(`/attendance/${employeeId}/monthly`, { params: { start_date: startDate, end_date: endDate } }).then(r => r.data.data)
 
-export const clockIn = (notes, employeeId = null) =>
-  api.post('/attendance/clock-in', { notes, employee_id: employeeId }).then(r => r.data.data)
+export const clockIn = (notes, employeeId = null, coords = null) =>
+  api.post('/attendance/clock-in', {
+    notes,
+    employee_id: employeeId,
+    latitude: coords?.latitude ?? null,
+    longitude: coords?.longitude ?? null,
+  }).then(r => r.data.data)
 
 export const clockOut = (notes, employeeId = null, confirmEarlyClockOut = false, isOvertime = null) =>
   api.post('/attendance/clock-out', {

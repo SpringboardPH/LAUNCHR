@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getDashboard, dashboardKeys, getSystemClock, systemClockKeys } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { PageHeader, StatCard, PageSpinner, StatusBadge } from '../../components/ui/index.jsx'
-import { Users, Clock, CalendarOff, TrendingUp, AlertCircle, Zap, CheckCircle2, XCircle, Clock3 } from 'lucide-react'
+import { Users, Clock, CalendarOff, TrendingUp, AlertCircle, Zap, CheckCircle2, XCircle, Clock3, Cake } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import {
   AreaChart, Area, BarChart, Bar, Cell,
@@ -76,9 +76,8 @@ export default function DashboardPage() {
           <StatCard 
             label="Absent" 
             value={s.absent_today ?? 0} 
-            icon={XCircle} 
+            icon={XCircle}
             color="red"
-            sub={s.absent_today > 0 ? 'Needs attention' : 'None'}
           />
           <StatCard 
             label="Late" 
@@ -241,27 +240,30 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Quick Stats Box */}
-        <div className="card p-5 border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Quick Stats</h3>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">New Hires (30d)</span>
-              <span className="text-lg font-bold text-gray-900">{s.new_hires_30_days ?? 0}</span>
+        {/* Upcoming Work Anniversaries */}
+        <div className="card p-5 border-gray-200 flex flex-col">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <Cake className="w-4 h-4 text-brand-500" /> Upcoming Anniversaries
+          </h3>
+          {data?.upcoming_anniversaries?.length ? (
+            <div className="flex-1 flex flex-col justify-center space-y-3 max-h-[300px] overflow-y-auto">
+              {data.upcoming_anniversaries.map(a => (
+                <div key={a.id} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{a.first_name} {a.last_name}</p>
+                    <p className="text-xs text-gray-500">
+                      {a.years} {a.years === 1 ? 'year' : 'years'} · {format(parseISO(a.date), 'MMM d')}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                    {a.days_until === 0 ? 'Today' : `in ${a.days_until}d`}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-              <span className="text-sm text-gray-600">Total Absences Today</span>
-              <span className={`text-lg font-bold ${s.absent_today > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {s.absent_today ?? 0}
-              </span>
-            </div>
-            {s.last_payroll && (
-              <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-                <span className="text-sm text-gray-600">Last Payroll</span>
-                <span className="text-sm font-medium text-gray-900">{s.last_payroll}</span>
-              </div>
-            )}
-          </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-8">No anniversaries in the next 30 days</p>
+          )}
         </div>
       </div>
 

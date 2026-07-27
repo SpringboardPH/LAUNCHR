@@ -10,10 +10,22 @@ import {
   getCalendarEventTypes, calendarEventTypeKeys,
   getPayrollConfig, payrollConfigKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal, AlertModal } from '../../components/ui/index.jsx'
-import { Clock, LogOut, AlertCircle, CalendarDays, Sparkles } from 'lucide-react'
+import { PageHeader, PageSpinner, ScheduleDisplay, ConfirmModal, AlertModal, Modal } from '../../components/ui/index.jsx'
+import { Clock, LogOut, AlertCircle, CalendarDays, Sparkles, MapPin } from 'lucide-react'
 import { useAuth } from '../../store/AuthContext'
 import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
+
+// Resolve GPS coords for geo-tagging; resolves null if unsupported/denied/timeout
+// so clock-in always proceeds. ponytail: no library, browser Geolocation API only.
+const getClockInCoords = () =>
+  new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 10000, enableHighAccuracy: true }
+    )
+  })
 
 const calculateHours = (clockInTime, clockOutTime) => {
   if (!clockInTime || !clockOutTime) return '—'
@@ -41,6 +53,7 @@ export default function AttendanceClockPage() {
   const [notes, setNotes] = useState('')
   const [earlyClockOutConfirmOpen, setEarlyClockOutConfirmOpen] = useState(false)
   const [earlyClockInConfirmOpen, setEarlyClockInConfirmOpen] = useState(false)
+  const [locationModal, setLocationModal] = useState({ open: false, loading: false, coords: null })
   const [alertConfig, setAlertConfig] = useState({ open: false, title: '', message: '', type: 'error' })
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -160,10 +173,23 @@ export default function AttendanceClockPage() {
       .substring(0, 2) || 'E'
   }
 
+  // Open the location preview modal, acquiring GPS coords in the background.
+  // If geo-tracking is disabled for this employee, clock in directly with no location.
+  const startClockIn = async () => {
+    if (user?.employee?.geo_tracking_enabled === false) {
+      inMutation.mutate(null)
+      return
+    }
+    setLocationModal({ open: true, loading: true, coords: null })
+    const coords = await getClockInCoords()
+    setLocationModal({ open: true, loading: false, coords })
+  }
+
   const inMutation = useMutation({
-    mutationFn: () => clockIn(notes),
+    mutationFn: (coords = null) => clockIn(notes, null, coords),
     onSuccess: () => {
       setNotes('')
+      setLocationModal({ open: false, loading: false, coords: null })
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       qc.invalidateQueries({ queryKey: systemClockKeys.all })
     },
@@ -289,12 +315,69 @@ export default function AttendanceClockPage() {
         type={alertConfig.type}
       />
 
+      <Modal
+        open={locationModal.open}
+        onClose={() => setLocationModal({ open: false, loading: false, coords: null })}
+        title="Confirm Your Location"
+        size="lg"
+        footer={
+          <div className="flex gap-2">
+            <button
+              onClick={() => inMutation.mutate(locationModal.coords)}
+              disabled={locationModal.loading || inMutation.isPending}
+              className="btn-primary flex-1 h-11 text-sm"
+            >
+              <Clock size={16} />
+              {inMutation.isPending ? 'Clocking in...' : 'Confirm Clock In'}
+            </button>
+            <button
+              onClick={() => setLocationModal({ open: false, loading: false, coords: null })}
+              className="btn-ghost flex-1 h-11 text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        }
+      >
+        {locationModal.loading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+            <MapPin size={28} className="text-brand-500 animate-pulse mb-3" />
+            <p className="text-sm">Getting your location…</p>
+          </div>
+        ) : locationModal.coords ? (
+          <div>
+            <div className="rounded-lg overflow-hidden border border-gray-200">
+              <iframe
+                title="Clock-in location"
+                width="100%"
+                height="320"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://www.google.com/maps?q=${locationModal.coords.latitude},${locationModal.coords.longitude}&z=16&output=embed`}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
+              <MapPin size={12} className="text-brand-500" />
+              {locationModal.coords.latitude.toFixed(6)}, {locationModal.coords.longitude.toFixed(6)}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-center text-gray-500">
+            <MapPin size={28} className="text-gray-300 mb-3" />
+            <p className="text-sm font-medium text-gray-700">Location unavailable</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-xs">
+              We couldn't access your location. You can still clock in — it just won't be geo-tagged.
+            </p>
+          </div>
+        )}
+      </Modal>
+
       <ConfirmModal
         open={earlyClockInConfirmOpen}
         onClose={() => setEarlyClockInConfirmOpen(false)}
         onConfirm={() => {
-          inMutation.mutate()
           setEarlyClockInConfirmOpen(false)
+          startClockIn()
         }}
         title="Clock In Early?"
         message="Note: Clocking in early won't count toward overtime and will only be applied normally. Do you wish to proceed?"
@@ -455,7 +538,7 @@ export default function AttendanceClockPage() {
                     if (window && window.currentMinutes < window.normalInStart) {
                       setEarlyClockInConfirmOpen(true)
                     } else {
-                      inMutation.mutate()
+                      startClockIn()
                     }
                   }}
                   disabled={inMutation.isPending || !canClockIn}

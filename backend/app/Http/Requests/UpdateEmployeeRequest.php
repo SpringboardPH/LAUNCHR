@@ -44,6 +44,7 @@ class UpdateEmployeeRequest extends FormRequest
             'pagibig_number' => 'nullable|string|max:20',
             'tin_number' => 'nullable|string|max:20',
             'group' => 'nullable|string|max:100',
+            'geo_tracking_enabled' => 'nullable|boolean',
             'role' => 'nullable|in:employee,hr,accounting,admin',
             'password' => 'nullable|string|min:8',
         ];

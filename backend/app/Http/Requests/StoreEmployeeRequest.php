@@ -41,6 +41,7 @@ class StoreEmployeeRequest extends FormRequest
             'philhealth_number' => 'nullable|string|max:20',
             'pagibig_number' => 'nullable|string|max:20',
             'group' => 'nullable|string|max:100',
+            'geo_tracking_enabled' => 'nullable|boolean',
             'role' => 'nullable|in:employee,hr,accounting,admin',
             'password' => 'nullable|string|min:8',
         ];

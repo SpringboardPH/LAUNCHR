@@ -16,6 +16,8 @@ class AttendanceLog extends Model
         'clock_out_time',
         'clock_in_notes',
         'clock_out_notes',
+        'clock_in_lat',
+        'clock_in_lng',
         'status',
         'schedule_template_id',
         'schedule_template_name',

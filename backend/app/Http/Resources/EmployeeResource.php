@@ -36,6 +36,7 @@ class EmployeeResource extends JsonResource
             'pagibig_number' => $this->pagibig_number,
             'tin_number' => $this->tin_number,
             'group' => $this->group,
+            'geo_tracking_enabled' => (bool) $this->geo_tracking_enabled,
             'user' => [
                 'id' => $this->user?->id,
                 'role' => $this->user?->role,

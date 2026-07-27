@@ -160,6 +160,33 @@ class DashboardController extends Controller
             ];
         }
 
+        // Upcoming work anniversaries (within next 30 days, 1+ years of service)
+        // ponytail: compute in PHP to stay DB-agnostic; fine at this employee count
+        $upcomingAnniversaries = Employee::where('status', 'active')
+            ->whereNotNull('hire_date')
+            ->select('id', 'first_name', 'last_name', 'department', 'hire_date')
+            ->get()
+            ->map(function ($emp) use ($today) {
+                $hire = Carbon::parse($emp->hire_date);
+                $next = $hire->copy()->year($today->year);
+                if ($next->lt($today)) {
+                    $next->addYear();
+                }
+                return [
+                    'id' => $emp->id,
+                    'first_name' => $emp->first_name,
+                    'last_name' => $emp->last_name,
+                    'department' => $emp->department,
+                    'date' => $next->toDateString(),
+                    'days_until' => $today->diffInDays($next),
+                    'years' => $next->year - $hire->year,
+                ];
+            })
+            ->filter(fn($a) => $a['days_until'] <= 30 && $a['years'] >= 1)
+            ->sortBy('days_until')
+            ->take(6)
+            ->values();
+
         $monthlyStatusDist = AttendanceLog::whereBetween('date', [$monthStart->toDateString(), $monthEnd->toDateString()])
             ->groupBy('status')
             ->select('status', DB::raw('count(*) as count'))
@@ -193,6 +220,7 @@ class DashboardController extends Controller
                 'department_attendance_rates' => $departmentAttendance->toArray(),
                 'weekly_attendance_trend' => $weeklyTrend,
                 'monthly_status_distribution' => $monthlyStatusDist->toArray(),
+                'upcoming_anniversaries' => $upcomingAnniversaries->toArray(),
             ],
             'message' => 'Dashboard summary retrieved',
         ]);

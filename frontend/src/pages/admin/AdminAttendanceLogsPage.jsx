@@ -8,7 +8,7 @@ import {
   getSystemClock, systemClockKeys
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
-import { Pencil, Trash2, AlertCircle } from 'lucide-react'
+import { Pencil, Trash2, AlertCircle, MapPin } from 'lucide-react'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 import { calculateAttendanceStatus, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
 
@@ -429,6 +429,7 @@ export default function AdminAttendanceLogsPage() {
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Clock In</th>
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Clock Out</th>
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Hours</th>
+                  <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Location</th>
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Status</th>
                   <th className="pb-2 text-left text-xs text-gray-400 font-medium pr-4">Actions</th>
                 </tr>
@@ -453,6 +454,21 @@ export default function AdminAttendanceLogsPage() {
                     </td>
                     <td className="py-2.5 pr-4 text-gray-600 text-sm">
                       {calculateHoursWorked(log.clock_in_time, log.clock_out_time)}
+                    </td>
+                    <td className="py-2.5 pr-4 text-sm">
+                      {log.clock_in_lat != null && log.clock_in_lng != null ? (
+                        <a
+                          href={`https://www.google.com/maps?q=${log.clock_in_lat},${log.clock_in_lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-brand-600 hover:underline"
+                          title={`${log.clock_in_lat}, ${log.clock_in_lng}`}
+                        >
+                          <MapPin size={14} /> View
+                        </a>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="py-2.5">
                       <StatusBadge status={log.status} />
@@ -479,7 +495,7 @@ export default function AdminAttendanceLogsPage() {
                 ))}
                 {logs.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-gray-400 text-sm">
+                    <td colSpan={9} className="py-8 text-center text-gray-400 text-sm">
                       {hasActiveFilters ? 'No records match your filters' : 'No attendance logs found'}
                     </td>
                   </tr>
