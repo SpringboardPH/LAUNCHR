@@ -385,6 +385,7 @@ export default function AdminAttendanceLogsPage() {
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="working">Working</option>
+              <option value="incomplete">Incomplete</option>
               <option value="late">Late</option>
               <option value="undertime">Undertime</option>
               <option value="half_day">Half Day</option>
@@ -536,6 +537,7 @@ export default function AdminAttendanceLogsPage() {
                   <option value="">— Select status —</option>
                   <option value="completed">Completed</option>
                   <option value="working">Working</option>
+                  <option value="incomplete">Incomplete</option>
                   <option value="late">Late</option>
                   <option value="undertime">Undertime</option>
                   <option value="half_day">Half Day</option>
@@ -743,6 +745,7 @@ export default function AdminAttendanceLogsPage() {
                   <option value="">Auto-detect</option>
                   <option value="completed">Completed</option>
                   <option value="working">Working</option>
+                  <option value="incomplete">Incomplete</option>
                   <option value="late">Late</option>
                   <option value="undertime">Undertime</option>
                   <option value="half_day">Half Day</option>

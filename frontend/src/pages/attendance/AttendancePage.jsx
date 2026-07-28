@@ -777,6 +777,7 @@ export default function AttendancePage() {
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="working">Working</option>
+              <option value="incomplete">Incomplete</option>
               <option value="late">Late</option>
               <option value="undertime">Undertime</option>
               <option value="half_day">Half Day</option>
@@ -915,6 +916,7 @@ export default function AttendancePage() {
                 holiday:   { letter: 'H', color: 'bg-purple-500 text-white' },
                 working:   { letter: 'W', color: 'bg-green-400 text-white' },
                 rest_day:  { letter: 'R', color: 'bg-blue-500 text-white' },
+                incomplete:{ letter: 'I', color: 'bg-orange-500 text-white' },
               }
 
               const employeeList = Object.entries(groupedByEmployee).sort((a, b) => a[1].name.localeCompare(b[1].name))
@@ -995,6 +997,7 @@ export default function AttendancePage() {
                 <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
                   <option value="completed">Completed</option>
                   <option value="working">Working</option>
+                  <option value="incomplete">Incomplete</option>
                   <option value="late">Late</option>
                   <option value="undertime">Undertime</option>
                   <option value="half_day">Half Day</option>

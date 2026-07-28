@@ -191,8 +191,16 @@ class AssistantService
         if (!empty($args['status'])) {
             $q->where('status', $args['status']);
         }
+        // Format start_date/end_date explicitly — see note in getAttendance().
         return ['requests' => $q->orderByDesc('start_date')->limit(50)->get([
             'leave_type', 'start_date', 'end_date', 'days_requested', 'status', 'reason',
+        ])->map(fn ($r) => [
+            'leave_type'     => $r->leave_type,
+            'start_date'     => $r->start_date->toDateString(),
+            'end_date'       => $r->end_date->toDateString(),
+            'days_requested' => $r->days_requested,
+            'status'         => $r->status,
+            'reason'         => $r->reason,
         ])->toArray()];
     }
 
@@ -208,13 +216,23 @@ class AssistantService
             ->orderByDesc('date')
             ->limit(90)
             ->get(['date', 'clock_in_time', 'clock_out_time', 'status'])
-            ->toArray(),
+            // toArray() would serialize the 'date' cast through Carbon's UTC-converting
+            // toJSON(), shifting it a day back under Asia/Manila. Format explicitly instead.
+            ->map(fn ($log) => [
+                'date'           => $log->date->toDateString(),
+                'clock_in_time'  => $log->clock_in_time,
+                'clock_out_time' => $log->clock_out_time,
+                'status'         => $log->status,
+            ])->toArray(),
             'range' => ['from' => $from, 'to' => $to]];
     }
 
     private function getPayslips(Employee $employee): array
     {
         // Own pay is in scope; omit undeclared_salary fields.
+        // Format cutoff_start/cutoff_end explicitly — raw toArray() would serialize the
+        // 'date' cast through Carbon's UTC-converting toJSON(), shifting it a day back
+        // under Asia/Manila (same bug as getAttendance()).
         return ['payslips' => Payroll::where('employee_id', $employee->id)
             ->orderByDesc('cutoff_end')
             ->limit(12)
@@ -222,6 +240,21 @@ class AssistantService
                 'cutoff_start', 'cutoff_end', 'daily_rate', 'days_worked', 'total_hours',
                 'overtime_hours', 'late_minutes', 'undertime_minutes', 'gross_pay',
                 'deductions', 'allowances', 'net_pay', 'status', 'paid_at',
+            ])->map(fn ($p) => [
+                'cutoff_start'      => $p->cutoff_start->toDateString(),
+                'cutoff_end'        => $p->cutoff_end->toDateString(),
+                'daily_rate'        => $p->daily_rate,
+                'days_worked'       => $p->days_worked,
+                'total_hours'       => $p->total_hours,
+                'overtime_hours'    => $p->overtime_hours,
+                'late_minutes'      => $p->late_minutes,
+                'undertime_minutes' => $p->undertime_minutes,
+                'gross_pay'         => $p->gross_pay,
+                'deductions'        => $p->deductions,
+                'allowances'        => $p->allowances,
+                'net_pay'           => $p->net_pay,
+                'status'            => $p->status,
+                'paid_at'           => optional($p->paid_at)->toDateTimeString(),
             ])->toArray()];
     }
 

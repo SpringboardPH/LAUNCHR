@@ -32,6 +32,22 @@ class MarkAbsentEmployees extends Command
 
         $endDate = $toInput ? Carbon::parse($toInput)->startOfDay() : $startDate->copy();
 
+        // Close out attendance rows abandoned mid-shift: clocked in on a past day but never
+        // clocked out, so status is stuck 'working' forever (nothing else ever revisits it).
+        $staleQuery = AttendanceLog::where('status', 'working')
+            ->whereNull('clock_out_time')
+            ->where('date', '<', $startDate->toDateString());
+        if ($employeeId) {
+            $staleQuery->where('employee_id', $employeeId);
+        }
+        $staleCount = $staleQuery->update([
+            'status' => 'incomplete',
+            'clock_out_notes' => '[System] Marked incomplete — no clock-out recorded for this day.',
+        ]);
+        if ($staleCount > 0) {
+            $this->info("Closed {$staleCount} stale 'working' record(s) with no clock-out.");
+        }
+
         // Build date range
         $dates = [];
         for ($d = $startDate->copy(); $d->lte($endDate); $d->addDay()) {

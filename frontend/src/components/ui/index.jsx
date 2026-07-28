@@ -183,6 +183,7 @@ export function StatusBadge({ status }) {
     not_scheduled: 'badge-gray',
     not_yet:       'badge-gray',
     rest_day:      'badge-blue',
+    incomplete:    'badge-orange',
   }
   const labels = {
     on_leave:      'on leave',
@@ -190,6 +191,7 @@ export function StatusBadge({ status }) {
     not_yet:       'Not Yet',
     half_day:      'Half Day',
     rest_day:      'Rest Day',
+    incomplete:    'Incomplete',
   }
   const label = labels[status] ?? status?.replace(/_/g, ' ')
   return <span className={map[status] ?? 'badge-gray'}>{label}</span>
