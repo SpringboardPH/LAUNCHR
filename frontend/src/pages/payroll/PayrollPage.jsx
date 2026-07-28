@@ -1452,12 +1452,12 @@ export default function PayrollPage() {
                           {isCustomEarning(item.label) ? (
                             <input
                               className="bg-transparent text-blue-700 placeholder:text-blue-300 focus:outline-none flex-1 mr-2"
-                              value={item.label}
+                              value={item.label || ''}
                               placeholder="Description"
                               onChange={(e) => handleFieldChange('allowances', idx, 'label', e.target.value)}
                             />
                           ) : (
-                            <span className="text-blue-700 capitalize flex-1 mr-2">{item.label.replace('_', ' ')}</span>
+                            <span className="text-blue-700 capitalize flex-1 mr-2">{(item.label || '').replace('_', ' ')}</span>
                           )}
                           <div className="flex items-center gap-2">
                             <input 
@@ -1474,7 +1474,7 @@ export default function PayrollPage() {
                       ) : (
                         <>
                           <span className="text-blue-700 capitalize">
-                            {item.label.replace('_', ' ')}
+                            {(item.label || '').replace('_', ' ')}
                             {item.label === 'Night Differential' && ` (${(item.amount / ((Number(selectedPayroll.daily_rate) / 8) * 0.10) || 0).toFixed(1)}h)`}
                             {item.label === 'Special Holiday' && ` (${(item.amount / ((Number(selectedPayroll.daily_rate) / 8) * 0.30) || 0).toFixed(1)}h)`}
                             {item.label === 'Legal Holiday' && ` (${(item.amount / ((Number(selectedPayroll.daily_rate) / 8) * 1.00) || 0).toFixed(1)}h)`}
@@ -1523,12 +1523,12 @@ export default function PayrollPage() {
                           {isCustomDeduction(item.label) ? (
                             <input
                               className="bg-transparent text-red-700 placeholder:text-red-300 focus:outline-none flex-1 mr-2"
-                              value={item.label}
+                              value={item.label || ''}
                               placeholder="Description"
                               onChange={(e) => handleFieldChange('deductions', idx, 'label', e.target.value)}
                             />
                           ) : (
-                            <span className="text-red-700 capitalize flex-1 mr-2">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : item.label.replace('_', ' ')}</span>
+                            <span className="text-red-700 capitalize flex-1 mr-2">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : (item.label || '').replace('_', ' ')}</span>
                           )}
                           <div className="flex items-center gap-2">
                             <input 
@@ -1544,7 +1544,7 @@ export default function PayrollPage() {
                         </>
                       ) : (
                         <>
-                          <span className="text-red-700 capitalize">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : item.label.replace('_', ' ')}</span>
+                          <span className="text-red-700 capitalize">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : (item.label || '').replace('_', ' ')}</span>
                           <span className="font-semibold text-red-800">-₱{Number(item.amount).toLocaleString()}</span>
                         </>
                       )}
