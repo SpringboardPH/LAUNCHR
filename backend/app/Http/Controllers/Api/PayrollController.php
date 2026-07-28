@@ -25,6 +25,44 @@ class PayrollController extends Controller
     }
 
     /**
+     * Close out any half_day / undertime request still pending when payroll runs.
+     *
+     * Approving one of these excuses the shortfall, so a request left pending forever
+     * would be a permanent free pass — pending and approved both suppress the
+     * deduction. Generating payroll is the deadline: anything HR has not excused by
+     * now is treated as not excused, which stamps the shortfall onto the log so the
+     * deduction applies. HR has the whole cutoff to act, and reverting the payroll to
+     * draft does not un-reject these — that is a deliberate manual decision.
+     */
+    private function resolvePendingShortfallRequests(int $employeeId, string $start, string $end): void
+    {
+        $pending = \App\Models\EmployeeRequest::where('employee_id', $employeeId)
+            ->whereIn('request_type', ['half_day', 'undertime'])
+            ->where('status', 'pending')
+            ->get()
+            ->filter(function ($req) use ($start, $end) {
+                $date = $req->meta['date'] ?? null;
+                return $date && $date >= $start && $date <= $end;
+            });
+
+        foreach ($pending as $req) {
+            $req->update([
+                'status'         => 'rejected',
+                'response_notes' => 'Not excused before payroll generation for '
+                    . $start . ' to ' . $end . ' — shortfall deducted automatically.',
+            ]);
+
+            $logId = $req->meta['attendance_log_id'] ?? null;
+            if ($logId) {
+                AttendanceLog::where('id', $logId)
+                    ->where('employee_id', $employeeId)
+                    ->whereNotIn('status', ['absent', 'on_leave', 'rest_day'])
+                    ->update(['status' => $req->request_type]);
+            }
+        }
+    }
+
+    /**
      * Display a listing of payroll records.
      */
     public function index(Request $request)
@@ -125,6 +163,8 @@ class PayrollController extends Controller
             if ($existingDraft) {
                 \App\Services\LoanService::reverseForPayroll($existingDraft->id);
             }
+
+            $this->resolvePendingShortfallRequests($employee->id, $start, $end);
 
             $logs = AttendanceLog::where('employee_id', $employee->id)
                 ->whereBetween('date', [$start, $end])
@@ -281,9 +321,12 @@ class PayrollController extends Controller
                         $log->clock_out_time,
                         $expectedHours
                     );
-                    // Flexi has no fixed end time — undertime is purely hours-based
-                    // half_day status is handled via $metrics['half_days'], not undertime minutes
-                    $earlyDepartureMin = in_array($log->status, ['completed', 'overtime', 'half_day'])
+                    // Flexi has no fixed end time — undertime is purely hours-based.
+                    // half_day status is handled via $metrics['half_days'], not undertime
+                    // minutes. 'late' is a baseline status that only docks late minutes
+                    // (below) — the shortfall itself is only deducted once a rejected
+                    // half_day/undertime request stamps 'undertime' onto the log.
+                    $earlyDepartureMin = in_array($log->status, ['completed', 'late', 'overtime', 'half_day'])
                         ? 0
                         : $details['undertime_minutes'];
                 } else {
@@ -323,8 +366,10 @@ class PayrollController extends Controller
                     );
 
                     $earlyDepartureMin = 0;
-                    // half_day status is handled via $metrics['half_days'], not undertime minutes
-                    if (!in_array($log->status, ['completed', 'overtime', 'half_day'])) {
+                    // half_day status is handled via $metrics['half_days'], not undertime
+                    // minutes. 'late' only docks late minutes (below) — see the flexi
+                    // branch above for why the shortfall needs a rejected request first.
+                    if (!in_array($log->status, ['completed', 'late', 'overtime', 'half_day'])) {
                         $clockOutMin = $log->clock_out_time
                             ? $this->parseTimeToMinutes($log->clock_out_time)
                             : $this->parseTimeToMinutes($workEnd);
@@ -451,11 +496,19 @@ class PayrollController extends Controller
                                         ->mapWithKeys(fn($l) => [Carbon::parse($l->date)->format('Y-m-d') => true]);
             // $dateOtHours and $attendanceUndertimeDates were populated in the first loop above
 
+            // Only EMPLOYEE-INITIATED requests carry their own pay effect here: they are
+            // filed ahead of time ("I need to leave at 3pm Friday") and have no attendance
+            // log to read the deviation from. Auto-filed requests are the opposite — they
+            // are raised FROM a log, and their decision is already recorded as that log's
+            // status, so counting them here would double-deduct. Worse, for half_day it
+            // would invert the polarity: approving to EXCUSE a shortfall would deduct half
+            // a day at the line below.
             $approvedRequests = \App\Models\EmployeeRequest::where('employee_id', $employee->id)
                 ->whereIn('request_type', ['overtime', 'half_day', 'undertime'])
                 ->where('status', 'approved')
                 ->get()
                 ->filter(fn($r) => isset($r->meta['date'])
+                    && empty($r->meta['auto_filed'])
                     && $r->meta['date'] >= $start
                     && $r->meta['date'] <= $end);
 

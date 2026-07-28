@@ -196,16 +196,11 @@ class EmployeeRequestController extends Controller
                 }
             }
 
-            // Half-day approval: mark the attendance log for that date as half_day
-            if ($employeeRequest->request_type === 'half_day') {
-                $date = $employeeRequest->meta['date'] ?? null;
-                if ($date) {
-                    \App\Models\AttendanceLog::where('employee_id', $employeeRequest->employee_id)
-                        ->whereDate('date', $date)
-                        ->whereNotIn('status', ['absent', 'on_leave', 'half_day'])
-                        ->update(['status' => 'half_day']);
-                }
-            }
+            // Half-day / undertime approval EXCUSES the shortfall, so the log deliberately
+            // keeps the baseline status it got at clock-out ('late' or 'completed') and no
+            // early-departure deduction is applied. Rejection is what stamps the shortfall
+            // onto the log — see reject() below. Note this is the opposite polarity to
+            // overtime, where approval is what grants the premium.
 
             // Loan approval: create the loan for employee-initiated cash advances
             if ($employeeRequest->request_type === 'cash_advance') {
@@ -289,6 +284,20 @@ class EmployeeRequestController extends Controller
                     ->where('employee_id', $employeeRequest->employee_id)
                     ->where('status', 'overtime')
                     ->update(['status' => $revertTo]);
+            }
+        }
+
+        // Rejecting a half-day / undertime request means the shortfall is NOT excused:
+        // stamp it onto the log, which is what turns on the early-departure deduction
+        // in PayrollController. Absences and leave already have their own deduction
+        // path, so never overwrite those.
+        if (in_array($employeeRequest->request_type, ['half_day', 'undertime'], true)) {
+            $logId = $employeeRequest->meta['attendance_log_id'] ?? null;
+            if ($logId) {
+                \App\Models\AttendanceLog::where('id', $logId)
+                    ->where('employee_id', $employeeRequest->employee_id)
+                    ->whereNotIn('status', ['absent', 'on_leave', 'rest_day'])
+                    ->update(['status' => $employeeRequest->request_type]);
             }
         }
 

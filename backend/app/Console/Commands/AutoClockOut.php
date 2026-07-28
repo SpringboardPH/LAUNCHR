@@ -80,13 +80,10 @@ class AutoClockOut extends Command
 
             if ($scheduleType === 'flexi') {
                 $requiredHours = $template->required_hours_per_day ?? 8;
+                // No deviation request is filed here, by design: a 23:59 force-close means
+                // the employee forgot to clock out, so neither the overtime nor the
+                // shortfall it implies is real. They get the plain baseline status.
                 $status = AttendanceService::calculateFlexiStatus($log->clock_in_time, $finalClockOutTime, $requiredHours);
-
-                // Cap at 'completed' to avoid accidental overtime for employees
-                // who simply forgot to clock out (mirrors the fixed-schedule cap below).
-                if ($status === 'overtime') {
-                    $status = 'completed';
-                }
 
                 $log->update([
                     'clock_out_time' => $finalClockOutTime,
@@ -112,6 +109,7 @@ class AutoClockOut extends Command
                 ? $this->calculateExpectedHours($dayRule['clock_in'], $dayRule['clock_out'])
                 : ($template->required_hours_per_day ?? 9);
 
+            // As with flexi above, no deviation request is filed for a force-close.
             $status = $this->calculateStatus(
                 $log->clock_in_time,
                 $finalClockOutTime,
@@ -119,17 +117,6 @@ class AutoClockOut extends Command
                 $workStartTime,
                 $dayRule
             );
-
-            // Option A: Cap at 'completed' or 'late' to avoid accidental overtime
-            // for employees who simply forgot to clock out.
-            if ($status === 'overtime') {
-                $inMinutes = AttendanceService::parseTimeToMinutes($log->clock_in_time);
-                $startMinutes = AttendanceService::parseTimeToMinutes($workStartTime);
-                
-                // If they were late but worked until midnight, we still mark them as 'late'
-                // so HR can see the attendance infraction, but we don't give them overtime.
-                $status = ($inMinutes > $startMinutes) ? 'late' : 'completed';
-            }
 
             $log->update([
                 'clock_out_time' => $finalClockOutTime,

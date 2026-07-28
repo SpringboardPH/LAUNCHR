@@ -44,8 +44,6 @@ class AttendanceService
         }
 
         $lateMinutes = max(0, $inMinutes - $startMinutes);
-        $hoursWorked = max(0, ($outMinutes - $effectiveInMin) / 60);
-        $halfExpected = $expectedHours / 2;
         $expectedMinutes = $expectedHours * 60;
         $undertimeMinutes = max(0, $expectedMinutes - ($outMinutes - $effectiveInMin));
 
@@ -68,26 +66,38 @@ class AttendanceService
             return 'completed';
         }
 
+        // 'overtime', 'half_day' and 'undertime' are NOT set here. They are deviations
+        // that change pay, so they require HR sign-off: clock-out records only the
+        // factual baseline and auto-files an EmployeeRequest (see classifyDeviation()
+        // and EmployeeRequest::autoFile()). The request-approval flow is the only
+        // thing that writes those statuses onto a log.
+        return $lateMinutes > 0 ? 'late' : 'completed';
+    }
+
+    /**
+     * Classify how a completed shift deviated from its expected hours. Returns the
+     * EmployeeRequest type that should be auto-filed, or null when the shift met
+     * expectations and nothing needs HR's attention.
+     */
+    public static function classifyDeviation(float $hoursWorked, int|float $expectedHours): ?string
+    {
+        if ($expectedHours <= 0) {
+            return null;
+        }
+
         if ($hoursWorked > $expectedHours) {
             return 'overtime';
         }
 
-        // Severely late or left very early — worked less than half the shift
-        if ($hoursWorked < $halfExpected) {
+        if ($hoursWorked < ($expectedHours / 2)) {
             return 'undertime';
         }
 
-        // Late arrival takes precedence over half_day (e.g. arrived late, clocked out at window)
-        if ($lateMinutes > 0) {
-            return 'late';
-        }
-
-        // On time but left early (worked >= half but < full shift)
         if ($hoursWorked < $expectedHours) {
             return 'half_day';
         }
 
-        return 'completed';
+        return null;
     }
 
     /**
@@ -149,17 +159,12 @@ class AttendanceService
         if (!$clockIn) return 'absent';
         if (!$clockOut) return 'working';
 
-        $inMin  = self::parseTimeToMinutes($clockIn);
-        $outMin = self::parseTimeToMinutes($clockOut);
-        if ($outMin < $inMin) $outMin += 1440;
-
-        $hoursWorked = ($outMin - $inMin) / 60;
-
-        if ($hoursWorked >= $requiredHours) {
-            return $hoursWorked > $requiredHours ? 'overtime' : 'completed';
-        }
-
-        return $hoursWorked >= ($requiredHours / 2) ? 'half_day' : 'undertime';
+        // Flexi has no scheduled start, so there is no lateness — 'completed' is the
+        // only baseline. Like the fixed path, overtime/half_day/undertime are pay-
+        // changing deviations written by the request-approval flow, not here.
+        // $requiredHours is kept in the signature for callers; classifyDeviation()
+        // is what turns it into a request type.
+        return 'completed';
     }
 
     /**
