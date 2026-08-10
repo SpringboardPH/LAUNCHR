@@ -297,3 +297,12 @@ export const calculateAttendanceStatus = (clockIn, clockOut, expectedHours, work
   
   return lateMinutes > 0 ? 'late' : 'completed'
 }
+
+export const TIMELESS_ATTENDANCE_STATUSES = ['absent', 'on_leave', 'rest_day', 'holiday']
+
+export function applyAttendanceStatusToForm(form, status) {
+  if (TIMELESS_ATTENDANCE_STATUSES.includes(status)) {
+    return { ...form, status, clock_in_time: '', clock_out_time: '' }
+  }
+  return { ...form, status }
+}
