@@ -117,12 +117,28 @@ export default function AttendancePage() {
 
   const openEditModal = (log) => {
     setEditLog(log)
-    setEditForm({
+    setEditForm(applyAttendanceStatusToForm({
       clock_in_time: log.clock_in_time || '',
       clock_out_time: log.clock_out_time || '',
       status: log.status || '',
       clock_in_notes: log.clock_in_notes || '',
       clock_out_notes: log.clock_out_notes || '',
+    }, log.status || ''))
+  }
+
+  const openBlankCell = (employeeId, employeeName, dateStr) => {
+    // Blanks are usually unscheduled / fixed off-days. Default rest_day so a
+    // careless save does not create an absent that payroll would deduct.
+    openEditModal({
+      id: null,
+      employee_id: Number(employeeId),
+      date: dateStr,
+      status: 'rest_day',
+      clock_in_time: null,
+      clock_out_time: null,
+      clock_in_notes: null,
+      clock_out_notes: null,
+      employee_name: employeeName,
     })
   }
 
@@ -980,7 +996,13 @@ export default function AttendancePage() {
                                   {isHolidayEvent ? getEventCode(event) : (config?.letter || '?')}
                                 </button>
                               ) : (
-                                <div className="w-6 h-6 mx-auto rounded-md border border-dashed border-gray-100" />
+                                <button
+                                  type="button"
+                                  onClick={() => openBlankCell(empId, emp.name, dateStr)}
+                                  className="w-6 h-6 mx-auto rounded-md border border-dashed border-gray-200 hover:border-brand-400 hover:bg-brand-50 transition-colors"
+                                  title={`${emp.name} - ${format(date, 'MMM dd')}: set status`}
+                                  aria-label={`Set status for ${emp.name} on ${format(date, 'MMM dd')}`}
+                                />
                               )}
                             </td>
                           )
@@ -998,9 +1020,32 @@ export default function AttendancePage() {
         )}
       </div>
 
-      <Modal open={!!editLog} onClose={() => setEditLog(null)} title="Edit Attendance Log" size="md">
+      <Modal
+        open={!!editLog}
+        onClose={() => setEditLog(null)}
+        title={editLog?.id == null ? 'Set Attendance Status' : 'Edit Attendance Log'}
+        size="md"
+      >
         <form onSubmit={handleEditSubmit}>
           <div className="space-y-4">
+            {editLog && (
+              <p className="text-sm text-gray-600">
+                <span className="font-medium text-gray-900">
+                  {editLog.employee_name
+                    || `${editLog.employee?.first_name || ''} ${editLog.employee?.last_name || ''}`.trim()
+                    || 'Employee'}
+                </span>
+                {' · '}
+                {editLog.date
+                  ? format(parseISO(String(editLog.date).slice(0, 10)), 'MMM dd, yyyy')
+                  : '—'}
+                {editLog.id == null && (
+                  <span className="block text-[11px] text-gray-400 mt-1">
+                    No log for this day yet. Defaults to Rest Day so payroll will not treat it as an absence.
+                  </span>
+                )}
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Clock In"><input type="time" step="1" className="input" value={editForm.clock_in_time} onChange={e => setEditForm({...editForm, clock_in_time: e.target.value})} /></FormField>
               <FormField label="Clock Out"><input type="time" step="1" className="input" value={editForm.clock_out_time} onChange={e => setEditForm({...editForm, clock_out_time: e.target.value})} /></FormField>
