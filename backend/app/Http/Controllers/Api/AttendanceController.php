@@ -20,6 +20,8 @@ class AttendanceController extends Controller
 {
     private const AUTO_CLOCK_OUT_NOTE = '[System] Automatically clocked out due to missed departure window.';
 
+    private const TIMELESS_STATUSES = ['absent', 'on_leave', 'rest_day', 'holiday'];
+
     // Work hours configuration
     private const WORK_START_TIME = '09:00:00';
     private const WORK_END_TIME = '18:00:00';
@@ -1488,6 +1490,7 @@ class AttendanceController extends Controller
             'clock_out_notes' => 'nullable|string',
         ]);
 
+        $validated = $this->nullClocksForTimelessStatus($validated);
         $log->update($validated);
         
         return response()->json([
@@ -1519,6 +1522,8 @@ class AttendanceController extends Controller
             'clock_in_notes' => 'nullable|string',
             'clock_out_notes' => 'nullable|string',
         ]);
+
+        $validated = $this->nullClocksForTimelessStatus($validated);
 
         // Check if log already exists for this employee on this date
         $existing = AttendanceLog::where('employee_id', $validated['employee_id'])
@@ -1602,6 +1607,16 @@ class AttendanceController extends Controller
                 'message' => 'Error running mark-absent command: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function nullClocksForTimelessStatus(array $data): array
+    {
+        if (isset($data['status']) && in_array($data['status'], self::TIMELESS_STATUSES, true)) {
+            $data['clock_in_time'] = null;
+            $data['clock_out_time'] = null;
+        }
+
+        return $data;
     }
 
     /**

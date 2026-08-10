@@ -14,7 +14,7 @@ import {
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
 import { Clock, LogIn, LogOut, Pencil, UserX, AlertCircle, LayoutGrid, List, ChevronDown } from 'lucide-react'
-import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus } from '../../utils/attendance'
+import { getClockWindow, getCutoffPeriod, getNextCutoff, getPrevCutoff, calculateAttendanceStatus, applyAttendanceStatusToForm } from '../../utils/attendance'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
 
 export default function AttendancePage() {
@@ -1008,7 +1008,7 @@ export default function AttendancePage() {
             
             <FormField label="Status">
               <div className="space-y-2">
-                <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                <select className="input" value={editForm.status} onChange={e => setEditForm(applyAttendanceStatusToForm(editForm, e.target.value))}>
                   <option value="completed">Completed</option>
                   <option value="working">Working</option>
                   <option value="late">Late</option>
@@ -1036,7 +1036,7 @@ export default function AttendancePage() {
                         </span>
                         <button 
                           type="button" 
-                          onClick={() => setEditForm({...editForm, status: detected})}
+                          onClick={() => setEditForm(applyAttendanceStatusToForm(editForm, detected))}
                           className="ml-auto text-[10px] text-brand-600 hover:underline font-bold"
                         >
                           Apply

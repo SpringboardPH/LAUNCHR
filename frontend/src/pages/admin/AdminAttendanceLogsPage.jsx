@@ -10,7 +10,7 @@ import {
 import { PageHeader, PageSpinner, StatusBadge, ConfirmModal, Modal, FormField, AlertModal } from '../../components/ui/index.jsx'
 import { Pencil, Trash2, AlertCircle, MapPin } from 'lucide-react'
 import { calculateHoursWorked } from '../../utils/timeHelpers'
-import { calculateAttendanceStatus, getCutoffPeriod, getNextCutoff, getPrevCutoff } from '../../utils/attendance'
+import { calculateAttendanceStatus, getCutoffPeriod, getNextCutoff, getPrevCutoff, applyAttendanceStatusToForm } from '../../utils/attendance'
 
 export default function AdminAttendanceLogsPage() {
   const [activeCutoff, setActiveCutoff] = useState(null)
@@ -566,7 +566,7 @@ export default function AdminAttendanceLogsPage() {
                 <select
                   className="input"
                   value={editForm.status}
-                  onChange={e => setEditForm({ ...editForm, status: e.target.value })}
+                  onChange={e => setEditForm(applyAttendanceStatusToForm(editForm, e.target.value))}
                 >
                   <option value="">— Select status —</option>
                   <option value="completed">Completed</option>
@@ -596,7 +596,7 @@ export default function AdminAttendanceLogsPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setEditForm({ ...editForm, status: detected })}
+                          onClick={() => setEditForm(applyAttendanceStatusToForm(editForm, detected))}
                           className="ml-auto text-[10px] text-brand-600 hover:underline font-bold"
                         >
                           Apply
@@ -771,7 +771,7 @@ export default function AdminAttendanceLogsPage() {
                 <select
                   className="input"
                   value={createForm.status}
-                  onChange={e => setCreateForm({ ...createForm, status: e.target.value })}
+                  onChange={e => setCreateForm(applyAttendanceStatusToForm(createForm, e.target.value))}
                 >
                   <option value="">Auto-detect</option>
                   <option value="completed">Completed</option>
@@ -814,7 +814,7 @@ export default function AdminAttendanceLogsPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setCreateForm({ ...createForm, status: detected })}
+                          onClick={() => setCreateForm(applyAttendanceStatusToForm(createForm, detected))}
                           className="ml-auto text-[10px] text-brand-600 hover:underline font-bold"
                         >
                           Apply
