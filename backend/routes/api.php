@@ -52,7 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
         Route::get('/today', [AttendanceController::class, 'today']);
         Route::get('/{employeeId}/monthly', [AttendanceController::class, 'monthly']);
-        Route::post('/', [AttendanceController::class, 'store'])->middleware('role:admin');
+        Route::post('/', [AttendanceController::class, 'store'])->middleware('role:admin,hr,accounting');
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/{id}', [AttendanceController::class, 'show']);
         Route::put('/{id}', [AttendanceController::class, 'update'])->middleware('role:admin,hr,accounting');

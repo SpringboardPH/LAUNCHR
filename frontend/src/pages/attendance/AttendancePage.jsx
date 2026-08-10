@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { format, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, isWeekend } from 'date-fns'
 import {
-  getAttendanceToday, getAttendance, clockIn, clockOut, updateAttendanceLog,
+  getAttendanceToday, getAttendance, clockIn, clockOut, updateAttendanceLog, createAttendanceLog,
   getEmployees, getEmployeeGroups, attendanceKeys, employeeKeys,
   getEmployeeSchedules, employeeScheduleKeys,
   getSystemClock, systemClockKeys,
@@ -303,14 +303,31 @@ export default function AttendancePage() {
   })
 
   const updateLogMutation = useMutation({
-    mutationFn: ({ id, data }) => updateAttendanceLog(id, data),
+    mutationFn: ({ id, data, employee_id, date }) => {
+      if (id == null) {
+        return createAttendanceLog({ employee_id, date, ...data })
+      }
+      return updateAttendanceLog(id, data)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: attendanceKeys.all })
       qc.invalidateQueries({ queryKey: attendanceKeys.todayAll() })
       setEditLog(null)
       setStatusConfirmModal({ ...statusConfirmModal, open: false })
-    }
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.response?.data?.message || 'Failed to save attendance log' })
+    },
   })
+
+  const saveEditLog = (data) => {
+    updateLogMutation.mutate({
+      id: editLog?.id,
+      employee_id: editLog?.employee_id,
+      date: editLog?.date,
+      data,
+    })
+  }
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
@@ -336,15 +353,14 @@ export default function AttendancePage() {
         open: true,
         detectedStatus: detected,
         onConfirm: (useDetected) => {
-          const finalData = {
+          saveEditLog({
             ...editForm,
             status: useDetected ? detected : editForm.status
-          }
-          updateLogMutation.mutate({ id: editLog?.id, data: finalData })
+          })
         }
       })
     } else {
-      updateLogMutation.mutate({ id: editLog?.id, data: editForm })
+      saveEditLog(editForm)
     }
   }
 

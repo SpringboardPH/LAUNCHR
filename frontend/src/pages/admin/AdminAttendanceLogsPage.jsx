@@ -128,7 +128,12 @@ export default function AdminAttendanceLogsPage() {
 
   // Mutations
   const updateLogMutation = useMutation({
-    mutationFn: ({ id, data }) => updateAttendanceLog(id, data),
+    mutationFn: ({ id, data, employee_id, date }) => {
+      if (id == null) {
+        return createAttendanceLog({ employee_id, date, ...data })
+      }
+      return updateAttendanceLog(id, data)
+    },
     onSuccess: () => {
       qc.refetchQueries({ queryKey: attendanceKeys.all, type: 'active' })
       setEditLog(null)
@@ -247,7 +252,12 @@ export default function AdminAttendanceLogsPage() {
             clock_out_time: formatTime(editForm.clock_out_time),
             status: useDetected ? detected : editForm.status
           }
-          updateLogMutation.mutate({ id: editLog?.id, data: finalData })
+          updateLogMutation.mutate({
+            id: editLog?.id,
+            employee_id: editLog?.employee_id,
+            date: editLog?.date,
+            data: finalData,
+          })
         }
       })
     } else {
@@ -256,7 +266,12 @@ export default function AdminAttendanceLogsPage() {
         clock_in_time: formatTime(editForm.clock_in_time),
         clock_out_time: formatTime(editForm.clock_out_time)
       }
-      updateLogMutation.mutate({ id: editLog?.id, data: finalData })
+      updateLogMutation.mutate({
+        id: editLog?.id,
+        employee_id: editLog?.employee_id,
+        date: editLog?.date,
+        data: finalData,
+      })
     }
   }
 
