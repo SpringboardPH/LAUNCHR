@@ -1037,7 +1037,7 @@ export default function AttendancePage() {
                 </span>
                 {' · '}
                 {editLog.date
-                  ? format(parseISO(String(editLog.date).slice(0, 10)), 'MMM dd, yyyy')
+                  ? format(parseISO(String(editLog.date)), 'MMM dd, yyyy')
                   : '—'}
                 {editLog.id == null && (
                   <span className="block text-[11px] text-gray-400 mt-1">
