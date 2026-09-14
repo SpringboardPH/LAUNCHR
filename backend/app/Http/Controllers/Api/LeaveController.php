@@ -309,16 +309,6 @@ class LeaveController extends Controller
             ], 400);
         }
 
-        // 3-day approval window check
-        $submissionDate = $leave->created_at;
-        $virtualNow = SystemClock::now();
-        if ($submissionDate->diffInDays($virtualNow, false) > 3) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The 3-day approval window for this request has expired (Submitted: ' . $submissionDate->format('Y-m-d') . ').',
-            ], 400);
-        }
-
         // Re-validate balance at approval time to prevent concurrent over-approval
         $leaveTypeModel = LeaveType::where('code', $leave->leave_type)->first();
         if ($leaveTypeModel?->requires_balance) {
@@ -384,16 +374,6 @@ class LeaveController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Only pending leave requests can be rejected',
-            ], 400);
-        }
-
-        // 3-day approval window check
-        $submissionDate = $leave->created_at;
-        $virtualNow = SystemClock::now();
-        if ($submissionDate->diffInDays($virtualNow, false) > 3) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The 3-day approval window for this request has expired (Submitted: ' . $submissionDate->format('Y-m-d') . ').',
             ], 400);
         }
 
