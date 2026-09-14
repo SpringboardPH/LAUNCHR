@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { format, differenceInDays } from 'date-fns'
+import { format } from 'date-fns'
 import {
   getRequests, approveRequest, rejectRequest, requestKeys,
   getLeaves, createLeave, approveLeave, rejectLeave, leaveKeys,
   createRequest,
-  getLeaveTypes, getEmployees, getSystemClock, getLeaveBalance,
-  leaveTypeKeys, employeeKeys, systemClockKeys, dashboardKeys,
+  getLeaveTypes, getEmployees, getLeaveBalance,
+  leaveTypeKeys, employeeKeys, dashboardKeys,
 } from '../../api/queries'
 import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination } from '../../components/ui/index.jsx'
 import { Check, X, Eye, ClipboardList, Plus, CalendarOff, AlertCircle } from 'lucide-react'
@@ -72,20 +72,11 @@ export default function RequestsPage() {
     queryKey: leaveTypeKeys.all,
     queryFn: () => getLeaveTypes(),
   })
-  const { data: systemClock } = useQuery({
-    queryKey: systemClockKeys.all,
-    queryFn: getSystemClock,
-  })
   const { data: balanceData } = useQuery({
     queryKey: leaveKeys.balance(form.employee_id || null),
     queryFn: () => getLeaveBalance(form.employee_id || null),
     enabled: createModal && form.type === 'leave' && !!form.employee_id,
   })
-
-  const isWithinWindow = (createdAt) => {
-    if (!systemClock?.date) return true
-    return differenceInDays(new Date(systemClock.date), new Date(createdAt)) <= 3
-  }
 
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }) => approveRequest(id, notes || null),
@@ -334,7 +325,7 @@ export default function RequestsPage() {
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         <button onClick={() => setViewLeave(lv)} className="btn-ghost p-1.5 text-brand-500 hover:text-brand-700 hover:bg-brand-50" title="View"><Eye size={14} /></button>
-                        {lv.status === 'pending' && isWithinWindow(lv.created_at) && <>
+                        {lv.status === 'pending' && <>
                           <button onClick={() => handleApproveLeave(lv)} disabled={approveLeaveMutation.isPending} className="btn-ghost p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50" title="Approve"><Check size={14} /></button>
                           <button onClick={() => setRejectLeaveModal(lv.id)} className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50" title="Reject"><X size={14} /></button>
                         </>}
