@@ -23,19 +23,16 @@ class DemoPeopleSeeder extends Seeder
         foreach ($this->personas() as $i => $persona) {
             $seq = $i + 1;
             $template = $templates[$persona['schedule']] ?? $standard;
-            $userId = null;
 
-            if (!empty($persona['role'])) {
-                $user = User::updateOrCreate(
-                    ['email' => $persona['email']],
-                    [
-                        'name' => $persona['first_name'].' '.$persona['last_name'],
-                        'password' => 'password',
-                        'role' => $persona['role'],
-                    ]
-                );
-                $userId = $user->id;
-            }
+            $user = User::updateOrCreate(
+                ['email' => $persona['email']],
+                [
+                    'name' => $persona['first_name'].' '.$persona['last_name'],
+                    'password' => 'password',
+                    'role' => $persona['role'] ?? 'employee',
+                ]
+            );
+            $userId = $user->id;
 
             $employee = Employee::updateOrCreate(
                 ['employee_id' => $persona['employee_id']],

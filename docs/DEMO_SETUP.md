@@ -7,6 +7,7 @@ For a blank company deploy, follow [Deploying for a new company](TECHNICAL_DOCUM
 ## What you will have
 
 - Admin, HR, accounting, and employee logins
+- Every demo employee has a User account
 - About 28 employees, mixed Today attendance, pending leave, prior finalized payroll
 - Juan Cruz with no log for today, so live clock-in works
 
@@ -104,11 +105,13 @@ Password for every account is `password`.
 - `accounting@springboardph.com` accounting (Carlo Reyes)
 - `juan@springboardph.com` employee (Juan Cruz, live clock-in)
 
+Every other roster email also logs in with `password`. Example: `kim.fernandez@springboardph.com`.
+
 ## Talk track (about 6 to 7 minutes)
 
 Present during the clock-in window 08:45–18:15 Asia/Manila. If you are outside that window, set Admin virtual clock in System Settings.
 
-1. Log in as `dev@springboardph.com`. Open `/hr/employees`. Open Maria Santos or Juan Cruz.
+1. Log in as `dev@springboardph.com`. Open `/hr/employees`. Open `/admin/users`. The footer shows 29 users. Search Kim Fernandez. Linked Employee shows Kim Fernandez, Technology.
 2. Flash `/hr/employee-schedules` and `/hr/calendar`. Log out.
 3. Log in as `juan@springboardph.com`. Open `/employee/attendance`. Clock in. No location modal appears.
 4. Log in as `hr@springboardph.com`. Open `/hr/requests`. Approve Sofia Mendoza's pending vacation.

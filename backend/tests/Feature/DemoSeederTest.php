@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\AttendanceLog;
+use App\Models\Employee;
 use App\Models\SystemSettings;
+use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,5 +47,27 @@ class DemoSeederTest extends TestCase
         $this->assertNull($response->json('data.user_id'));
         $this->assertIsString($response->json('data.token'));
         $this->assertNotSame('', $response->json('data.token'));
+    }
+
+    public function test_demo_seed_gives_every_employee_a_login(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+        $this->seed(DemoSeeder::class);
+
+        $this->assertSame(0, Employee::query()->whereNull('user_id')->count());
+
+        $kimLogin = $this->postJson('/api/auth/request-otp', [
+            'email' => 'kim.fernandez@springboardph.com',
+            'password' => 'password',
+        ]);
+
+        $kimLogin->assertOk()->assertJsonPath('success', true);
+        $this->assertIsString($kimLogin->json('data.token'));
+        $this->assertNotSame('', $kimLogin->json('data.token'));
+
+        $admin = User::query()->where('email', 'dev@springboardph.com')->first();
+        $users = $this->actingAs($admin)->getJson('/api/admin/users');
+        $users->assertOk();
+        $this->assertSame(29, $users->json('pagination.total'));
     }
 }
