@@ -393,13 +393,15 @@ All routes are prefixed with `/api`. Authenticated routes require `Authorization
    - Frontend route guards prevent rendering unauthorized pages
    - Backend middleware enforces RBAC on every API endpoint regardless of frontend state
 3. **Data isolation**: Employees can only read their own records (enforced in each controller)
-4. **OTP 2FA**: Login requires email-delivered OTP to complete
+4. **OTP**: Login OTP is off by default (`login_otp_required`). Enable it in Admin → System Settings when you want an email one-time password after the password step.
 5. **Soft-deletes**: Users, employees, and departments are never hard-deleted by default (preserves history and audit trail)
 6. **Payroll locking**: Finalized and paid payrolls are immutable (edit attempts return `422`)
 
 ---
 
 ## 10. Deploying for a New Company
+
+`php artisan migrate --seed` loads a blank company (admin user plus reference data). It does not load the Springboard demo roster. For the client presentation, follow [How to set up the Springboard presentation](DEMO_SETUP.md) and run `php artisan db:seed --class=DemoSeeder` after the default seed.
 
 ### Prerequisites
 - PHP 8.3+
@@ -473,6 +475,7 @@ php artisan migrate --force --seed
 The seeder creates:
 - One admin user (see `DatabaseSeeder.php` — **update the email and password before running**)
 - Default departments, leave types, schedule templates, calendar event types, and system settings
+- No employees. Run `php artisan db:seed --class=DemoSeeder` only when you want the Springboard presentation roster.
 
 **Important**: Edit `backend/database/seeders/DatabaseSeeder.php` before seeding to set the correct admin email:
 
@@ -508,7 +511,7 @@ npm install
 Create `frontend/.env`:
 
 ```env
-VITE_API_URL=https://hr.yourcompany.com/api
+VITE_API_BASE_URL=https://hr.yourcompany.com/api
 ```
 
 Update `frontend/vite.config.js` — set `allowedHosts` to the company's domain:
@@ -656,7 +659,7 @@ Alternatively, from `backend/` run all at once:
 composer run dev
 ```
 
-This starts the Laravel server, queue worker, Pail log viewer, and Vite dev server concurrently.
+This starts the Laravel server, queue worker, Pail log viewer, and the React app in `frontend/` (`npm run dev --prefix ../frontend`).
 
 ---
 
