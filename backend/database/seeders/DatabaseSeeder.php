@@ -30,8 +30,6 @@ class DatabaseSeeder extends Seeder
             LeaveTypeSeeder::class,
             ScheduleTemplateSeeder::class,
             CalendarEventTypeSeeder::class,
-            DemoPeopleSeeder::class,
-            DemoOpsSeeder::class,
         ]);
     }
 }
