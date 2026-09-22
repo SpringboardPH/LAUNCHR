@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Helpers\BrandingAsset;
 use App\Models\User;
 use App\Models\SystemSettings;
 use Illuminate\Bus\Queueable;
@@ -32,7 +33,7 @@ class OtpMail extends Mailable
             with: [
                 'user' => $this->user,
                 'code' => $this->code,
-                'logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
+                'logoPath' => BrandingAsset::resolve(SystemSettings::get('system_logo', 'launchr_black.svg')),
             ],
         );
     }
