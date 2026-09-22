@@ -103,6 +103,40 @@ VITE_HMR_PROTOCOL=wss
 VITE_HMR_CLIENT_PORT=443
 ```
 
+## How to cut over a live host to Docker
+
+Use this when LAUNCHR already runs on host PHP, nginx, MySQL, cron `schedule:run`, and supervisor `queue:work`. The goal is `COMPOSE_MODE=prod` without wiping data. For a first-time Compose boot, stay with [How to run with Docker Compose](#how-to-run-with-docker-compose). To keep the host PHP path and only pull a new release, follow [How to update a live standalone host](docs/TECHNICAL_DOCUMENTATION.md#11-how-to-update-a-live-standalone-host).
+
+1. Dump the live database. Copy `backend/storage`. Copy `backend/public/system_logo_*` and `backend/public/payroll_template_*`.
+
+2. Keep the host MySQL. Set `DB_HOST=host.docker.internal`, or the existing database hostname. Do not leave `DB_HOST` empty. An empty `DB_HOST` starts a new MySQL container with an empty volume.
+
+3. Copy `APP_KEY` and `MAIL_*` from `backend/.env` into the root `.env`. Do not run `php artisan key:generate`. Do not invent a new `APP_KEY`. Existing Sanctum tokens and encrypted rows use the current key.
+
+4. Set `APP_URL`, `FRONTEND_URL`, and `SANCTUM_STATEFUL_DOMAINS` to the existing public HTTPS origin.
+
+5. Set `COMPOSE_MODE=prod`. Unset `APP_PORT`. Set `PROXY_NETWORK` to the existing proxy Docker network. Point Caddy or Traefik at `web:80`. This stack does not publish ports 80 or 443.
+
+6. Start Compose so the `php_storage` volume exists.
+
+   ```bash
+   COMPOSE_MODE=prod ./scripts/compose.sh up --build -d
+   ```
+
+   `compose.prod.yaml` mounts an empty named volume `php_storage` at `/var/www/backend/storage`. Without an import, DTRs and other files under host `backend/storage` disappear from the container. The prod image also does not see host `backend/public/`, so copy logos and payroll templates into `storage/app/public`.
+
+   ```bash
+   HOST_STORAGE=/var/www/launchr-hr/backend/storage \
+     HOST_PUBLIC=/var/www/launchr-hr/backend/public \
+     COMPOSE_MODE=prod ./scripts/import-host-storage.sh
+   ```
+
+7. Stop the host crontab `schedule:run` and the host supervisor `queue:work` before you leave the containers running. Two schedulers double `attendance:auto-clock-out` and `attendance:mark-absent`.
+
+8. Confirm the php entrypoint ran `php artisan migrate --force` only. Never run `migrate:fresh`. Never run `migrate --seed`.
+
+9. Smoke-test `GET /up`, a login, one clock-in, and one queued email.
+
 ## What `scripts/compose.sh` does
 
 It loads root `.env`, then:
