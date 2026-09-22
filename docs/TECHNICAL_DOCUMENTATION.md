@@ -401,6 +401,8 @@ All routes are prefixed with `/api`. Authenticated routes require `Authorization
 
 ## 10. Deploying for a New Company
 
+Docker Compose is in the root [README.md](../README.md). This section is the standalone PHP, Node, and nginx path. Both boots are supported.
+
 `php artisan migrate --seed` loads a blank company (admin user plus reference data). It does not load the Springboard demo roster. For the client presentation, follow [How to set up the Springboard presentation](DEMO_SETUP.md) and run `php artisan db:seed --class=DemoSeeder` after the default seed.
 
 ### Prerequisites

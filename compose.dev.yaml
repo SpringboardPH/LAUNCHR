@@ -1,0 +1,47 @@
+services:
+  vite:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      DOCKER: "1"
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_HMR_PROTOCOL: ${VITE_HMR_PROTOCOL:-ws}
+      VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-${APP_PORT:-80}}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0 --port 5173"]
+
+  web:
+    volumes:
+      - ./docker/nginx/web.dev.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/php-fastcgi.conf:/etc/nginx/php-fastcgi.conf:ro
+    depends_on:
+      php:
+        condition: service_healthy
+      vite:
+        condition: service_started
+
+  php:
+    environment:
+      SKIP_CHOWN: "true"
+    volumes:
+      - ./backend:/var/www/backend
+      - php_vendor:/var/www/backend/vendor
+      - ./docker/php/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+
+  queue:
+    environment:
+      SKIP_CHOWN: "true"
+    volumes:
+      - ./backend:/var/www/backend
+      - php_vendor:/var/www/backend/vendor
+      - ./docker/php/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+
+  scheduler:
+    environment:
+      SKIP_CHOWN: "true"
+    volumes:
+      - ./backend:/var/www/backend
+      - php_vendor:/var/www/backend/vendor
+      - ./docker/php/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
