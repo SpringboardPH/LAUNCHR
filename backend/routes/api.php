@@ -22,6 +22,8 @@ use App\Http\Controllers\Api\ThirteenthMonthController;
 use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\BirFormController;
+use App\Http\Controllers\Api\BirChatController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -115,6 +117,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/set-excluded-months', [ThirteenthMonthController::class, 'setExcludedMonths']);
         Route::get('/payroll-periods', [ThirteenthMonthController::class, 'payrollPeriods']);
         Route::post('/push-to-payroll', [ThirteenthMonthController::class, 'pushToPayroll']);
+    });
+
+    // BIR Form Assistant — full route contract added Week 1 (Dev B) so this
+    // file isn't touched again except access-check tightening in Week 7.
+    // BirFormController is stubbed now; BirChatController is created by
+    // Dev C in Week 3 — referencing it here ahead of time is safe since
+    // Laravel only resolves the class when a request actually matches.
+    Route::prefix('bir')->middleware('role:admin,hr,accounting')->group(function () {
+        Route::get('/config', [BirFormController::class, 'config']);
+        Route::get('/drafts', [BirFormController::class, 'index']);
+        Route::post('/drafts', [BirFormController::class, 'store']);
+        Route::get('/drafts/{id}', [BirFormController::class, 'show']);
+        Route::put('/drafts/{id}', [BirFormController::class, 'update']);
+        Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
+        Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
+        Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
+        Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
+        Route::post('/chat', [BirChatController::class, 'message']);
     });
 
     // Dashboard
