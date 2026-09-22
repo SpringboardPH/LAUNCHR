@@ -227,6 +227,23 @@ class SystemSettingsSeeder extends Seeder
             ['key' => 'geofence_mode',    'value' => 'enforce', 'description' => 'Geofence behavior: enforce (block out-of-range clock-ins) or warn (allow but record)', 'type' => 'string'],
             ['key' => 'office_locations', 'value' => json_encode([]), 'description' => 'Allowed clock-in zones: [{name, lat, lng, radius_m}]',                'type' => 'json'],
             ['key' => 'geo_capture_days', 'value' => json_encode([1, 2, 3, 4, 5, 6, 7]), 'description' => 'Days clock-in prompts employees for their location (1=Mon .. 7=Sun)', 'type' => 'json'],
+
+            // BIR Form Assistant — employer registration data. Placeholder values;
+            // set real company details in Admin > System Settings before filing anything.
+            ['key' => 'bir_forms_enabled', 'value' => 'false', 'description' => 'Master switch for the BIR Form Assistant feature (dtr_page_enabled pattern) — release to accounting first', 'type' => 'boolean'],
+            ['key' => 'company_tin',                'value' => '000-000-000-000', 'description' => "Company TIN — BIR 1601-C item 6 / 2316 item 12",        'type' => 'string'],
+            ['key' => 'rdo_code',                   'value' => '000',             'description' => 'Company RDO code — BIR 1601-C item 7',                    'type' => 'string'],
+            ['key' => 'atc_code',                   'value' => 'WW010',           'description' => 'Alphanumeric Tax Code printed on 1601-C item 5 (fixed)', 'type' => 'string'],
+
+            // Keys match Form1601CSchema/Form2316Schema field keys 1:1 for direct
+            // SystemSettings::get($field['key']) on source='settings' fields.
+            ['key' => 'company_name',               'value' => 'Company Name Inc.', 'description' => "Withholding agent's registered name — BIR 1601-C item 8 / 2316 item 13", 'type' => 'string'],
+            ['key' => 'company_address',            'value' => 'Unit 000, Sample Building, Sample City', 'description' => 'Company registered address — BIR 1601-C item 9 / 2316 item 14', 'type' => 'string'],
+            ['key' => 'company_zip',                'value' => '0000',            'description' => 'Company ZIP code — BIR 1601-C item 9A / 2316 item 14A',  'type' => 'string'],
+            ['key' => 'company_contact_number',     'value' => '',                'description' => 'Company contact number — BIR 1601-C item 10 (optional)', 'type' => 'string'],
+            ['key' => 'agent_category',              'value' => 'private',         'description' => 'Category of withholding agent — BIR 1601-C item 11: private or government', 'type' => 'string'],
+            ['key' => 'company_email',              'value' => '',                'description' => 'Company email — BIR 1601-C item 12 (optional)',         'type' => 'string'],
+            ['key' => 'employer_type',              'value' => 'main',            'description' => 'Type of employer for 2316 item 11: main or secondary',  'type' => 'string'],
         ];
 
         foreach ($settings as $setting) {
