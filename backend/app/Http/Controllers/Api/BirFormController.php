@@ -123,7 +123,7 @@ class BirFormController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => "Cannot move a {$draft['status']} draft to {$to}",
-            ], 422);
+            ], 400);
         }
 
         $draft['status'] = $to;
@@ -146,6 +146,40 @@ class BirFormController extends Controller
     {
         $request->validate(['reason' => 'required|string|max:1000']);
         return $this->transition($id, 'draft', $request->reason);
+    }
+
+    public function finalize(int $id)
+    {
+        return $this->transition($id, 'finalized');
+    }
+
+    public function revise(Request $request, int $id)
+    {
+        $draft = $this->findFixture($id);
+        if (!$draft) {
+            return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+        }
+
+        if ($draft['status'] !== 'finalized') {
+            return response()->json([
+                'success' => false,
+                'message' => "Only finalized forms can be revised; this draft is {$draft['status']}",
+            ], 400);
+        }
+
+        $revision = $draft;
+        $revision['id'] = 999;
+        $revision['status'] = 'draft';
+        $revision['version'] = $draft['version'] + 1;
+        $revision['parent_id'] = $draft['id'];
+        $revision['rejection_reason'] = null;
+        $revision['prepared_by'] = ['id' => $request->user()->id, 'name' => $request->user()->name];
+
+        return response()->json([
+            'success' => true,
+            'data' => $revision,
+            'message' => 'Revision created (stub — not persisted)',
+        ], 201);
     }
 
     public function export(int $id)
