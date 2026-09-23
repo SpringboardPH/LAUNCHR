@@ -1,0 +1,48 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: launchr-web:prod
+
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: prod
+    image: launchr-php:prod
+    environment:
+      RUN_MIGRATIONS: "true"
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+    volumes:
+      - php_storage:/var/www/backend/storage
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: prod
+    image: launchr-php:prod
+    command: ["php", "artisan", "queue:work", "--tries=3", "--sleep=3"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+    volumes:
+      - php_storage:/var/www/backend/storage
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: prod
+    image: launchr-php:prod
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+    volumes:
+      - php_storage:/var/www/backend/storage
+
+volumes:
+  php_storage:
