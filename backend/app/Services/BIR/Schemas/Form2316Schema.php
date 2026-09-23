@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Bir\Schemas;
+namespace App\Services\BIR\Schemas;
 
 /**
  * BIR Form 2316 (Sep 2021 ENCS) fields, numbered as printed. Same field

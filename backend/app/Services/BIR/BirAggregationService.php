@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Services\Bir;
+namespace App\Services\BIR;
 
-use App\Services\Bir\Schemas\Form1601CSchema;
-use App\Services\Bir\Schemas\Form2316Schema;
+use App\Services\BIR\Schemas\Form1601CSchema;
+use App\Services\BIR\Schemas\Form2316Schema;
 
 /**
  * STUB — every number here is fabricated, correctly shaped only, so Dev B/C/D

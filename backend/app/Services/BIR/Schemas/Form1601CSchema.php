@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Bir\Schemas;
+namespace App\Services\BIR\Schemas;
 
 /**
  * BIR Form 1601-C (Jan 2018 ENCS) fields, numbered as printed.
