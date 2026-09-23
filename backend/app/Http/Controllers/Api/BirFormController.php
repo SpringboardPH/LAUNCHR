@@ -122,7 +122,7 @@ class BirFormController extends Controller
         if (!in_array($to, $allowed, true)) {
             return response()->json([
                 'success' => false,
-                'message' => "Cannot move a {$draft['status']} draft to {$to}",
+                'message' => "Cannot move a form in {$draft['status']} status to {$to}",
             ], 400);
         }
 
@@ -163,7 +163,7 @@ class BirFormController extends Controller
         if ($draft['status'] !== 'finalized') {
             return response()->json([
                 'success' => false,
-                'message' => "Only finalized forms can be revised; this draft is {$draft['status']}",
+                'message' => "Only finalized forms can be revised; this one is in {$draft['status']} status",
             ], 400);
         }
 
@@ -173,6 +173,7 @@ class BirFormController extends Controller
         $revision['version'] = $draft['version'] + 1;
         $revision['parent_id'] = $draft['id'];
         $revision['rejection_reason'] = null;
+        $revision['approved_by'] = null;
         $revision['prepared_by'] = ['id' => $request->user()->id, 'name' => $request->user()->name];
 
         return response()->json([
