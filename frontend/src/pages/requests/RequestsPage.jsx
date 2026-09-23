@@ -8,7 +8,7 @@ import {
   getLeaveTypes, getEmployees, getLeaveBalance,
   leaveTypeKeys, employeeKeys, dashboardKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination, SearchSelect } from '../../components/ui/index.jsx'
 import { Check, X, Eye, ClipboardList, Plus, CalendarOff, AlertCircle } from 'lucide-react'
 
 const REQUEST_TYPES = [
@@ -65,8 +65,8 @@ export default function RequestsPage() {
     queryFn: () => getLeaves({ status, page: leavePage }),
   })
   const { data: employees } = useQuery({
-    queryKey: employeeKeys.list({}),
-    queryFn: () => getEmployees({ status: 'active' }),
+    queryKey: employeeKeys.list({ status: 'active', per_page: 1000 }),
+    queryFn: () => getEmployees({ status: 'active', per_page: 1000 }),
   })
   const { data: leaveTypes } = useQuery({
     queryKey: leaveTypeKeys.all,
@@ -479,10 +479,15 @@ export default function RequestsPage() {
       >
         <div className="space-y-4">
           <FormField label="Employee" required>
-            <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)} className="input">
-              <option value="">Select employee…</option>
-              {activeEmps.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
-            </select>
+            <SearchSelect
+              options={activeEmps}
+              value={form.employee_id}
+              onChange={(id) => f('employee_id', id)}
+              getOptionValue={(employee) => employee.id}
+              getLabel={(employee) => `${employee.first_name} ${employee.last_name}`}
+              getSearchText={(employee) => `${employee.first_name} ${employee.last_name} ${employee.employee_id ?? ''}`}
+              placeholder="Select employee…"
+            />
           </FormField>
           <FormField label="Category" required>
             <select value={form.type} onChange={e => f('type', e.target.value)} className="input">
