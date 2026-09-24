@@ -5,6 +5,14 @@ namespace App\Services\BIR\Schemas;
 /**
  * BIR Form 2316 (Sep 2021 ENCS) fields, numbered as printed. Same field
  * shape and source/pdf_anchor conventions as Form1601CSchema.
+ *
+ * Scope: items 1-56 plus the unnumbered CTC/Valid ID block, per supervisor
+ * instruction. Item numbers verified against the printed Sep 2021 ENCS form.
+ *
+ * Anchor convention: '2316.<item>' where the field has a printed item number,
+ * '2316.<item>.<part>' where one item holds several values, and a descriptive
+ * '2316.<area>.<name>' where the field has no item number. Fields that are
+ * signed by hand or exist only as internal state carry pdf_anchor => null.
  */
 class Form2316Schema
 {
@@ -61,7 +69,8 @@ class Form2316Schema
                 'key' => 'basic_salary_annual', 'item' => null,
                 'label' => 'Basic Salary (incl. the exempt P250,000 & below, or the Statutory MW of the MWE)',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '>= 0; annual sum from payrolls for the tax year', 'pdf_anchor' => '2316.basic_salary_box',
+                'rule' => '>= 0; annual sum from payrolls for the tax year — internal aggregate feeding items 29 and 39; no box of its own on the printed form',
+                'pdf_anchor' => null,
             ],
             [
                 'key' => 'employee_registered_address', 'item' => '6', 'label' => 'Registered Address',
@@ -99,12 +108,6 @@ class Form2316Schema
                 'rule' => 'from employees.phone', 'pdf_anchor' => '2316.8',
             ],
             [
-                'key' => 'is_mwe', 'item' => null,
-                'label' => 'Minimum Wage Earner (MWE) whose compensation is exempt from withholding tax',
-                'type' => 'boolean', 'source' => 'user', 'required' => true,
-                'rule' => 'GAP: no MWE flag or minimum-wage table; must be asked, defaults false', 'pdf_anchor' => '2316.mwe_checkbox',
-            ],
-            [
                 'key' => 'mwe_daily_rate', 'item' => '9', 'label' => 'Statutory Minimum Wage rate per day',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when is_mwe = true', 'pdf_anchor' => '2316.9',
@@ -114,20 +117,22 @@ class Form2316Schema
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when is_mwe = true', 'pdf_anchor' => '2316.10',
             ],
+            [
+                'key' => 'is_mwe', 'item' => '11',
+                'label' => 'Minimum Wage Earner (MWE) whose compensation is exempt from withholding tax',
+                'type' => 'boolean', 'source' => 'user', 'required' => true,
+                'rule' => 'GAP: no MWE flag or minimum-wage table; must be asked, defaults false',
+                'pdf_anchor' => '2316.11',
+            ],
 
             // ── Part II — Employer Information (Present) ─────────────────────
-            [
-                'key' => 'employer_type', 'item' => '11', 'label' => 'Type of Employer',
-                'type' => 'enum', 'source' => 'settings', 'required' => true,
-                'rule' => 'defaults main', 'pdf_anchor' => '2316.11', 'options' => ['main', 'secondary'],
-            ],
             [
                 'key' => 'present_employer_tin', 'item' => '12', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
                 'rule' => 'company_tin', 'pdf_anchor' => '2316.12',
             ],
             [
-                'key' => 'present_employer_name', 'item' => '13', "label" => "Employer's Name",
+                'key' => 'present_employer_name', 'item' => '13', 'label' => "Employer's Name",
                 'type' => 'string', 'source' => 'settings', 'required' => true,
                 'rule' => 'company_name', 'pdf_anchor' => '2316.13',
             ],
@@ -140,6 +145,11 @@ class Form2316Schema
                 'key' => 'present_employer_zip', 'item' => '14A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
                 'rule' => 'company_zip', 'pdf_anchor' => '2316.14A',
+            ],
+            [
+                'key' => 'employer_type', 'item' => '15', 'label' => 'Type of Employer',
+                'type' => 'enum', 'source' => 'settings', 'required' => true,
+                'rule' => 'defaults main', 'pdf_anchor' => '2316.15', 'options' => ['main', 'secondary'],
             ],
 
             // ── Part III — Employer Information (Previous) ───────────────────
@@ -163,6 +173,70 @@ class Form2316Schema
                 'key' => 'previous_employer_zip', 'item' => '18A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => '4 digits', 'pdf_anchor' => '2316.18A',
+            ],
+
+            // ── Part IV-A — Summary ───────────────────────────────────────────
+            [
+                'key' => 'gross_compensation_present', 'item' => '19',
+                'label' => 'Gross Compensation Income from Present Employer (Sum of Items 38 and 52)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= 38 + 52', 'pdf_anchor' => '2316.19',
+            ],
+            [
+                'key' => 'less_nontaxable_present', 'item' => '20',
+                'label' => 'Less: Total Non-Taxable/Exempt Compensation Income from Present Employer (from Item 38)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= item 38', 'pdf_anchor' => '2316.20',
+            ],
+            [
+                'key' => 'taxable_income_present', 'item' => '21',
+                'label' => 'Taxable Compensation Income from Present Employer (Item 19 Less Item 20) (from Item 52)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= 19 - 20; should equal item 52', 'pdf_anchor' => '2316.21',
+            ],
+            [
+                'key' => 'taxable_income_previous_employer', 'item' => '22',
+                'label' => 'Add: Taxable Compensation Income from Previous Employer, if applicable',
+                'type' => 'decimal', 'source' => 'user', 'required' => false,
+                'rule' => 'required when the employee was hired mid-year with a previous employer', 'pdf_anchor' => '2316.22',
+            ],
+            [
+                'key' => 'gross_taxable_income', 'item' => '23',
+                'label' => 'Gross Taxable Compensation Income (Sum of Items 21 and 22)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= 21 + 22', 'pdf_anchor' => '2316.23',
+            ],
+            [
+                'key' => 'tax_due', 'item' => '24', 'label' => 'Tax Due',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => 'GAP: PayrollService has no annual withholding bracket yet', 'pdf_anchor' => '2316.24',
+            ],
+            [
+                'key' => 'taxes_withheld_present', 'item' => '25A', 'label' => 'Amount of Taxes Withheld — Present Employer',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => "= annual sum of deductions['Withholding Tax'] across this employer's payrolls for the year",
+                'pdf_anchor' => '2316.25A',
+            ],
+            [
+                'key' => 'taxes_withheld_previous', 'item' => '25B', 'label' => 'Amount of Taxes Withheld — Previous Employer, if applicable',
+                'type' => 'decimal', 'source' => 'user', 'required' => false,
+                'rule' => 'required when taxable_income_previous_employer > 0', 'pdf_anchor' => '2316.25B',
+            ],
+            [
+                'key' => 'total_taxes_withheld_adjusted', 'item' => '26',
+                'label' => 'Total Amount of Taxes Withheld as adjusted (Sum of Items 25A and 25B)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= 25A + 25B', 'pdf_anchor' => '2316.26',
+            ],
+            [
+                'key' => 'pera_tax_credit', 'item' => '27', 'label' => '5% Tax Credit (PERA Act of 2008)',
+                'type' => 'decimal', 'source' => 'user', 'required' => false,
+                'rule' => '>= 0, defaults 0 — no PERA tracking in LAUNCHR today', 'pdf_anchor' => '2316.27',
+            ],
+            [
+                'key' => 'total_taxes_withheld_final', 'item' => '28', 'label' => 'Total Taxes Withheld (Sum of Items 26 and 27)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= 26 + 27', 'pdf_anchor' => '2316.28',
             ],
 
             // ── Part IV-B, Section A — Non-Taxable/Exempt Compensation Income ─
@@ -248,50 +322,59 @@ class Form2316Schema
                 'pdf_anchor' => '2316.43',
             ],
             [
-                'key' => 'tax_overtime', 'item' => '44A', 'label' => 'Overtime Pay',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => ">= 0; from annual sum of allowances entries labelled 'Overtime Pay'", 'pdf_anchor' => '2316.44A',
+                'key' => 'tax_others_44a_desc', 'item' => '44A', 'label' => 'Others (specify), row A',
+                'type' => 'string', 'source' => 'user', 'required' => false,
+                'rule' => 'required when tax_others_44a_amount > 0',
+                'pdf_anchor' => '2316.44A.desc',
             ],
             [
-                'key' => 'tax_commission', 'item' => '44B', 'label' => 'Commission',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
-                'pdf_anchor' => '2316.44B',
+                'key' => 'tax_others_44a_amount', 'item' => '44A', 'label' => 'Others, row A — amount',
+                'type' => 'decimal', 'source' => 'user', 'required' => false, 'rule' => '>= 0, defaults 0',
+                'pdf_anchor' => '2316.44A.amount',
             ],
             [
-                'key' => 'tax_profit_sharing', 'item' => '45', 'label' => 'Profit Sharing',
+                'key' => 'tax_others_44b_desc', 'item' => '44B', 'label' => 'Others (specify), row B',
+                'type' => 'string', 'source' => 'user', 'required' => false,
+                'rule' => 'required when tax_others_44b_amount > 0',
+                'pdf_anchor' => '2316.44B.desc',
+            ],
+            [
+                'key' => 'tax_others_44b_amount', 'item' => '44B', 'label' => 'Others, row B — amount',
+                'type' => 'decimal', 'source' => 'user', 'required' => false, 'rule' => '>= 0, defaults 0',
+                'pdf_anchor' => '2316.44B.amount',
+            ],
+
+            // ── Part IV-B, Section B — Supplementary (items 45-50) ────────────
+            [
+                'key' => 'tax_commission', 'item' => '45', 'label' => 'Commission',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
                 'pdf_anchor' => '2316.45',
             ],
             [
-                'key' => 'tax_directors_fees', 'item' => '46', 'label' => "Fees Including Director's Fees",
+                'key' => 'tax_profit_sharing', 'item' => '46', 'label' => 'Profit Sharing',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
                 'pdf_anchor' => '2316.46',
             ],
             [
-                'key' => 'tax_thirteenth_month_excess', 'item' => '47', 'label' => 'Taxable 13th Month Benefits',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= max(0, annual thirteenth_month_records total - 90000)', 'pdf_anchor' => '2316.47',
-            ],
-            [
-                'key' => 'tax_hazard_pay', 'item' => '48', 'label' => 'Hazard Pay',
+                'key' => 'tax_directors_fees', 'item' => '47', 'label' => "Fees Including Director's Fees",
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
-                'pdf_anchor' => '2316.48',
+                'pdf_anchor' => '2316.47',
             ],
             [
-                'key' => 'tax_other_unlabeled_49', 'item' => '49', 'label' => 'TODO_VERIFY — label not recovered from extraction',
-                'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => 'TODO_VERIFY against printed form before M1; provisionally treated as a manual catch-all',
+                'key' => 'tax_thirteenth_month_excess', 'item' => '48', 'label' => 'Taxable 13th Month Benefits',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= max(0, annual thirteenth_month_records total - 90000)', 'pdf_anchor' => '2316.48',
+            ],
+            [
+                'key' => 'tax_hazard_pay', 'item' => '49', 'label' => 'Hazard Pay',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
                 'pdf_anchor' => '2316.49',
             ],
             [
-                'key' => 'tax_others_desc', 'item' => '50', 'label' => 'Others (specify)',
-                'type' => 'string', 'source' => 'user', 'required' => false, 'rule' => 'free text',
-                'pdf_anchor' => '2316.50.desc',
-            ],
-            [
-                'key' => 'tax_others_amount', 'item' => '50', 'label' => 'Others — amount',
-                'type' => 'decimal', 'source' => 'user', 'required' => false, 'rule' => '>= 0, defaults 0',
-                'pdf_anchor' => '2316.50.amount',
+                'key' => 'tax_overtime', 'item' => '50', 'label' => 'Overtime Pay',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => false,
+                'rule' => ">= 0; from annual sum of allowances entries labelled 'Overtime Pay'",
+                'pdf_anchor' => '2316.50',
             ],
             [
                 'key' => 'tax_others_51a_desc', 'item' => '51A', 'label' => 'Others (specify), row A',
@@ -317,103 +400,66 @@ class Form2316Schema
                 'key' => 'tax_regular_total', 'item' => '52',
                 'label' => 'Total Taxable Compensation Income Regular (Sum of Items 39 to 51B)',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => 'TODO_VERIFY item number (see class docblock); = sum(39..51B)', 'pdf_anchor' => '2316.52',
-            ],
-
-            // ── Part IV-A — Summary ───────────────────────────────────────────
-            [
-                'key' => 'gross_compensation_present', 'item' => '19',
-                'label' => 'Gross Compensation Income from Present Employer (Sum of Items 38 and 52)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= 38 + 52', 'pdf_anchor' => '2316.19',
-            ],
-            [
-                'key' => 'less_nontaxable_present', 'item' => '20',
-                'label' => 'Less: Total Non-Taxable/Exempt Compensation Income from Present Employer (from Item 38)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= item 38', 'pdf_anchor' => '2316.20',
-            ],
-            [
-                'key' => 'taxable_income_present', 'item' => '21',
-                'label' => 'Taxable Compensation Income from Present Employer (Item 19 Less Item 20) (from Item 52)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= 19 - 20; should equal item 52', 'pdf_anchor' => '2316.21',
-            ],
-            [
-                'key' => 'taxable_income_previous_employer', 'item' => '22',
-                'label' => 'Add: Taxable Compensation Income from Previous Employer, if applicable',
-                'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => 'required when the employee was hired mid-year with a previous employer', 'pdf_anchor' => '2316.22',
-            ],
-            [
-                'key' => 'gross_taxable_income', 'item' => '23', 'label' => 'Gross Taxable Compensation Income (Sum of Items 21 and 22)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= 21 + 22', 'pdf_anchor' => '2316.23',
-            ],
-            [
-                'key' => 'tax_due', 'item' => '24', 'label' => 'Tax Due',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => 'GAP: PayrollService has no annual withholding bracket yet', 'pdf_anchor' => '2316.24',
-            ],
-            [
-                'key' => 'taxes_withheld_present', 'item' => '25A', 'label' => 'Amount of Taxes Withheld — Present Employer',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => "= annual sum of deductions['Withholding Tax'] across this employer's payrolls for the year",
-                'pdf_anchor' => '2316.25A',
-            ],
-            [
-                'key' => 'taxes_withheld_previous', 'item' => '25B', 'label' => 'Amount of Taxes Withheld — Previous Employer, if applicable',
-                'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => 'required when taxable_income_previous_employer > 0', 'pdf_anchor' => '2316.25B',
-            ],
-            [
-                'key' => 'total_taxes_withheld_adjusted', 'item' => '26',
-                'label' => 'Total Amount of Taxes Withheld as adjusted (Sum of Items 25A and 25B)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => 'TODO_VERIFY item number (see class docblock); = 25A + 25B', 'pdf_anchor' => '2316.26',
-            ],
-            [
-                'key' => 'pera_tax_credit', 'item' => '27', 'label' => '5% Tax Credit (PERA Act of 2008)',
-                'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => '>= 0, defaults 0 — no PERA tracking in LAUNCHR today', 'pdf_anchor' => '2316.27',
-            ],
-            [
-                'key' => 'total_taxes_withheld_final', 'item' => '28', 'label' => 'Total Taxes Withheld (Sum of Items 26 and 27)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= 26 + 27', 'pdf_anchor' => '2316.28',
+                'rule' => '= sum(39..51B)', 'pdf_anchor' => '2316.52',
             ],
 
             // ── Declaration / signatures ──────────────────────────────────────
             [
                 'key' => 'is_substituted_filing', 'item' => null, 'label' => 'Qualified under substituted filing of ITR',
                 'type' => 'boolean', 'source' => 'user', 'required' => false,
-                'rule' => 'declaration the user makes, not derivable — defaults false', 'pdf_anchor' => '2316.substituted_filing',
+                'rule' => 'declaration the user makes, not derivable — defaults false; internal flag deciding whether the items 55/56 block is used, no box on the printed form',
+                'pdf_anchor' => null,
             ],
             [
-                'key' => 'employee_signature_date', 'item' => '53', 'label' => 'Employee Signature over Printed Name, Date Signed',
-                'type' => 'date', 'source' => 'user', 'required' => false,
-                'rule' => 'wet/e-signature — outside system scope', 'pdf_anchor' => '2316.53',
-            ],
-            [
-                'key' => 'employer_signature_date', 'item' => '54',
+                'key' => 'employer_signature_date', 'item' => '53',
                 'label' => 'Present Employer/Authorized Agent Signature over Printed Name, Date Signed',
                 'type' => 'date', 'source' => 'user', 'required' => false,
-                'rule' => 'wet/e-signature — outside system scope', 'pdf_anchor' => '2316.54',
+                'rule' => 'signature itself is signed by hand; only the Date Signed box is overlaid',
+                'pdf_anchor' => '2316.53.date',
             ],
             [
-                'key' => 'employee_ctc_or_id', 'item' => '55', 'label' => 'CTC/Valid ID No. of Employee',
+                'key' => 'employee_signature_date', 'item' => '54',
+                'label' => 'Employee Signature over Printed Name (CONFORME), Date Signed',
+                'type' => 'date', 'source' => 'user', 'required' => false,
+                'rule' => 'signature itself is signed by hand; only the Date Signed box is overlaid',
+                'pdf_anchor' => '2316.54.date',
+            ],
+            [
+                'key' => 'substituted_employer_signature', 'item' => '55',
+                'label' => 'Present Employer/Authorized Agent Signature over Printed Name (substituted filing)',
+                'type' => 'manual', 'source' => 'manual', 'required' => false,
+                'rule' => 'signed by hand after printing; never overlaid',
+                'pdf_anchor' => null,
+            ],
+            [
+                'key' => 'substituted_employee_signature', 'item' => '56',
+                'label' => 'Employee Signature over Printed Name (substituted filing)',
+                'type' => 'manual', 'source' => 'manual', 'required' => false,
+                'rule' => 'signed by hand after printing; never overlaid',
+                'pdf_anchor' => null,
+            ],
+
+            // ── CTC / Valid ID block (unnumbered on the printed form) ─────────
+            [
+                'key' => 'employee_ctc_or_id', 'item' => null, 'label' => 'CTC/Valid ID No. of Employee',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => 'required only under substituted filing', 'pdf_anchor' => '2316.55',
+                'rule' => 'required only under substituted filing', 'pdf_anchor' => '2316.ctc.number',
             ],
             [
-                'key' => 'ctc_place_of_issue', 'item' => '56', 'label' => 'Place of Issue',
+                'key' => 'ctc_place_of_issue', 'item' => null, 'label' => 'Place of Issue',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => 'required with employee_ctc_or_id', 'pdf_anchor' => '2316.56.place',
+                'rule' => 'required with employee_ctc_or_id', 'pdf_anchor' => '2316.ctc.place',
             ],
             [
-                'key' => 'ctc_amount_paid', 'item' => '56', 'label' => 'Amount paid, if CTC',
+                'key' => 'ctc_date_issued', 'item' => null, 'label' => 'Date Issued (CTC/Valid ID)',
+                'type' => 'date', 'source' => 'user', 'required' => false,
+                'rule' => 'MM/DD/YYYY; required when employee_ctc_or_id is present',
+                'pdf_anchor' => '2316.ctc.date_issued',
+            ],
+            [
+                'key' => 'ctc_amount_paid', 'item' => null, 'label' => 'Amount paid, if CTC',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => 'required only when employee_ctc_or_id is a CTC number', 'pdf_anchor' => '2316.56.amount',
+                'rule' => 'required only when employee_ctc_or_id is a CTC number', 'pdf_anchor' => '2316.ctc.amount',
             ],
         ];
     }
