@@ -244,6 +244,7 @@ class SystemSettingsSeeder extends Seeder
             ['key' => 'agent_category',              'value' => 'private',         'description' => 'Category of withholding agent — BIR 1601-C item 11: private or government', 'type' => 'string'],
             ['key' => 'company_email',              'value' => '',                'description' => 'Company email — BIR 1601-C item 12 (optional)',         'type' => 'string'],
             ['key' => 'employer_type',              'value' => 'main',            'description' => 'Type of employer for 2316 item 11: main or secondary',  'type' => 'string'],
+            ['key' => 'bir_mwe_employee_ids',       'value' => json_encode([]),   'description' => 'Employee IDs of Minimum Wage Earners — BIR 1601-C items 15/16 (stopgap until employees carry an MWE flag)', 'type' => 'json'],
         ];
 
         foreach ($settings as $setting) {

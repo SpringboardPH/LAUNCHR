@@ -2,79 +2,98 @@
 
 namespace App\Services\BIR;
 
+use App\Models\Payroll;
+use App\Models\SystemSettings;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
- * STUB — every number here is fabricated, correctly shaped only, so Dev B/C/D
- * can build against real-looking data before the real math exists.
+ * Payroll-derived totals for the BIR forms. Returns only 'payroll'-sourced
+ * schema fields; settings/user fields are the mapper's job. Money comes back
+ * as plain decimal strings ("55010.00"), the draft value format in
+ * docs/bir-api-contract.md §7, and is never null (contract §3 invariant 1).
  *
- * TODO (Week 2/3, Dev A): replace both bodies with real queries against
- * payrolls/thirteenth_month_records/employees. Keep signatures and returned
- * keys identical.
- *
- * Returns only 'payroll'-sourced schema fields; settings/user fields are the
- * mapper's job.
+ * monthlyWithholding() is real. annualCompensation() is still a STUB with
+ * fabricated numbers until Week 3 — keep its signature and keys identical.
  */
 class BirAggregationService
 {
+    /** Drafts aren't paid compensation yet; they're excluded and reported in _meta. */
+    private const COUNTED_STATUSES = ['finalized', 'paid'];
+
+    /** Non-MWE employees at or under this projected annual taxable pay go to 1601-C item 23. */
+    private const EXEMPT_ANNUAL_CEILING = 250_000;
+
+    private const EE_CONTRIBUTIONS = ['SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution'];
+
+    /** Reduce earned pay, same as PayrollController's taxable base. */
+    private const ATTENDANCE_DEDUCTIONS = ['Late', 'Undertime', 'Absent', 'Half Day'];
+
+    /** Undeclared-salary excess — off the books, never BIR compensation. */
+    private const UNDECLARED_ALLOWANCE = 'Allowance';
+
+    /** Pay on top of basic. For MWEs this is item 16 instead of item 15. Matched by prefix. */
+    private const PREMIUM_ALLOWANCES = ['Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay', 'Special Holiday', 'Night Differential'];
+
     /**
      * Company-wide totals for one calendar month, keyed by Form1601CSchema's
      * payroll-derived field keys. → 1601-C.
      */
     public static function monthlyWithholding(int $year, int $month): array
     {
-        // Deterministic per (year, month) so callers can tell "wrong period" apart from "fake number".
-        $seed = ($year * 12) + $month;
+        $mweIds = self::mweEmployeeIds();
 
-        $values = [
-            'has_taxes_withheld'            => true,
-            'total_compensation'            => self::fakeAmount($seed, 1_800_000, 2_600_000),
-            'mwe_statutory_wage'             => self::fakeAmount($seed, 40_000, 90_000),
-            'mwe_premium_pay'                => self::fakeAmount($seed, 5_000, 20_000),
-            'thirteenth_month_and_benefits'  => self::fakeAmount($seed, 30_000, 120_000),
-            'de_minimis_benefits'            => 0.0, // GAP — see schema note
-            'statutory_contributions_ee'     => self::fakeAmount($seed, 60_000, 110_000),
-            'total_nontaxable_compensation'  => null, // computed below, after the pieces exist
-            'total_taxable_compensation'     => null,
-            'exempt_250k_compensation'       => self::fakeAmount($seed, 10_000, 40_000),
-            'net_taxable_compensation'       => null,
-            'total_taxes_withheld'           => self::fakeAmount($seed, 150_000, 320_000),
-            'taxes_withheld_for_remittance'  => null,
-            'total_remittances_made'         => 0.0,
-            'tax_still_due'                  => null,
-            'total_penalties'                => 0.0,
-            'total_amount_due'               => null,
-        ];
+        $employees = self::monthQuery($year, $month)
+            ->whereIn('status', self::COUNTED_STATUSES)
+            ->get(['employee_id', 'gross_pay', 'deductions', 'allowances'])
+            ->groupBy('employee_id')
+            ->map(fn (Collection $rows, $employeeId) => self::employeeMonth(
+                (int) $employeeId,
+                $rows,
+                in_array((int) $employeeId, $mweIds, true),
+            ));
 
-        $values['total_nontaxable_compensation'] = round(
-            $values['mwe_statutory_wage'] + $values['mwe_premium_pay']
-            + $values['thirteenth_month_and_benefits'] + $values['de_minimis_benefits']
-            + $values['statutory_contributions_ee'], 2
-        );
-        $values['total_taxable_compensation'] = round(
-            $values['total_compensation'] - $values['total_nontaxable_compensation'], 2
-        );
-        $values['net_taxable_compensation'] = round(
-            $values['total_taxable_compensation'] - $values['exempt_250k_compensation'], 2
-        );
-        $values['taxes_withheld_for_remittance'] = $values['total_taxes_withheld'];
-        $values['tax_still_due'] = round(
-            $values['taxes_withheld_for_remittance'] - $values['total_remittances_made'], 2
-        );
-        $values['total_amount_due'] = round($values['tax_still_due'] + $values['total_penalties'], 2);
+        $mwe = $employees->where('category', 'mwe');
+        $exempt = $employees->where('category', 'exempt_250k');
+        $taxable = $employees->where('category', 'taxable');
 
-        return self::onlySchemaKeys($values, Form1601CSchema::payrollDerivedKeys()) + [
+        $v = [];
+        $v['total_compensation'] = round($employees->sum('compensation'), 2);                 // 14
+        // MWE basic net of their EE share — item 19 already counts that share.
+        $v['mwe_statutory_wage'] = round($mwe->sum(fn ($e) => $e['compensation'] - $e['premium'] - $e['ee']), 2); // 15
+        $v['mwe_premium_pay'] = round($mwe->sum('premium'), 2);                               // 16
+        $v['thirteenth_month_and_benefits'] = 0.0; // 17 — GAP: no 13th-month payout record (thirteenth_month_records is the accrual basis)
+        $v['de_minimis_benefits'] = 0.0;           // 18 — GAP: allowances aren't classified as de minimis
+        $v['statutory_contributions_ee'] = round($employees->sum('ee'), 2);                   // 19
+        $v['total_nontaxable_compensation'] = round(                                          // 21 (mapper adds user item 20)
+            $v['mwe_statutory_wage'] + $v['mwe_premium_pay'] + $v['thirteenth_month_and_benefits']
+            + $v['de_minimis_benefits'] + $v['statutory_contributions_ee'], 2
+        );
+        $v['total_taxable_compensation'] = round($v['total_compensation'] - $v['total_nontaxable_compensation'], 2); // 22
+        $v['exempt_250k_compensation'] = round($exempt->sum('taxable'), 2);                   // 23
+        $v['net_taxable_compensation'] = round($v['total_taxable_compensation'] - $v['exempt_250k_compensation'], 2); // 24
+        $v['total_taxes_withheld'] = round($employees->sum('tax'), 2);                        // 25
+        $v['has_taxes_withheld'] = $v['total_taxes_withheld'] > 0;                            // 3
+        $v['taxes_withheld_for_remittance'] = $v['total_taxes_withheld'];                     // 27 (mapper adds user item 26)
+        $v['total_remittances_made'] = 0.0;                                                   // 30 (items 28-29 are user)
+        $v['tax_still_due'] = round($v['taxes_withheld_for_remittance'] - $v['total_remittances_made'], 2); // 31
+        $v['total_penalties'] = 0.0;                                                          // 35 (items 32-34 are user)
+        $v['total_amount_due'] = round($v['tax_still_due'] + $v['total_penalties'], 2);      // 36
+
+        return self::contractValues(self::onlySchemaKeys($v, Form1601CSchema::payrollDerivedKeys())) + [
             '_meta' => [
                 'period' => sprintf('%04d-%02d', $year, $month),
-                'stub' => true,
+                'draft_payrolls_excluded' => self::monthQuery($year, $month)->where('status', 'draft')->count(),
                 // Not a numbered form field; kept out of the field-keyed payload.
                 'employee_counts' => [
-                    'total' => 40 + ($seed % 15),
-                    'minimum_wage' => 3 + ($seed % 4),
-                    'taxable' => 30 + ($seed % 10),
-                    'exempt_250k' => 7 + ($seed % 3),
+                    'total' => $employees->count(),
+                    'minimum_wage' => $mwe->count(),
+                    'taxable' => $taxable->count(),
+                    'exempt_250k' => $exempt->count(),
                 ],
+                'warnings' => self::warnings($employees),
             ],
         ];
     }
@@ -138,7 +157,7 @@ class BirAggregationService
             'total_taxes_withheld_final'   => $taxesWithheldPresent,
         ]);
 
-        return self::onlySchemaKeys($values, Form2316Schema::payrollDerivedKeys()) + [
+        return self::contractValues(self::onlySchemaKeys($values, Form2316Schema::payrollDerivedKeys())) + [
             '_meta' => [
                 'employee_id' => $employeeId,
                 'year' => $year,
@@ -147,17 +166,107 @@ class BirAggregationService
         ];
     }
 
+    /** Payrolls count toward the month their cutoff ends in (a Jul 26–Aug 10 cutoff is August's). */
+    private static function monthQuery(int $year, int $month): Builder
+    {
+        return Payroll::query()
+            ->whereYear('cutoff_end', $year)
+            ->whereMonth('cutoff_end', $month);
+    }
+
+    /** One employee's month: BIR compensation, premium pay, EE share, tax withheld, and 1601-C category. */
+    private static function employeeMonth(int $employeeId, Collection $rows, bool $isMwe): array
+    {
+        $compensation = $premium = $ee = $tax = 0.0;
+
+        foreach ($rows as $row) {
+            $deductions = $row->deductions ?? [];
+            $allowances = $row->allowances ?? [];
+
+            $compensation += (float) $row->gross_pay
+                - self::allowanceTotal($allowances, [self::UNDECLARED_ALLOWANCE])
+                - self::deductionTotal($deductions, self::ATTENDANCE_DEDUCTIONS);
+            $premium += self::allowanceTotal($allowances, self::PREMIUM_ALLOWANCES);
+            $ee += self::deductionTotal($deductions, self::EE_CONTRIBUTIONS);
+            $tax += (float) ($deductions['Withholding Tax'] ?? 0);
+        }
+
+        $taxable = $compensation - $ee;
+
+        return [
+            'employee_id' => $employeeId,
+            'category' => match (true) {
+                $isMwe => 'mwe',
+                $taxable * 12 <= self::EXEMPT_ANNUAL_CEILING => 'exempt_250k',
+                default => 'taxable',
+            },
+            'compensation' => $compensation,
+            'premium' => $premium,
+            'ee' => $ee,
+            'tax' => $tax,
+            'taxable' => $taxable,
+        ];
+    }
+
+    /** Stopgap until employees carry an MWE flag: a JSON list of employee IDs in system_settings. */
+    private static function mweEmployeeIds(): array
+    {
+        return array_map('intval', (array) SystemSettings::get('bir_mwe_employee_ids', []));
+    }
+
+    /** Employees whose withholding contradicts their category — surfaced for the hand-count reconciliation. */
+    private static function warnings(Collection $employees): array
+    {
+        return $employees->map(fn (array $e) => match (true) {
+            $e['category'] === 'mwe' && $e['tax'] > 0
+                => "Employee #{$e['employee_id']} is flagged MWE but had tax withheld.",
+            $e['category'] === 'exempt_250k' && $e['tax'] > 0
+                => "Employee #{$e['employee_id']} is at or under P250,000 annualized (item 23) but had tax withheld.",
+            $e['category'] === 'taxable' && $e['tax'] <= 0
+                => "Employee #{$e['employee_id']} is over P250,000 annualized but had no tax withheld.",
+            default => null,
+        })->filter()->values()->all();
+    }
+
+    private static function allowanceTotal(array $allowances, array $labelPrefixes): float
+    {
+        $total = 0.0;
+        foreach ($allowances as $allowance) {
+            foreach ($labelPrefixes as $prefix) {
+                if (str_starts_with($allowance['label'] ?? '', $prefix)) {
+                    $total += (float) ($allowance['amount'] ?? 0);
+                    break;
+                }
+            }
+        }
+        return $total;
+    }
+
+    private static function deductionTotal(array $deductions, array $labels): float
+    {
+        return array_sum(array_map(fn ($label) => (float) ($deductions[$label] ?? 0), $labels));
+    }
+
     /** Filters to the schema's payroll-derived keys; throws outside production if any are missing. */
     private static function onlySchemaKeys(array $values, array $schemaKeys): array
     {
         $missing = array_diff($schemaKeys, array_keys($values));
         if ($missing && !app()->isProduction()) {
             throw new \RuntimeException(
-                'BirAggregationService stub is missing keys the schema expects: ' . implode(', ', $missing)
+                'BirAggregationService is missing keys the schema expects: ' . implode(', ', $missing)
             );
         }
 
         return array_intersect_key($values, array_flip($schemaKeys));
+    }
+
+    /** Money as a plain 2-decimal string; `?: 0.0` stops float noise printing "-0.00". Non-money passes through. */
+    private static function contractValues(array $values): array
+    {
+        return array_map(
+            fn ($v) => is_float($v) ? number_format(round($v, 2) ?: 0.0, 2, '.', '') : $v,
+            $values
+        );
     }
 
     /** Deterministic pseudo-amount in [$min, $max] for a given $seed. */
