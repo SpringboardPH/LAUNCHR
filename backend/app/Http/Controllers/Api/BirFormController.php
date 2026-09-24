@@ -105,7 +105,7 @@ class BirFormController extends Controller
         }
 
         foreach ($request->input('fields', []) as $key => $value) {
-            $draft['fields'][$key] = ['value' => $value, 'source' => 'user', 'edited' => true];
+            $draft['fields'][$key] = ['value' => $value, 'origin' => 'user', 'edited' => true];
         }
 
         return response()->json(['success' => true, 'data' => $draft, 'message' => 'Draft updated (stub — not persisted)']);
