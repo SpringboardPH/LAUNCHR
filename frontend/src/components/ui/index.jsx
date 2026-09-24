@@ -4,8 +4,9 @@ import { X, CalendarDays, Clock, LogOut, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import AlertModal from './AlertModal'
 import MultiSelectCombobox from './MultiSelectCombobox'
+import SearchSelect from './SearchSelect'
 
-export { AlertModal, MultiSelectCombobox }
+export { AlertModal, MultiSelectCombobox, SearchSelect }
 
 // ─── PageHeader ───────────────────────────────────────────────
 export function PageHeader({ title, description, action, help }) {

@@ -8,7 +8,7 @@ import {
   getLeaveTypes, getEmployees, getLeaveBalance,
   leaveTypeKeys, employeeKeys, dashboardKeys,
 } from '../../api/queries'
-import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination } from '../../components/ui/index.jsx'
+import { PageHeader, PageSpinner, StatusBadge, Modal, FormField, Spinner, ConfirmModal, PagePagination, SearchSelect } from '../../components/ui/index.jsx'
 import { Check, X, Eye, ClipboardList, Plus, CalendarOff, AlertCircle } from 'lucide-react'
 
 const REQUEST_TYPES = [
@@ -65,8 +65,8 @@ export default function RequestsPage() {
     queryFn: () => getLeaves({ status, page: leavePage }),
   })
   const { data: employees } = useQuery({
-    queryKey: employeeKeys.list({}),
-    queryFn: () => getEmployees({ status: 'active' }),
+    queryKey: employeeKeys.list({ status: 'active', per_page: 1000 }),
+    queryFn: () => getEmployees({ status: 'active', per_page: 1000 }),
   })
   const { data: leaveTypes } = useQuery({
     queryKey: leaveTypeKeys.all,
@@ -87,8 +87,20 @@ export default function RequestsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: requestKeys.all }); qc.invalidateQueries({ queryKey: dashboardKeys.all }); setRejectModal(null); setRejectNotes('') },
   })
   const approveLeaveMutation = useMutation({
-    mutationFn: approveLeave,
+    mutationFn: ({ id, confirmExceed = false }) => approveLeave(id, confirmExceed ? { confirm_exceed_balance: true } : {}),
     onSuccess: () => { qc.invalidateQueries({ queryKey: leaveKeys.all }); qc.invalidateQueries({ queryKey: dashboardKeys.all }) },
+    onError: (err, vars) => {
+      const message = err?.response?.data?.message || ''
+      if (!vars.confirmExceed && message.includes('exceed the employee')) {
+        setConfirmConfig({
+          open: true,
+          title: 'Approve past the balance',
+          message: 'This exceeds the remaining balance. Approve anyway?',
+          type: 'info',
+          onConfirm: () => approveLeaveMutation.mutate({ id: vars.id, confirmExceed: true }),
+        })
+      }
+    },
   })
   const rejectLeaveMutation = useMutation({
     mutationFn: ({ id, reason }) => rejectLeave(id, reason),
@@ -127,6 +139,12 @@ export default function RequestsPage() {
     return count
   }
   const requestedDays = calculateDays(form.start_date, form.end_date)
+  const exceedsBalance = Boolean(
+    selectedBalance?.requires_balance
+    && selectedBalance.remaining !== null
+    && requestedDays > selectedBalance.remaining
+  )
+  const exceedBy = exceedsBalance ? requestedDays - selectedBalance.remaining : 0
 
   useEffect(() => {
     if (!createModal) { setForm(EMPTY_FORM); setCreateError('') }
@@ -136,7 +154,7 @@ export default function RequestsPage() {
     setConfirmConfig({
       open: true, title: 'Approve Leave Request',
       message: `Approve leave for ${leave.employee?.first_name} ${leave.employee?.last_name}?`,
-      onConfirm: () => approveLeaveMutation.mutate(leave.id), type: 'info',
+      onConfirm: () => approveLeaveMutation.mutate({ id: leave.id }), type: 'info',
     })
   }
 
@@ -145,7 +163,18 @@ export default function RequestsPage() {
     if (!form.employee_id) return setCreateError('Employee is required.')
     if (form.type === 'leave') {
       if (!form.leave_type || !form.start_date || !form.end_date) return setCreateError('Leave type, start date, and end date are required.')
-      createMutation.mutate({ employee_id: form.employee_id, leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason || null })
+      const payload = { employee_id: form.employee_id, leave_type: form.leave_type, start_date: form.start_date, end_date: form.end_date, reason: form.reason || null }
+      if (exceedsBalance) {
+        setConfirmConfig({
+          open: true,
+          title: 'File past the balance',
+          message: `This requests ${requestedDays} day(s) and exceeds the remaining balance by ${exceedBy} day(s). File it anyway?`,
+          type: 'info',
+          onConfirm: () => createMutation.mutate(payload),
+        })
+        return
+      }
+      createMutation.mutate(payload)
     } else {
       if (!form.request_type || !form.subject.trim()) return setCreateError('Request type and subject are required.')
       const t = form.request_type
@@ -450,10 +479,15 @@ export default function RequestsPage() {
       >
         <div className="space-y-4">
           <FormField label="Employee" required>
-            <select value={form.employee_id} onChange={e => f('employee_id', e.target.value)} className="input">
-              <option value="">Select employee…</option>
-              {activeEmps.map(e => <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>)}
-            </select>
+            <SearchSelect
+              options={activeEmps}
+              value={form.employee_id}
+              onChange={(id) => f('employee_id', id)}
+              getOptionValue={(employee) => employee.id}
+              getLabel={(employee) => `${employee.first_name} ${employee.last_name}`}
+              getSearchText={(employee) => `${employee.first_name} ${employee.last_name} ${employee.employee_id ?? ''}`}
+              placeholder="Select employee…"
+            />
           </FormField>
           <FormField label="Category" required>
             <select value={form.type} onChange={e => f('type', e.target.value)} className="input">
@@ -471,7 +505,10 @@ export default function RequestsPage() {
                 </select>
               </FormField>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FormField label="Start Date" required><input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} className="input" /></FormField>
+                <FormField label="Start Date" required>
+                  <input type="date" value={form.start_date} onChange={e => f('start_date', e.target.value)} className="input" />
+                  <p className="text-xs text-gray-500 mt-1">Past dates are for leave taken before the system was in use.</p>
+                </FormField>
                 <FormField label="End Date" required><input type="date" value={form.end_date} onChange={e => f('end_date', e.target.value)} className="input" /></FormField>
               </div>
               <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600">
@@ -480,7 +517,9 @@ export default function RequestsPage() {
                 <p>Remaining balance after request: <span className="font-medium text-gray-900">
                   {!selectedBalance ? '—'
                     : !selectedBalance.requires_balance ? 'Unlimited'
-                    : `${Math.max(0, selectedBalance.remaining - requestedDays)} / ${selectedBalance.remaining}`}
+                    : exceedsBalance
+                      ? `Exceeds balance by ${exceedBy} day(s)`
+                      : `${Math.max(0, selectedBalance.remaining - requestedDays)} / ${selectedBalance.remaining}`}
                 </span></p>
               </div>
               <FormField label="Reason"><textarea value={form.reason} onChange={e => f('reason', e.target.value)} className="input h-16 resize-none" /></FormField>
