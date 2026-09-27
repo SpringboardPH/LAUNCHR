@@ -46,8 +46,11 @@ Every response uses the envelope already used across LAUNCHR:
   "id": 5,
   "form_type": "1601-C",
   "period": "2026-05",
+  "employee_id": null,
+  "employee_name": null,
   "status": "draft",
   "version": 1,
+  "parent_id": null,
   "prepared_by": { "id": 5, "name": "Jane Dela Cruz" },
   "approved_by": null,
   "rejection_reason": "Item 25 total tax withheld does not match the payroll register — please recheck May.",
@@ -56,15 +59,18 @@ Every response uses the envelope already used across LAUNCHR:
 }
 ```
 
-`parent_id` appears only on a draft created by `revise`, pointing at the
-finalized draft it corrects.
+`parent_id` is always present. It is null unless the draft was created by
+`revise`, in which case it points at the finalized draft it corrects.
 
 | Key | Notes |
 |---|---|
 | `form_type` | `1601-C` or `2316`. Exactly these strings — they match `Form1601CSchema::FORM_TYPE` and `Form2316Schema::FORM_TYPE`. |
 | `period` | `YYYY-MM` for 1601-C, `YYYY` for 2316. See §7 — this is the weakest part of the shape. |
+| `employee_id` | Null for a 1601-C, which covers all employees. Set for a 2316, which is per employee. |
+| `employee_name` | `"Last, First"`. Present only when the employee relationship is loaded; null if the draft has no employee. |
 | `status` | See §4 |
 | `version` | Starts at 1. Incremented by `revise`. |
+| `parent_id` | `id` of the finalized draft this one corrects, set by `revise`. Null on an original draft. |
 | `prepared_by` | `{ id, name }` of whoever created the draft |
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
 | `rejection_reason` | Text a reviewer gave when returning the draft, else null |
