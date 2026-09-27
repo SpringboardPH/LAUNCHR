@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreBirDraftRequest;
 use App\Http\Resources\BirFormDraftResource;
 use App\Models\BirFormDraft;
 use App\Models\SystemSettings;
@@ -74,28 +75,29 @@ class BirFormController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreBirDraftRequest $request)
     {
-        $request->validate([
-            'form_type' => 'required|in:1601-C,2316',
-            'period' => 'required|string',
+        $validated = $request->validated();
+
+        $draft = BirFormDraft::create([
+            'form_type' => $validated['form_type'],
+            'period' => $validated['period'],
+            'employee_id' => $validated['employee_id'] ?? null,
+            'status' => 'draft',
+            'version' => 1,
+            'parent_id' => null,
+            'prepared_by' => $request->user()->id,
+            // stdClass so the column stores {} rather than [].
+            'fields' => new \stdClass(),
+            'validation_errors' => [],
         ]);
+
+        $draft->load('preparer', 'approver', 'employee');
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'id' => 999,
-                'form_type' => $request->form_type,
-                'period' => $request->period,
-                'status' => 'draft',
-                'version' => 1,
-                'prepared_by' => ['id' => $request->user()->id, 'name' => $request->user()->name],
-                'approved_by' => null,
-                'rejection_reason' => null,
-                'fields' => [],
-                'validation_errors' => [],
-            ],
-            'message' => 'Draft generated (stub — real aggregation lands Week 2)',
+            'data' => new BirFormDraftResource($draft),
+            'message' => 'Draft created',
         ], 201);
     }
 
