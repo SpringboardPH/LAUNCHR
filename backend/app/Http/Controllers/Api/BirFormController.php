@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\BirFormDraftResource;
+use App\Models\BirFormDraft;
 use App\Models\SystemSettings;
 use Database\Seeders\BirFixtureSeeder;
 use Illuminate\Http\Request;
@@ -46,18 +48,28 @@ class BirFormController extends Controller
 
     public function index(Request $request)
     {
-        $drafts = collect(BirFixtureSeeder::fixtures());
+        $query = BirFormDraft::with('preparer', 'approver', 'employee');
 
         if ($status = $request->query('status')) {
-            $drafts = $drafts->where('status', $status);
+            $query->where('status', $status);
         }
         if ($formType = $request->query('form_type')) {
-            $drafts = $drafts->where('form_type', $formType);
+            $query->where('form_type', $formType);
         }
+
+        $perPage = min(max($request->integer('per_page', 15), 1), 100);
+        $drafts = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => $drafts->values(),
+            'data' => BirFormDraftResource::collection($drafts->items()),
+            'pagination' => [
+                'total' => $drafts->total(),
+                'count' => $drafts->count(),
+                'per_page' => $drafts->perPage(),
+                'current_page' => $drafts->currentPage(),
+                'last_page' => $drafts->lastPage(),
+            ],
             'message' => 'BIR drafts retrieved',
         ]);
     }
@@ -89,12 +101,12 @@ class BirFormController extends Controller
 
     public function show(int $id)
     {
-        $draft = $this->findFixture($id);
+        $draft = BirFormDraft::with('preparer', 'approver', 'employee')->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        return response()->json(['success' => true, 'data' => $draft, 'message' => 'Draft retrieved']);
+        return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft retrieved']);
     }
 
     public function update(Request $request, int $id)
