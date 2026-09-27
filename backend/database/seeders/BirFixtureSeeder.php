@@ -2,6 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Models\BirFormDraft;
+use App\Models\Employee;
+use App\Models\User;
+use App\Services\BIR\Schemas\Form1601CSchema;
+use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Database\Seeder;
 
 /**
@@ -14,8 +19,94 @@ class BirFixtureSeeder extends Seeder
 {
     public function run(): void
     {
-        // No-op until the bir_form_drafts table exists (Week 2). Fixtures
-        // are served in-memory via fixtures() in the meantime.
+        $preparer = User::where('role', 'hr')->first() ?? User::first();
+        $approver = User::where('role', 'admin')->first() ?? User::first();
+
+        if (!$preparer || !$approver) {
+            $this->command?->warn('BirFixtureSeeder: no users found — skipping BIR draft fixtures.');
+            return;
+        }
+
+        // A 2316 is per employee: give the two 2316 fixtures (ids 3 and 4) different employees.
+        $employeeIds = Employee::orderBy('id')->limit(2)->pluck('id');
+        if ($employeeIds->count() < 2) {
+            $this->command?->warn('BirFixtureSeeder: fewer than two employees — the 2316 fixtures will share an employee or have none.');
+        }
+        $employeeFor = [
+            3 => $employeeIds->get(0),
+            4 => $employeeIds->get(1) ?? $employeeIds->get(0),
+        ];
+
+        $drafts = [];
+        foreach (self::fixtures() as $fixture) {
+            // version is part of the key: fixtures 3 and 4 share form_type 2316 and period 2025.
+            $drafts[] = BirFormDraft::updateOrCreate(
+                [
+                    'form_type' => $fixture['form_type'],
+                    'period' => $fixture['period'],
+                    'employee_id' => $employeeFor[$fixture['id']] ?? null,
+                    'version' => $fixture['version'],
+                ],
+                [
+                    'status' => $fixture['status'],
+                    'prepared_by' => $preparer->id,
+                    'approved_by' => $fixture['approved_by'] ? $approver->id : null,
+                    'rejection_reason' => $fixture['rejection_reason'],
+                    'fields' => $fixture['fields'],
+                    'validation_errors' => $fixture['validation_errors'],
+                ]
+            );
+        }
+
+        // A revision points at the finalized version 1 of the same form, period and employee.
+        // Create that version 1 if the fixtures don't include it, with every edit reverted
+        // so it holds the original figures and the revision holds the corrected ones.
+        foreach ($drafts as $revision) {
+            if ($revision->version < 2) {
+                continue;
+            }
+
+            // A reverted value is the calculated one again, so its origin is the schema's source.
+            $schema = match ($revision->form_type) {
+                Form1601CSchema::FORM_TYPE => Form1601CSchema::byKey(),
+                Form2316Schema::FORM_TYPE => Form2316Schema::byKey(),
+                default => [],
+            };
+
+            $originalFields = collect($revision->fields)->map(fn (array $entry, string $key) => $entry['edited']
+                ? array_merge($entry, [
+                    'value' => $entry['system_value'],
+                    'origin' => $schema[$key]['source'] ?? $entry['origin'],
+                    'edited' => false,
+                    'system_value' => null,
+                    'edited_by' => null,
+                    'edited_at' => null,
+                ])
+                : $entry
+            )->all();
+
+            $parent = BirFormDraft::firstOrCreate(
+                [
+                    'form_type' => $revision->form_type,
+                    'period' => $revision->period,
+                    'employee_id' => $revision->employee_id,
+                    'version' => 1,
+                ],
+                [
+                    'status' => 'finalized',
+                    'prepared_by' => $preparer->id,
+                    'approved_by' => $approver->id,
+                    'fields' => $originalFields,
+                    'validation_errors' => [],
+                ]
+            );
+
+            if ($parent->status !== 'finalized') {
+                $this->command?->warn("BirFixtureSeeder: parent of draft {$revision->id} is {$parent->status}, not finalized.");
+            }
+
+            $revision->update(['parent_id' => $parent->id]);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */

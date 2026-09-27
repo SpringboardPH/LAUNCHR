@@ -58,7 +58,7 @@ class BirFormController extends Controller
         }
 
         $perPage = min(max($request->integer('per_page', 15), 1), 100);
-        $drafts = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $drafts = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,

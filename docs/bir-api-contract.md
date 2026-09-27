@@ -195,7 +195,7 @@ will not be able to approve their own draft.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/bir/config` | Feature flag, form types, status flow |
-| GET | `/bir/drafts` | List, filterable by `status` and `form_type` |
+| GET | `/bir/drafts` | Paginated list, filterable by `status` and `form_type` |
 | POST | `/bir/drafts` | Create |
 | GET | `/bir/drafts/{id}` | One draft |
 | PUT | `/bir/drafts/{id}` | Edit field values |
@@ -226,6 +226,40 @@ will not be able to approve their own draft.
 default — the Week 8 feature switch. `status_flow` is served from the same
 constant the controller enforces, so Dev D can drive button visibility from it
 rather than hardcoding the transitions.
+
+### GET /bir/drafts
+
+Paginated, newest first. Query parameters:
+
+| Parameter | Notes |
+|---|---|
+| `status` | Optional filter |
+| `form_type` | Optional filter |
+| `per_page` | Drafts per page. Default 15, clamped to 1–100. |
+| `page` | Page number, starting at 1. Default 1. |
+
+`data` is a flat array of draft objects (§2) for the requested page only. A
+sibling `pagination` object describes the full result, in the same format as the
+other paginated lists in the app:
+
+```json
+{
+  "success": true,
+  "data": [ ],
+  "pagination": {
+    "total": 42,
+    "count": 15,
+    "per_page": 15,
+    "current_page": 1,
+    "last_page": 3
+  },
+  "message": "BIR drafts retrieved"
+}
+```
+
+`total` is every draft matching the filters; `count` is how many are on this
+page. Counting, filtering or searching `data` in the browser only covers the
+current page — use the query parameters instead.
 
 ### POST /bir/drafts
 
@@ -283,11 +317,6 @@ Dev A's mapper in Week 2–4.
 **`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
 sets `origin: user` and `edited: true` only. The fixtures show the full shape;
 the behaviour is Week 6.
-
-**The list is not paginated.** `data` is a flat array of everything. When
-pagination arrives it will follow `LeaveController::index` — `data` stays a flat
-array and a sibling `pagination` object appears beside it, so nothing Dev D
-builds now breaks.
 
 **Money in the fixtures is formatted with commas** (`"55,010.00"`). Real values
 will be plain decimal strings (`"55010.00"`) so Week 5 validation can compare
