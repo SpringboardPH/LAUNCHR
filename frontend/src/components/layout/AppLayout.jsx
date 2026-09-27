@@ -38,6 +38,7 @@ const COMMON_NAV = [
       { to: '/hr/payroll', label: 'Payroll Runs' },
       { to: '/hr/thirteenth-month', label: '13th Month' },
       { to: '/hr/loans', label: 'Loans' },
+      { to: '/hr/bir-forms', label: 'BIR Forms' },
     ],
   },
 ]

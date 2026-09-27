@@ -1,4 +1,5 @@
 import api from './axios'
+import { birMockApi } from './birFixtures'
 
 // ─── Employees ──────────────────────────────────────────────
 export const employeeKeys = {
@@ -148,7 +149,6 @@ export const employeeLeaveBalanceKeys = {
   all: ['admin', 'employee-leave-balances'],
   detail: (employeeId) => ['admin', 'employee-leave-balances', employeeId],
 }
-
 export const getEmployeeLeaveBalances = (employeeId) =>
   api.get(`/admin/employee-leave-balances/${employeeId}`).then(r => r.data.data)
 
@@ -164,7 +164,6 @@ export const payrollKeys = {
   list: (params) => ['payroll', 'list', params],
   detail: (id) => ['payroll', id],
 }
-
 export const getPayrolls = (params) =>
   api.get('/payroll', { params }).then(r => r.data.data)
 
@@ -187,7 +186,6 @@ export const exportPayroll = (id, label) => {
     URL.revokeObjectURL(url)
   })
 }
-
 export const sendPaystubs = (formData) => {
   // formData is a FormData object with payroll_ids array and files
   return api.post('/payroll/send-paystubs', formData, {
@@ -249,7 +247,6 @@ export const themeColorKeys = {
 export const systemConfigKeys = {
   all: ['system-config'],
 }
-
 export const getSystemClock = () =>
   api.get('/system-clock').then(r => r.data.data)
 
@@ -318,7 +315,6 @@ export const adminDepartmentKeys = {
   all: ['admin', 'departments'],
   detail: (id) => ['admin', 'departments', id],
 }
-
 export const getAdminDepartments = () =>
   api.get('/admin/departments').then(r => r.data.data)
 
@@ -336,7 +332,6 @@ export const hardDeleteAdminDepartment = (id) =>
 
 export const restoreAdminDepartment = (id) =>
   api.patch(`/admin/departments/${id}/restore`).then(r => r.data)
-
 // ─── Admin Employee Management ──────────────────────────────────────────────
 // ─── Schedule Templates (Admin) ──────────────────────────────────────────────
 export const scheduleTemplateKeys = {
@@ -391,7 +386,6 @@ export const setMySchedule = (data) =>
 
 export const getAvailableTemplates = () =>
   api.get('/schedule-templates').then(r => r.data.data)
-
 // ─── Users (Admin) ────────────────────────────────────────────────
 export const userKeys = {
   all: ['admin', 'users'],
@@ -471,7 +465,6 @@ export const exportCalendarEvents = (startDate = null, endDate = null) => {
   if (endDate) params.end_date = endDate
   return api.get('/admin/calendar-events/export', { params, responseType: 'blob' })
 }
-
 export const calendarEventTypeKeys = {
   all: ['calendar-event-types'],
   list: (params) => ['calendar-event-types', 'list', params],
@@ -492,7 +485,6 @@ export const updateCalendarEventType = (id, data) =>
 
 export const deleteCalendarEventType = (id) =>
   api.delete(`/admin/calendar-event-types/${id}`).then(r => r.data)
-
 // ─── Employee Requests ──────────────────────────────────────────────
 export const requestKeys = {
   all: ['requests'],
@@ -568,3 +560,89 @@ export const getDtrEmployeeAccess = () =>
 
 export const toggleDtrEmployeeAccess = (employeeId, enabled) =>
   api.patch(`/dtr/employee-access/${employeeId}`, { enabled }).then(r => r.data)
+
+// ─── BIR Form Assistant ──────────────────────────────────────
+// Contract: docs/bir-api-contract.md. Until the backend is complete, dev builds
+// answer from birFixtures.js (set VITE_BIR_MOCK=false to hit the real API).
+// Production builds never use the mocks. Week 7 removes the mock branch.
+export const BIR_USE_MOCKS = import.meta.env.DEV && import.meta.env.VITE_BIR_MOCK !== 'false'
+const bir = (real, mock) => (BIR_USE_MOCKS ? mock : real)
+
+export const birKeys = {
+  all:    ['bir'],
+  config: ['bir', 'config'],
+  lists:  ['bir', 'drafts'],
+  list:   (params) => ['bir', 'drafts', 'list', params],
+  detail: (id) => ['bir', 'drafts', id],
+}
+
+// Returns { data, pagination } — filter with params, never client-side (only one page is loaded).
+export const getBirConfig = bir(
+  () => api.get('/bir/config').then(r => r.data.data),
+  birMockApi.getConfig,
+)
+
+export const getBirDrafts = bir(
+  (params = {}) => api.get('/bir/drafts', { params }).then(r => ({ data: r.data.data, pagination: r.data.pagination })),
+  birMockApi.getDrafts,
+)
+
+export const getBirDraft = bir(
+  (id) => api.get(`/bir/drafts/${id}`).then(r => r.data.data),
+  birMockApi.getDraft,
+)
+
+// data: { form_type, period, employee_id? }
+export const createBirDraft = bir(
+  (data) => api.post('/bir/drafts', data).then(r => r.data),
+  birMockApi.createDraft,
+)
+
+// fields: flat { key: value } — the server sets origin/edited/provenance.
+export const updateBirDraft = bir(
+  (id, fields) => api.put(`/bir/drafts/${id}`, { fields }).then(r => r.data),
+  birMockApi.updateDraft,
+)
+
+export const submitBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/submit`).then(r => r.data),
+  (id) => birMockApi.transition(id, 'pending'),
+)
+
+export const approveBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/approve`).then(r => r.data),
+  (id) => birMockApi.transition(id, 'approved'),
+)
+
+export const rejectBirDraft = bir(
+  (id, reason) => api.post(`/bir/drafts/${id}/reject`, { reason }).then(r => r.data),
+  (id, reason) => birMockApi.transition(id, 'draft', reason),
+)
+
+export const finalizeBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/finalize`).then(r => r.data),
+  (id) => birMockApi.transition(id, 'finalized'),
+)
+
+export const reviseBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/revise`).then(r => r.data),
+  birMockApi.revise,
+)
+export const exportBirDraft = bir(
+  (id, filename) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(res => {
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `bir-draft-${id}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }),
+  birMockApi.exportDraft,
+)
+
+// Returns { understood, intent, reply }. A 503 means the assistant is down —
+// the page must still let the user pick a form and period manually.
+export const sendBirChatMessage = bir(
+  (message) => api.post('/bir/chat', { message }).then(r => r.data.data),
+  birMockApi.chat,
+)
