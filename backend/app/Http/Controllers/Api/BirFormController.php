@@ -191,31 +191,39 @@ class BirFormController extends Controller
 
     public function revise(Request $request, int $id)
     {
-        $draft = $this->findFixture($id);
+        $draft = BirFormDraft::find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        if ($draft['status'] !== 'finalized') {
+        if ($draft->status !== 'finalized') {
             return response()->json([
                 'success' => false,
-                'message' => "Only finalized forms can be revised; this one is in {$draft['status']} status",
+                'message' => "Only finalized forms can be revised; this one is in {$draft->status} status",
             ], 400);
         }
 
-        $revision = $draft;
-        $revision['id'] = 999;
-        $revision['status'] = 'draft';
-        $revision['version'] = $draft['version'] + 1;
-        $revision['parent_id'] = $draft['id'];
-        $revision['rejection_reason'] = null;
-        $revision['approved_by'] = null;
-        $revision['prepared_by'] = ['id' => $request->user()->id, 'name' => $request->user()->name];
+        $revision = BirFormDraft::create([
+            'form_type' => $draft->form_type,
+            'period' => $draft->period,
+            'employee_id' => $draft->employee_id,
+            'status' => 'draft',
+            'version' => $draft->version + 1,
+            'parent_id' => $draft->id,
+            'prepared_by' => $request->user()->id,
+            'approved_by' => null,
+            'rejection_reason' => null,
+            // stdClass so an empty set stores {} rather than [].
+            'fields' => $draft->fields ?: new \stdClass(),
+            'validation_errors' => [],
+        ]);
+
+        $revision->load('preparer', 'approver', 'employee');
 
         return response()->json([
             'success' => true,
-            'data' => $revision,
-            'message' => 'Revision created (stub — not persisted)',
+            'data' => new BirFormDraftResource($revision),
+            'message' => 'Revision created',
         ], 201);
     }
 
