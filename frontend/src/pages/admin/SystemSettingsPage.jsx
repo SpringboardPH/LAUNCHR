@@ -1149,7 +1149,7 @@ export default function SystemSettingsPage() {
                   placeholder='{"semi_monthly": [...], "monthly": [...]}'
                 />
                 <p className="text-[10px] text-gray-400 italic">
-                  Object with "semi_monthly" and "monthly" arrays. Each bracket: &#123;"from", "to" (null for top), "fixed", "rate", "floor"&#125;. Update when BIR revises the TRAIN Law tables.
+                  Object with "semi_monthly", "monthly", and "annual" arrays. Each bracket still has "from", "to" (null for the top), "fixed", "rate", and "floor". "annual" amounts are annual compensation, and payroll divides that tax by 12 and by the cutoff count.
                 </p>
               </div>
             </div>
