@@ -140,23 +140,32 @@ class BirFormController extends Controller
 
     private function transition(int $id, string $to, ?string $reason = null)
     {
-        $draft = $this->findFixture($id);
+        $draft = BirFormDraft::find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        $allowed = self::STATUS_FLOW[$draft['status']] ?? [];
+        $allowed = self::STATUS_FLOW[$draft->status] ?? [];
         if (!in_array($to, $allowed, true)) {
             return response()->json([
                 'success' => false,
-                'message' => "Cannot move a form in {$draft['status']} status to {$to}",
+                'message' => "Cannot move a form in {$draft->status} status to {$to}",
             ], 400);
         }
 
-        $draft['status'] = $to;
-        $draft['rejection_reason'] = $reason;
+        $draft->status = $to;
+        if ($to === 'pending') {
+            $draft->rejection_reason = null;
+        } elseif ($to === 'approved') {
+            $draft->approved_by = request()->user()->id;
+        } elseif ($to === 'draft') {
+            $draft->rejection_reason = $reason;
+        }
+        $draft->save();
 
-        return response()->json(['success' => true, 'data' => $draft, 'message' => "Draft moved to {$to} (stub — not persisted)"]);
+        $draft->load('preparer', 'approver', 'employee');
+
+        return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => "Draft moved to {$to}"]);
     }
 
     public function submit(int $id)
