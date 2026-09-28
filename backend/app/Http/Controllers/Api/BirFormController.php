@@ -7,13 +7,11 @@ use App\Http\Requests\StoreBirDraftRequest;
 use App\Http\Resources\BirFormDraftResource;
 use App\Models\BirFormDraft;
 use App\Models\SystemSettings;
-use Database\Seeders\BirFixtureSeeder;
 use Illuminate\Http\Request;
 
 /**
- * Week 1 stub: every method reads/mutates an in-memory fixture array so
- * C and D have a stable contract to build against. Week 2 swaps this for
- * the real BirFormDraft model and BirAggregationService.
+ * BIR Form Assistant drafts: CRUD, the draft -> pending -> approved -> finalized
+ * lifecycle, and revisions, all backed by the BirFormDraft model.
  */
 class BirFormController extends Controller
 {
@@ -23,16 +21,6 @@ class BirFormController extends Controller
         'approved' => ['finalized'],
         'finalized' => [],
     ];
-
-    private function findFixture(int $id): ?array
-    {
-        foreach (BirFixtureSeeder::fixtures() as $draft) {
-            if ($draft['id'] === $id) {
-                return $draft;
-            }
-        }
-        return null;
-    }
 
     public function config()
     {
@@ -229,7 +217,7 @@ class BirFormController extends Controller
 
     public function export(int $id)
     {
-        $draft = $this->findFixture($id);
+        $draft = BirFormDraft::find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
