@@ -142,8 +142,8 @@ class BirFixtureSeeder extends Seeder
                 'fields' => [
                     'return_period' => ['value' => '06/2026', 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'company_tin' => ['value' => '000-000-000-000', 'origin' => 'settings', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'gross_compensation' => ['value' => '842,300.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'total_taxes_withheld' => ['value' => '61,204.15', 'origin' => 'user', 'edited' => true, 'system_value' => '61,024.15', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-07-08T10:22:00+08:00'],
+                    'gross_compensation' => ['value' => '842300.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'total_taxes_withheld' => ['value' => '61204.15', 'origin' => 'user', 'edited' => true, 'system_value' => '61024.15', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-07-08T10:22:00+08:00'],
                 ],
                 'validation_errors' => [],
             ],
@@ -159,8 +159,8 @@ class BirFixtureSeeder extends Seeder
                 'fields' => [
                     'tax_year' => ['value' => 2025, 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'employee_tin' => ['value' => '111-222-333-000', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'gross_compensation' => ['value' => '480,000.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'tax_withheld' => ['value' => '28,450.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'gross_compensation' => ['value' => '480000.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'tax_withheld' => ['value' => '28450.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                 ],
                 'validation_errors' => [],
             ],
@@ -176,8 +176,8 @@ class BirFixtureSeeder extends Seeder
                 'fields' => [
                     'tax_year' => ['value' => 2025, 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'employee_tin' => ['value' => '444-555-666-000', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'gross_compensation' => ['value' => '612,000.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'tax_withheld' => ['value' => '39,880.00', 'origin' => 'user', 'edited' => true, 'system_value' => '39,460.00', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-01-26T14:05:00+08:00'],
+                    'gross_compensation' => ['value' => '612000.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'tax_withheld' => ['value' => '39880.00', 'origin' => 'user', 'edited' => true, 'system_value' => '39460.00', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-01-26T14:05:00+08:00'],
                 ],
                 'validation_errors' => [],
             ],
@@ -193,8 +193,8 @@ class BirFixtureSeeder extends Seeder
                 'fields' => [
                     'return_period' => ['value' => '05/2026', 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'company_tin' => ['value' => '000-000-000-000', 'origin' => 'settings', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'gross_compensation' => ['value' => '795,150.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
-                    'total_taxes_withheld' => ['value' => '55,010.00', 'origin' => 'user', 'edited' => true, 'system_value' => '54,872.50', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-06-08T09:47:00+08:00'],
+                    'gross_compensation' => ['value' => '795150.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'total_taxes_withheld' => ['value' => '55010.00', 'origin' => 'user', 'edited' => true, 'system_value' => '54872.50', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-06-08T09:47:00+08:00'],
                 ],
                 'validation_errors' => [
                     ['field' => 'total_taxes_withheld', 'message' => 'Does not match calculated payroll total.'],
