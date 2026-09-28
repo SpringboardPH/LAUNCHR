@@ -83,10 +83,10 @@ Each entry under `fields` looks like this:
 
 ```json
 "total_taxes_withheld": {
-  "value": "55,010.00",
+  "value": "55010.00",
   "origin": "user",
   "edited": true,
-  "system_value": "54,872.50",
+  "system_value": "54872.50",
   "edited_by": { "id": 5, "name": "Jane Dela Cruz" },
   "edited_at": "2026-06-08T09:47:00+08:00"
 }
@@ -297,43 +297,24 @@ is untouched.
 
 ## 7. What is not real yet
 
-Week 1 is a stub. These are known, not bugs — but check here before reporting
-one.
-
-**Nothing persists.** Every response is built from an in-memory array in
-`BirFixtureSeeder::fixtures()`. Submit a draft, read it back, and it is still
-`draft`. The `bir_form_drafts` table lands in Week 2; the shape above does not
-change when it does.
-
-**`store` and `revise` both return id `999`,** which then 404s on a subsequent
-GET. Create-then-open does not work against the stub.
+Every endpoint reads and writes the `bir_form_drafts` table. These gaps are
+known, not bugs — but check here before reporting one.
 
 **`store` returns an empty `fields` object.** Real drafts get their fields from
 Dev A's mapper in Week 2–4.
-
-**`PUT` works on any status.** It should only work while the draft is in
-`draft`. The guard lands with the real model in Week 2.
 
 **`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
 sets `origin: user` and `edited: true` only. The fixtures show the full shape;
 the behaviour is Week 6.
 
-**Money in the fixtures is formatted with commas** (`"55,010.00"`). Real values
-will be plain decimal strings (`"55010.00"`) so Week 5 validation can compare
-them numerically. Dev D should format for display rather than assume the server
-has.
+**A finalized form can be revised more than once.** Nothing stops a second
+`revise` on the same finalized draft, so two drafts can end up with the same
+`version` and the same `parent_id`. Whether competing corrections should be
+allowed is an open question for the accountant.
 
-**Some fixture field keys are placeholders** and do not all appear in Dev A's
-schemas — `gross_compensation` is in the fixtures, but the 1601-C schema calls
-that item `total_compensation`. Use the schema, not the fixtures, as the key
-list.
-
-**The 2316 fixtures have no employee attached.** A 2316 is per employee, and
-drafts 3 and 4 are only distinguishable by TIN. The draft will carry the
-employee once the table exists.
-
-**`/bir/chat` errors** until Dev C creates `BirChatController` with a `message`
-method.
+**`validation_errors` is never cleared or recalculated when a field changes.**
+A draft can show an error about a field that has since been corrected or
+emptied. Validation is Week 5.
 
 ---
 

@@ -116,7 +116,10 @@ class BirFormController extends Controller
         // Merge per key: other keys, and system_value/edited_by/edited_at on edited keys, are kept.
         $fields = $draft->fields ?? [];
         foreach ((array) $request->input('fields', []) as $key => $value) {
-            $fields[$key] = array_merge($fields[$key] ?? [], ['value' => $value, 'origin' => 'user', 'edited' => true]);
+            // Clearing a field is not an edit: a null value is always pending (contract §3, invariant 1).
+            $fields[$key] = array_merge($fields[$key] ?? [], $value === null
+                ? ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null]
+                : ['value' => $value, 'origin' => 'user', 'edited' => true]);
         }
         $draft->fields = $fields;
         $draft->save();
