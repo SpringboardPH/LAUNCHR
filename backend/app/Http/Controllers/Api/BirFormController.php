@@ -113,16 +113,29 @@ class BirFormController extends Controller
 
     public function update(Request $request, int $id)
     {
-        $draft = $this->findFixture($id);
+        $draft = BirFormDraft::find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        foreach ($request->input('fields', []) as $key => $value) {
-            $draft['fields'][$key] = ['value' => $value, 'origin' => 'user', 'edited' => true];
+        if ($draft->status !== 'draft') {
+            return response()->json([
+                'success' => false,
+                'message' => "Only drafts can be edited; this form is in {$draft->status} status",
+            ], 400);
         }
 
-        return response()->json(['success' => true, 'data' => $draft, 'message' => 'Draft updated (stub — not persisted)']);
+        // Merge per key: other keys, and system_value/edited_by/edited_at on edited keys, are kept.
+        $fields = $draft->fields ?? [];
+        foreach ((array) $request->input('fields', []) as $key => $value) {
+            $fields[$key] = array_merge($fields[$key] ?? [], ['value' => $value, 'origin' => 'user', 'edited' => true]);
+        }
+        $draft->fields = $fields;
+        $draft->save();
+
+        $draft->load('preparer', 'approver', 'employee');
+
+        return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft updated']);
     }
 
     private function transition(int $id, string $to, ?string $reason = null)
