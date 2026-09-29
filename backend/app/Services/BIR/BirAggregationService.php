@@ -21,7 +21,7 @@ use Illuminate\Support\Collection;
 class BirAggregationService
 {
     /** Drafts aren't paid compensation yet; they're excluded and reported in _meta. */
-    private const COUNTED_STATUSES = ['finalized', 'paid'];
+    public const COUNTED_STATUSES = ['finalized', 'paid'];
 
     /** Non-MWE employees at or under this projected annual taxable pay go to 1601-C item 23. */
     private const EXEMPT_ANNUAL_CEILING = 250_000;

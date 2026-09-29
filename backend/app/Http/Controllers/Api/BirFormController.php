@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreBirDraftRequest;
 use App\Http\Resources\BirFormDraftResource;
 use App\Models\BirFormDraft;
+use App\Models\Payroll;
 use App\Models\SystemSettings;
+use App\Services\BIR\BirAggregationService;
 use Illuminate\Http\Request;
 
 /**
@@ -77,6 +79,11 @@ class BirFormController extends Controller
             'prepared_by' => $request->user()->id,
             // stdClass so the column stores {} rather than [].
             'fields' => new \stdClass(),
+            'source_snapshot' => $this->buildSourceSnapshot(
+                $validated['form_type'],
+                $validated['period'],
+                $validated['employee_id'] ?? null,
+            ),
             'validation_errors' => [],
         ]);
 
@@ -87,6 +94,39 @@ class BirFormController extends Controller
             'data' => new BirFormDraftResource($draft),
             'message' => 'Draft created',
         ], 201);
+    }
+
+    /**
+     * The payroll rows a draft's totals are built from, frozen onto source_snapshot.
+     * Same status filter as BirAggregationService. Empty when the period has no payroll.
+     */
+    private function buildSourceSnapshot(string $formType, string $period, ?int $employeeId): array
+    {
+        // A payroll belongs to the month/year its cutoff_end falls in, matching
+        // BirAggregationService::monthQuery(). Unconfirmed with the accountant.
+        $query = Payroll::query()
+            ->whereIn('status', BirAggregationService::COUNTED_STATUSES)
+            ->whereYear('cutoff_end', (int) substr($period, 0, 4));
+
+        if ($formType === '1601-C') {
+            $query->whereMonth('cutoff_end', (int) substr($period, 5, 2));
+        } else {
+            $query->where('employee_id', $employeeId);
+        }
+
+        return $query->orderBy('cutoff_end')->orderBy('id')
+            ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'status', 'gross_pay', 'deductions', 'allowances'])
+            ->map(fn (Payroll $p) => [
+                'id' => $p->id,
+                'employee_id' => $p->employee_id,
+                'cutoff_start' => $p->cutoff_start->toDateString(),
+                'cutoff_end' => $p->cutoff_end->toDateString(),
+                'status' => $p->status,
+                'gross_pay' => $p->gross_pay,
+                'deductions' => $p->deductions ?? [],
+                'allowances' => $p->allowances ?? [],
+            ])
+            ->all();
     }
 
     public function show(int $id)
