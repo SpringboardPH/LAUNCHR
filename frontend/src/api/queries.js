@@ -219,9 +219,6 @@ export const getThirteenthMonthPeriods = (year) =>
 export const pushThirteenthMonthToPayroll = (data) =>
   api.post('/thirteenth-month/push-to-payroll', data).then(r => r.data)
 
-export const setThirteenthMonthMode = (data) =>
-  api.post('/thirteenth-month/set-mode', data).then(r => r.data)
-
 export const setThirteenthMonthExcludedMonths = (data) =>
   api.post('/thirteenth-month/set-excluded-months', data).then(r => r.data)
 
