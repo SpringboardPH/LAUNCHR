@@ -98,21 +98,18 @@ class BirFormController extends Controller
 
     /**
      * The payroll rows a draft's totals are built from, frozen onto source_snapshot.
-     * Same status filter as BirAggregationService. Empty when the period has no payroll.
+     * Same period and status filters as BirAggregationService. Empty when the period has no payroll.
      */
     private function buildSourceSnapshot(string $formType, string $period, ?int $employeeId): array
     {
-        // A payroll belongs to the month/year its cutoff_end falls in, matching
-        // BirAggregationService::monthQuery(). Unconfirmed with the accountant.
-        $query = Payroll::query()
-            ->whereIn('status', BirAggregationService::COUNTED_STATUSES)
-            ->whereYear('cutoff_end', (int) substr($period, 0, 4));
-
-        if ($formType === '1601-C') {
-            $query->whereMonth('cutoff_end', (int) substr($period, 5, 2));
-        } else {
-            $query->where('employee_id', $employeeId);
-        }
+        // The cutoff rule (a payroll belongs to the month/year of BirAggregationService::PERIOD_DATE)
+        // comes from the service's helpers. Confirmed: it matches how ThirteenthMonthController
+        // groups payrolls and the accountant's reference sheet showing two cutoffs for August.
+        // The helpers return every status, so the COUNTED_STATUSES filter is applied here.
+        $query = ($formType === '1601-C'
+                ? BirAggregationService::monthQuery((int) substr($period, 0, 4), (int) substr($period, 5, 2))
+                : BirAggregationService::yearQuery((int) $period)->where('employee_id', $employeeId))
+            ->whereIn('status', BirAggregationService::COUNTED_STATUSES);
 
         return $query->orderBy('cutoff_end')->orderBy('id')
             ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'status', 'gross_pay', 'deductions', 'allowances'])
