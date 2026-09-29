@@ -4,7 +4,7 @@ import { Save, RefreshCw, Copy, Check, Upload, ChevronRight, ChevronDown, X } fr
 import { format, parseISO } from 'date-fns'
 import {
   thirteenthMonthKeys, getThirteenthMonth, saveThirteenthMonth,
-  setThirteenthMonthMode, setThirteenthMonthExcludedMonths, employeeKeys, getEmployeeGroups,
+  setThirteenthMonthExcludedMonths, employeeKeys, getEmployeeGroups,
 } from '../../api/queries'
 import { PageHeader, PageSpinner } from '../../components/ui/index.jsx'
 import PushToPayrollModal from './PushToPayrollModal'
@@ -141,15 +141,6 @@ export default function ThirteenthMonthPage() {
     },
   })
 
-  const modeMut = useMutation({
-    mutationFn: setThirteenthMonthMode,
-    onSuccess: () => {
-      setOverrides({})
-      setDirty(false)
-      qc.invalidateQueries({ queryKey: thirteenthMonthKeys.list(params) })
-    },
-  })
-
   const excludeMut = useMutation({
     mutationFn: setThirteenthMonthExcludedMonths,
     onSuccess: () => qc.invalidateQueries({ queryKey: thirteenthMonthKeys.list(params) }),
@@ -227,20 +218,21 @@ export default function ThirteenthMonthPage() {
     <div>
       <PageHeader
         title="13th Month Pay"
-        description="Click any cell to override a monthly value. Untick a month to exclude it from that employee's total. 13th month = sum of included months ÷ 12 (DOLE formula)."
+        description="Each month is period base plus Allowances, minus late, absence, half-day, and undertime. Click a cell to override it. Untick a month to leave it out. 13th month is the sum of included months divided by 12."
         help={[
           { heading: 'Year & Group Filters', items: [
             'Use the year dropdown to select the calendar year for 13th month computation.',
             'Use the group dropdown to filter the employee list by group.',
           ]},
-          { heading: 'Auto vs Manual Mode', items: [
-            'Auto mode pulls basic pay amounts directly from finalized payroll records.',
-            'Manual mode lets you type in per-month amounts directly for each employee.',
-            'Click "Refresh from Payroll" to re-sync auto values from payroll records.',
+          { heading: 'How a month is calculated', items: [
+            'A month from payroll is period base plus the Allowances line, minus Late, Absent, Half Day, and Undertime.',
+            'Allowances are Bonus, Travel Allowance, and Allowance. Overtime, rest day, holiday, and leave pay do not count.',
+            'Tax, contributions, and loans do not count.',
           ]},
           { heading: 'Editing Amounts', items: [
-            'In Manual mode, click any amount cell to type a value override.',
-            'Overridden cells are highlighted so you can tell which values were manually set.',
+            'Click any amount cell to type a value. That saved amount replaces payroll for the month.',
+            'Overridden cells are highlighted. Clear the cell and save to use payroll again.',
+            'Click Refresh from Payroll to reload payroll months. Saved overrides stay until you clear them.',
           ]},
           { heading: 'Including / Excluding Months', items: [
             'Hover an amount cell and click "exclude" to leave that month out of the employee\'s 13th month total.',
@@ -253,7 +245,7 @@ export default function ThirteenthMonthPage() {
             'Hover over a total to copy the exact value to your clipboard.',
           ]},
           { heading: 'Save & Push to Payroll', items: [
-            'Click Save to persist any manual overrides or mode changes.',
+            'Click Save to persist manual overrides.',
             'Click Push to Payroll to add the computed 13th month amounts as allowances in a selected payroll run.',
           ]},
         ]}
@@ -318,9 +310,6 @@ export default function ThirteenthMonthPage() {
                   <th className="px-3 py-2.5 text-left font-medium text-gray-600 sticky left-0 bg-gray-50 z-10 min-w-[180px] border-r border-gray-200">
                     Employee
                   </th>
-                  <th className="px-2 py-2.5 text-center font-medium text-gray-600 w-12">
-                    Mode
-                  </th>
                   {MONTHS.map((label, i) => {
                     const m = i + 1
                     return (
@@ -337,7 +326,7 @@ export default function ThirteenthMonthPage() {
               <tbody className="divide-y divide-gray-100">
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={14} className="px-4 py-12 text-center text-gray-400">
                       No active employees found.
                     </td>
                   </tr>
@@ -364,19 +353,6 @@ export default function ThirteenthMonthPage() {
                             </div>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-2 py-2.5 text-center">
-                        <button
-                          title={emp.mode === 'declared' ? 'Base pay — click to switch to undeclared' : 'Undeclared (gross − OT) — click to switch to base pay'}
-                          onClick={() => modeMut.mutate({ employee_id: emp.id, year, mode: emp.mode === 'declared' ? 'undeclared' : 'declared' })}
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                            emp.mode === 'declared'
-                              ? 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
-                              : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
-                          }`}
-                        >
-                          {emp.mode === 'declared' ? 'D' : 'U'}
-                        </button>
                       </td>
                       {Array.from({ length: 12 }, (_, i) => {
                         const m = i + 1
@@ -427,7 +403,6 @@ export default function ThirteenthMonthPage() {
                         <td className="px-3 py-2 sticky left-0 bg-gray-50/70 border-r border-gray-100 z-10">
                           <span className="text-[10px] text-gray-400 italic pl-5">Cutoff breakdown</span>
                         </td>
-                        <td />
                         {Array.from({ length: 12 }, (_, i) => {
                           const m = i + 1
                           const cell = emp.months[m]
@@ -443,23 +418,25 @@ export default function ThirteenthMonthPage() {
                           return (
                             <td key={m} className="px-2 py-2 align-top space-y-2">
                               {breakdown.map((b, bi) => {
-                                // exclude the pushed 13th Month Pay from display — it's the output, not an input
-                                const visibleAllowances = (b.allowances ?? []).filter(a => a.label !== '13th Month Pay')
-                                const hasDeductions = (b.deductions?.length > 0) || visibleAllowances.length > 0
-                                const deductionParts = [
-                                  ...visibleAllowances.map(a => `−${a.label.replace(' Pay', '')} ${fmt(a.amount)}`),
-                                  ...(b.deductions ?? []).map(d => `−${d.label} ${fmt(d.amount)}`),
-                                ].join('  ')
+                                const parts = [
+                                  ['Base', b.base],
+                                  ['+Alw', b.allowance],
+                                  ['−Late', b.late],
+                                  ['−Abs', b.absent],
+                                  ['−Half', b.half_day],
+                                  ['−UT', b.undertime],
+                                ].filter(([, amount]) => Number(amount) > 0)
                                 return (
                                   <div key={bi} className="text-[10px] leading-tight border-l-2 border-gray-200 pl-1.5">
                                     <div className="text-gray-400 mb-0.5">{fmtRange(b.cutoff_start, b.cutoff_end)}</div>
-                                    {hasDeductions && (
-                                      <div className="text-gray-300 tabular-nums truncate" title={deductionParts}>
-                                        {deductionParts}
+                                    {parts.map(([label, amount]) => (
+                                      <div key={label} className="text-gray-400 tabular-nums flex justify-between gap-1">
+                                        <span>{label}</span>
+                                        <span>{fmt(amount)}</span>
                                       </div>
-                                    )}
-                                    <div className={`tabular-nums font-semibold text-right ${b.base === 0 ? 'text-red-300' : 'text-gray-700'}`}>
-                                      {b.base === 0 ? '0.00 (fully absent)' : fmt(b.base)}
+                                    ))}
+                                    <div className={`tabular-nums font-semibold text-right ${b.total === 0 ? 'text-red-300' : 'text-gray-700'}`}>
+                                      {fmt(b.total)}
                                     </div>
                                   </div>
                                 )
