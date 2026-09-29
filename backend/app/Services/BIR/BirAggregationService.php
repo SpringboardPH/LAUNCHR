@@ -20,7 +20,14 @@ use Illuminate\Support\Collection;
  */
 class BirAggregationService
 {
-    /** Drafts aren't paid compensation yet; they're excluded and reported in _meta. */
+     /**
+     * The date that decides which month/year a payroll belongs to. Unconfirmed with the
+     * accountant — if they file on payment date, set this to 'paid_at' and
+     * COUNTED_STATUSES to ['paid'] (finalized-but-unpaid rows have no paid_at).
+     */
+    public const PERIOD_DATE = 'cutoff_end';
+
+    /** Payrolls in any other status are left out of the totals and reported in _meta. */
     public const COUNTED_STATUSES = ['finalized', 'paid'];
 
     /** Non-MWE employees at or under this projected annual taxable pay go to 1601-C item 23. */
@@ -58,6 +65,7 @@ class BirAggregationService
         $mwe = $employees->where('category', 'mwe');
         $exempt = $employees->where('category', 'exempt_250k');
         $taxable = $employees->where('category', 'taxable');
+        $excluded = self::excludedPayrolls(self::monthQuery($year, $month));
 
         $v = [];
         $v['total_compensation'] = round($employees->sum('compensation'), 2);                 // 14
@@ -85,7 +93,7 @@ class BirAggregationService
         return self::contractValues(self::onlySchemaKeys($v, Form1601CSchema::payrollDerivedKeys())) + [
             '_meta' => [
                 'period' => sprintf('%04d-%02d', $year, $month),
-                'draft_payrolls_excluded' => self::monthQuery($year, $month)->where('status', 'draft')->count(),
+                'excluded_payrolls' => $excluded,
                 // Not a numbered form field; kept out of the field-keyed payload.
                 'employee_counts' => [
                     'total' => $employees->count(),
@@ -93,7 +101,7 @@ class BirAggregationService
                     'taxable' => $taxable->count(),
                     'exempt_250k' => $exempt->count(),
                 ],
-                'warnings' => self::warnings($employees),
+                'warnings' => [...self::excludedWarnings($excluded), ...self::warnings($employees)],
             ],
         ];
     }
@@ -166,12 +174,27 @@ class BirAggregationService
         ];
     }
 
-    /** Payrolls count toward the month their cutoff ends in (a Jul 26–Aug 10 cutoff is August's). */
-    private static function monthQuery(int $year, int $month): Builder
+    /** A month's payrolls, every status (a Jul 26–Aug 10 cutoff is August's). */
+    public static function monthQuery(int $year, int $month): Builder
     {
-        return Payroll::query()
-            ->whereYear('cutoff_end', $year)
-            ->whereMonth('cutoff_end', $month);
+        return self::yearQuery($year)->whereMonth(self::PERIOD_DATE, $month);
+    }
+
+    /** A year's payrolls, every status (a Dec 26–Jan 10 cutoff belongs to the next year). */
+    public static function yearQuery(int $year): Builder
+    {
+        return Payroll::query()->whereYear(self::PERIOD_DATE, $year);
+    }
+
+    /** Payroll count per status left out of the totals, e.g. ['draft' => 2]. */
+    private static function excludedPayrolls(Builder $period): array
+    {
+        return $period->whereNotIn('status', self::COUNTED_STATUSES)
+            ->selectRaw('status, count(*) as payrolls')
+            ->groupBy('status')
+            ->pluck('payrolls', 'status')
+            ->map(fn ($n) => (int) $n)
+            ->all();
     }
 
     /** One employee's month: BIR compensation, premium pay, EE share, tax withheld, and 1601-C category. */
@@ -212,6 +235,16 @@ class BirAggregationService
     private static function mweEmployeeIds(): array
     {
         return array_map('intval', (array) SystemSettings::get('bir_mwe_employee_ids', []));
+    }
+
+    /** One line per status left out, so a total that's short has a visible cause. */
+    private static function excludedWarnings(array $excluded): array
+    {
+        return array_map(
+            fn (string $status, int $n) => "{$n} payroll(s) in '{$status}' status were not counted.",
+            array_keys($excluded),
+            $excluded,
+        );
     }
 
     /** Employees whose withholding contradicts their category — surfaced for the hand-count reconciliation. */

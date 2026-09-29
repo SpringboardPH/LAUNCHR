@@ -123,7 +123,31 @@ class BirAggregationServiceTest extends TestCase
         $r = BirAggregationService::monthlyWithholding(2026, 8);
 
         $this->assertSame('10000.00', $r['total_compensation']);
-        $this->assertSame(1, $r['_meta']['draft_payrolls_excluded']);
+        $this->assertSame(['draft' => 1], $r['_meta']['excluded_payrolls']);
+        $this->assertContains("1 payroll(s) in 'draft' status were not counted.", $r['_meta']['warnings']);
+    }
+
+    public function test_a_payroll_in_an_unexpected_status_is_reported_not_silently_dropped(): void
+    {
+        $e = $this->employee('X');
+        $this->payroll($e, '2026-07-26', '2026-08-10', 10000);
+        $this->payroll($e, '2026-08-11', '2026-08-25', 10000, [], [], 'cancelled');
+
+        $r = BirAggregationService::monthlyWithholding(2026, 8);
+
+        $this->assertSame('10000.00', $r['total_compensation']);
+        $this->assertSame(['cancelled' => 1], $r['_meta']['excluded_payrolls']);
+        $this->assertContains("1 payroll(s) in 'cancelled' status were not counted.", $r['_meta']['warnings']);
+    }
+
+    public function test_a_cutoff_ending_in_january_belongs_to_the_next_year(): void
+    {
+        $e = $this->employee('X');
+        $this->payroll($e, '2026-12-11', '2026-12-25', 10000);
+        $this->payroll($e, '2026-12-26', '2027-01-10', 10000);
+
+        $this->assertSame(1, BirAggregationService::yearQuery(2026)->count());
+        $this->assertSame(1, BirAggregationService::yearQuery(2027)->count());
     }
 
     public function test_a_cutoff_counts_toward_the_month_it_ends_in(): void
