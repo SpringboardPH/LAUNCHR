@@ -17,6 +17,9 @@ use RuntimeException;
  * with what earlier messages established, then find the employee if one was
  * named. Each step is a service call — nothing is computed here.
  *
+ * The merged intent carries a ready-to-use period string, so the caller can
+ * pass it straight to POST /bir/drafts without rebuilding it.
+ *
  * Week 3 scope: the request is understood and the employee identified. Draft
  * creation follows in Week 5.
  */
@@ -54,7 +57,7 @@ class BirChatController extends Controller
         $missing = $this->intent->missingFields($merged);
 
         if ($missing !== [] || $parsed['needs_clarification']) {
-            return $this->ask($parsed, $merged, $missing);
+            return $this->reply($merged, false, $parsed['clarification'] ?? $this->question($missing));
         }
 
         // Only 2316 names an employee; 1601-C is company-wide.
@@ -64,10 +67,10 @@ class BirChatController extends Controller
 
         $state->forget();
 
-        return $this->understood($merged, sprintf(
+        return $this->reply($merged, true, sprintf(
             'Understood: a %s covering %s.',
             $merged['form_type'],
-            $this->period($merged),
+            $merged['period'],
         ));
     }
 
@@ -77,19 +80,10 @@ class BirChatController extends Controller
         $match = $this->employees->resolve((string) $merged['employee_query']);
 
         if ($match['status'] === BirEmployeeResolver::NOT_FOUND) {
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'understood' => false,
-                    'intent' => $merged,
-                    'candidates' => [],
-                    'reply' => sprintf(
-                        'I could not find anyone matching "%s". Could you check the spelling, or give their employee ID?',
-                        $merged['employee_query'],
-                    ),
-                ],
-                'message' => 'Employee not found',
-            ]);
+            return $this->reply($merged, false, sprintf(
+                'I could not find anyone matching "%s". Could you check the spelling, or give their employee ID?',
+                $merged['employee_query'],
+            ));
         }
 
         if ($match['status'] === BirEmployeeResolver::AMBIGUOUS) {
@@ -97,43 +91,44 @@ class BirChatController extends Controller
                 ->map(fn (array $c) => "{$c['name']} ({$c['employee_id']})")
                 ->implode(', ');
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'understood' => false,
-                    'intent' => $merged,
-                    'candidates' => $match['candidates'],
-                    'reply' => "More than one person matches that: {$names}. Which one did you mean?",
-                ],
-                'message' => 'Several employees match',
-            ]);
+            return $this->reply(
+                $merged,
+                false,
+                "More than one person matches that: {$names}. Which one did you mean?",
+                $match['candidates'],
+            );
         }
 
         $employee = $match['employee'];
-        $merged['employee_id'] = $employee->id;
+
+        // Re-merge so the resolved id is both returned and remembered.
+        $merged = $state->merge(['employee_id' => $employee->id]);
         $state->forget();
 
-        return $this->understood($merged, sprintf(
+        return $this->reply($merged, true, sprintf(
             'Understood: a %s for %s (%s), covering %s.',
             $merged['form_type'],
             trim($employee->first_name . ' ' . $employee->last_name),
             $employee->employee_id,
-            $this->period($merged),
+            $merged['period'],
         ));
     }
 
-    /** Ask for whatever is still missing, preferring the model's own wording. */
-    private function ask(array $parsed, array $merged, array $missing)
+    /**
+     * @param  array<string,mixed>  $intent
+     * @param  array<int,array<string,mixed>>  $candidates
+     */
+    private function reply(array $intent, bool $understood, string $reply, array $candidates = [])
     {
         return response()->json([
             'success' => true,
             'data' => [
-                'understood' => false,
-                'intent' => $merged,
-                'candidates' => [],
-                'reply' => $parsed['clarification'] ?? $this->question($missing),
+                'understood' => $understood,
+                'intent' => $intent,
+                'candidates' => $candidates,
+                'reply' => $reply,
             ],
-            'message' => 'Needs clarification',
+            'message' => $understood ? 'Request understood' : 'Needs clarification',
         ]);
     }
 
@@ -151,29 +146,5 @@ class BirChatController extends Controller
         $last = array_pop($missing);
 
         return 'Could you tell me ' . implode(', ', $missing) . ' and ' . $last . '?';
-    }
-
-    private function understood(array $intent, string $reply)
-    {
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'understood' => true,
-                'intent' => $intent,
-                'candidates' => [],
-                'reply' => $reply,
-            ],
-            'message' => 'Request understood',
-        ]);
-    }
-
-    /** Rebuild the period string after merging, since parse() only saw one message. */
-    private function period(array $intent): string
-    {
-        if ($intent['form_type'] === Form2316Schema::FORM_TYPE) {
-            return (string) $intent['tax_year'];
-        }
-
-        return sprintf('%04d-%02d', $intent['tax_year'], $intent['tax_month']);
     }
 }
