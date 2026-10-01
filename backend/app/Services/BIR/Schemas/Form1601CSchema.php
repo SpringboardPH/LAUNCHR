@@ -124,6 +124,7 @@ class Form1601CSchema
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
                 'rule' => ">= 0; allowances '13th Month Pay' paid in the month,
                 non-taxable portion only (cap 90,000 per employee — see Form2316Schema item 34)",
+                'pdf_anchor' => '1601C.17',
             ],
             [
                 'key' => 'de_minimis_benefits', 'item' => '18', 'label' => 'De Minimis Benefits',
