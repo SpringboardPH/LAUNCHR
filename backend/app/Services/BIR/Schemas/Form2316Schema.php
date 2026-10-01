@@ -209,7 +209,7 @@ class Form2316Schema
             [
                 'key' => 'tax_due', 'item' => '24', 'label' => 'Tax Due',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => 'GAP: PayrollService has no annual withholding bracket yet', 'pdf_anchor' => '2316.24',
+                'rule' => '= BirAggregationService::annualTaxDue(item 23), TRAIN annual table from 2023; 0 for an MWE', 'pdf_anchor' => '2316.24',
             ],
             [
                 'key' => 'taxes_withheld_present', 'item' => '25A', 'label' => 'Amount of Taxes Withheld — Present Employer',
@@ -241,23 +241,28 @@ class Form2316Schema
 
             // ── Part IV-B, Section A — Non-Taxable/Exempt Compensation Income ─
             [
-                'key' => 'nontax_mwe_basic', 'item' => '29', 'label' => 'Basic Salary (MWE) / Statutory Minimum Wage',
+                'key' => 'nontax_mwe_basic', 'item' => '29',
+                'label' => 'Basic Salary (including the exempt P250,000 & below) or the Statutory Minimum Wage of the MWE',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => '>= 0; required when is_mwe = true', 'pdf_anchor' => '2316.29',
+                'rule' => '>= 0; basic net of the EE share, for an MWE or an employee at or under P250,000 taxable for the year; 0 otherwise (key name predates the P250,000 case)',
+                'pdf_anchor' => '2316.29',
             ],
             [
                 'key' => 'nontax_mwe_holiday', 'item' => '30', 'label' => 'Holiday Pay (MWE)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => false,
+                'rule' => ">= 0; MWE only: allowances 'Special Holiday*' (regular holidays are paid inside basic)",
                 'pdf_anchor' => '2316.30',
             ],
             [
                 'key' => 'nontax_mwe_overtime', 'item' => '31', 'label' => 'Overtime Pay (MWE)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => false,
+                'rule' => ">= 0; MWE only: allowances 'Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay'",
                 'pdf_anchor' => '2316.31',
             ],
             [
                 'key' => 'nontax_mwe_night_diff', 'item' => '32', 'label' => 'Night Shift Differential (MWE)',
-                'type' => 'decimal', 'source' => 'payroll', 'required' => false, 'rule' => '>= 0, defaults 0',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => false,
+                'rule' => ">= 0; MWE only: allowances 'Night Differential*'",
                 'pdf_anchor' => '2316.32',
             ],
             [
@@ -269,7 +274,8 @@ class Form2316Schema
                 'key' => 'nontax_thirteenth_month', 'item' => '34',
                 'label' => '13th Month Pay and Other Benefits (maximum of P90,000)',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= min(thirteenth_month_records.basic_pay total for the year, 90000)', 'pdf_anchor' => '2316.34',
+                'rule' => "= min(annual sum of allowances '13th Month Pay', 90000)",
+                'pdf_anchor' => '2316.34'
             ],
             [
                 'key' => 'nontax_de_minimis', 'item' => '35', 'label' => 'De Minimis Benefits',
@@ -286,7 +292,8 @@ class Form2316Schema
             [
                 'key' => 'nontax_other_mwe_compensation', 'item' => '37', 'label' => 'Salaries and Other Forms of Compensation',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => '>= 0, defaults 0; MWE-only additional non-taxable pay', 'pdf_anchor' => '2316.37',
+                'rule' => '>= 0; holiday, overtime and night differential pay of an employee at or under P250,000; 0 otherwise',
+                'pdf_anchor' => '2316.37',
             ],
             [
                 'key' => 'nontax_total', 'item' => '38',
@@ -299,7 +306,8 @@ class Form2316Schema
             [
                 'key' => 'tax_basic_salary', 'item' => '39', 'label' => 'Basic Salary',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '>= 0; annual taxable basic salary', 'pdf_anchor' => '2316.39',
+                'rule' => '>= 0; taxable employees only: pay net of the EE share, 13th month and overtime (holiday and night differential stay here)',
+                'pdf_anchor' => '2316.39',
             ],
             [
                 'key' => 'tax_representation', 'item' => '40', 'label' => 'Representation',
@@ -363,7 +371,8 @@ class Form2316Schema
             [
                 'key' => 'tax_thirteenth_month_excess', 'item' => '48', 'label' => 'Taxable 13th Month Benefits',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= max(0, annual thirteenth_month_records total - 90000)', 'pdf_anchor' => '2316.48',
+                'rule' => "= max(0, annual sum of allowances '13th Month Pay' - 90000)",
+                'pdf_anchor' => '2316.48',
             ],
             [
                 'key' => 'tax_hazard_pay', 'item' => '49', 'label' => 'Hazard Pay',
@@ -373,7 +382,7 @@ class Form2316Schema
             [
                 'key' => 'tax_overtime', 'item' => '50', 'label' => 'Overtime Pay',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => ">= 0; from annual sum of allowances entries labelled 'Overtime Pay'",
+                'rule' => ">= 0; taxable employees only: allowances 'Overtime Pay', 'Rest Day Pay', 'Rest Day OT Pay'",
                 'pdf_anchor' => '2316.50',
             ],
             [

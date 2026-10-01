@@ -122,8 +122,8 @@ class Form1601CSchema
                 'key' => 'thirteenth_month_and_benefits', 'item' => '17',
                 'label' => '13th Month Pay and Other Benefits',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '>= 0; from thirteenth_month_records, non-taxable portion only (cap 90,000 — see Form2316Schema item 34)',
-                'pdf_anchor' => '1601C.17',
+                'rule' => ">= 0; allowances '13th Month Pay' paid in the month,
+                non-taxable portion only (cap 90,000 per employee — see Form2316Schema item 34)",
             ],
             [
                 'key' => 'de_minimis_benefits', 'item' => '18', 'label' => 'De Minimis Benefits',
