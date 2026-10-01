@@ -10,28 +10,33 @@ use Illuminate\Support\Carbon;
 /**
  * Turns "Generate the August 2026 1601-C" into a form type and a period.
  *
+ * Week 3 change: parse() now takes what is already known. A bare reply of
+ * "August" means nothing on its own — the model needs to be told a 1601-C for
+ * 2026 was already being discussed.
+ *
  * The model reads language. It does not decide whether the result is usable —
  * validate() does that in ordinary PHP, because a 1601-C without a month is
  * unusable no matter how confident the model claims to be.
  *
- * Employee names are returned exactly as written. Resolving them against the
- * employees table happens in Week 3, in Laravel, never in the model.
+ * Employee names are returned exactly as written. Finding the person is
+ * BirEmployeeResolver's job, in Laravel, against the employees table.
  */
 class BirIntentService
 {
     public function __construct(private readonly LlmClientInterface $llm) {}
 
     /**
+     * @param  array<string,mixed>  $known  What earlier messages established
      * @return array{
      *   form_type: string|null, tax_year: int|null, tax_month: int|null,
      *   period: string|null, employee_query: string|null,
      *   needs_clarification: bool, clarification: string|null
      * }
      */
-    public function parse(string $message): array
+    public function parse(string $message, array $known = []): array
     {
         $raw = $this->llm->structured(
-            $this->systemPrompt(),
+            $this->systemPrompt($known),
             $message,
             $this->responseSchema(),
         );
@@ -39,13 +44,14 @@ class BirIntentService
         return $this->validate($raw);
     }
 
-    private function systemPrompt(): string
+    /** @param array<string,mixed> $known */
+    private function systemPrompt(array $known): string
     {
         $today = Carbon::now()->toDateString();
         $c = Form1601CSchema::FORM_TYPE;
         $s = Form2316Schema::FORM_TYPE;
 
-        return <<<PROMPT
+        $prompt = <<<PROMPT
         You interpret requests to generate Philippine BIR tax forms inside an HR system.
         Today is {$today}.
 
@@ -67,6 +73,41 @@ class BirIntentService
         You only interpret the request. You never calculate amounts and never see
         payroll data.
         PROMPT;
+
+        if ($known !== []) {
+            $prompt .= "\n\n" . $this->knownContext($known);
+        }
+
+        return $prompt;
+    }
+
+    /**
+     * Tell the model what earlier turns settled, so a one-word reply makes sense.
+     *
+     * @param  array<string,mixed>  $known
+     */
+    private function knownContext(array $known): string
+    {
+        $lines = [];
+
+        foreach ([
+            'form_type' => 'Form',
+            'tax_year' => 'Year',
+            'tax_month' => 'Month',
+            'employee_query' => 'Employee',
+        ] as $field => $label) {
+            if (($known[$field] ?? null) !== null) {
+                $lines[] = "- {$label}: {$known[$field]}";
+            }
+        }
+
+        if ($lines === []) {
+            return '';
+        }
+
+        return "Earlier messages already established:\n" . implode("\n", $lines)
+            . "\nThe user is likely answering a question about what is still missing."
+            . "\nRepeat the established values in your reply unless this message changes them.";
     }
 
     /** @return array<string,mixed> */
@@ -139,31 +180,16 @@ class BirIntentService
             $month = null;
         }
 
-        $missing = [];
-
-        if ($formType === null) {
-            $missing[] = 'which form';
-        }
-        if ($year === null) {
-            $missing[] = 'the year';
-        }
-        if ($formType === Form1601CSchema::FORM_TYPE && $month === null) {
-            $missing[] = 'the month';
-        }
-        if ($formType === Form2316Schema::FORM_TYPE && $employee === null) {
-            $missing[] = 'which employee';
-        }
-
-        $needsClarification = $missing !== [] || ($raw['confidence'] ?? 'low') === 'low';
-
         return [
             'form_type' => $formType,
             'tax_year' => $year,
             'tax_month' => $month,
             'period' => $this->period($formType, $year, $month),
             'employee_query' => $employee,
-            'needs_clarification' => $needsClarification,
-            'clarification' => $this->clarification($raw, $missing),
+            'needs_clarification' => ($raw['confidence'] ?? 'low') === 'low',
+            'clarification' => is_string($raw['clarification'] ?? null) && trim($raw['clarification']) !== ''
+                ? trim($raw['clarification'])
+                : null,
         ];
     }
 
@@ -182,30 +208,34 @@ class BirIntentService
     }
 
     /**
-     * Prefer the model's own question when it asked one; otherwise build a
-     * plain one from what is actually missing.
+     * What is still missing for the form requested. Public so the controller
+     * can check it again after merging in earlier turns.
      *
-     * @param  array<string,mixed>  $raw
-     * @param  array<int,string>  $missing
+     * @param  array<string,mixed>  $intent
+     * @return array<int,string>
      */
-    private function clarification(array $raw, array $missing): ?string
+    public function missingFields(array $intent): array
     {
-        $fromModel = $raw['clarification'] ?? null;
+        $missing = [];
 
-        if (is_string($fromModel) && trim($fromModel) !== '') {
-            return trim($fromModel);
+        if (($intent['form_type'] ?? null) === null) {
+            $missing[] = 'which form';
         }
 
-        if ($missing === []) {
-            return null;
+        if (($intent['tax_year'] ?? null) === null) {
+            $missing[] = 'the year';
         }
 
-        if (count($missing) === 1) {
-            return 'Could you tell me ' . $missing[0] . '?';
+        if (($intent['form_type'] ?? null) === Form1601CSchema::FORM_TYPE
+            && ($intent['tax_month'] ?? null) === null) {
+            $missing[] = 'the month';
         }
 
-        $last = array_pop($missing);
+        if (($intent['form_type'] ?? null) === Form2316Schema::FORM_TYPE
+            && ($intent['employee_query'] ?? null) === null) {
+            $missing[] = 'which employee';
+        }
 
-        return 'Could you tell me ' . implode(', ', $missing) . ' and ' . $last . '?';
+        return $missing;
     }
 }

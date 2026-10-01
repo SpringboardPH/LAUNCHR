@@ -11,6 +11,12 @@ use Tests\TestCase;
  * Every test here runs against FakeLlmClient: no network, no cost, no
  * flakiness. What is being tested is our validation logic, not the model's
  * language ability — that is checked separately by the phrasing eval.
+ *
+ * Week 3 change: parse() no longer decides whether clarification is needed,
+ * because it only ever sees one message — a reply of "August" looks like it
+ * is missing everything. missingFields() reports what is absent, and the
+ * controller calls it after merging in what earlier turns established.
+ * needs_clarification now carries only the model's own stated confidence.
  */
 class BirIntentTest extends TestCase
 {
@@ -39,8 +45,10 @@ class BirIntentTest extends TestCase
 
     public function test_a_complete_1601c_request_is_understood(): void
     {
-        $result = $this->service($this->reply())->parse('Generate the August 2026 1601-C');
+        $service = $this->service($this->reply());
+        $result = $service->parse('Generate the August 2026 1601-C');
 
+        $this->assertSame([], $service->missingFields($result));
         $this->assertFalse($result['needs_clarification']);
         $this->assertSame('1601-C', $result['form_type']);
         $this->assertSame('2026-08', $result['period']);
@@ -48,63 +56,68 @@ class BirIntentTest extends TestCase
 
     public function test_a_complete_2316_request_is_understood(): void
     {
-        $result = $this->service($this->reply([
+        $service = $this->service($this->reply([
             'form_type' => '2316',
             'tax_month' => null,
             'employee_query' => 'Juan Dela Cruz',
-        ]))->parse("Generate Juan Dela Cruz's 2316 for 2026");
+        ]));
+        $result = $service->parse("Generate Juan Dela Cruz's 2316 for 2026");
 
-        $this->assertFalse($result['needs_clarification']);
+        $this->assertSame([], $service->missingFields($result));
         $this->assertSame('2026', $result['period']);
         $this->assertSame('Juan Dela Cruz', $result['employee_query']);
     }
 
     public function test_a_1601c_without_a_month_is_not_guessed_at(): void
     {
-        $result = $this->service($this->reply(['tax_month' => null]))->parse('Generate a 1601-C for 2026');
+        $service = $this->service($this->reply(['tax_month' => null]));
+        $result = $service->parse('Generate a 1601-C for 2026');
 
-        $this->assertTrue($result['needs_clarification']);
+        $this->assertContains('the month', $service->missingFields($result));
         $this->assertNull($result['period']);
-        $this->assertStringContainsString('month', $result['clarification']);
     }
 
     public function test_a_2316_without_an_employee_is_not_guessed_at(): void
     {
-        $result = $this->service($this->reply([
+        $service = $this->service($this->reply([
             'form_type' => '2316',
             'tax_month' => null,
-        ]))->parse('Generate a 2316 for 2026');
+        ]));
+        $result = $service->parse('Generate a 2316 for 2026');
 
-        $this->assertTrue($result['needs_clarification']);
-        $this->assertStringContainsString('employee', $result['clarification']);
+        $this->assertContains('which employee', $service->missingFields($result));
     }
 
     public function test_an_unknown_form_type_is_rejected(): void
     {
-        $result = $this->service($this->reply(['form_type' => '2307']))->parse('Generate a 2307');
+        $service = $this->service($this->reply(['form_type' => '2307']));
+        $result = $service->parse('Generate a 2307');
 
-        $this->assertTrue($result['needs_clarification']);
         $this->assertNull($result['form_type']);
+        $this->assertContains('which form', $service->missingFields($result));
     }
 
-    public function test_low_confidence_forces_clarification_even_when_complete(): void
+    public function test_low_confidence_is_reported_even_when_nothing_is_missing(): void
     {
-        $result = $this->service($this->reply([
+        $service = $this->service($this->reply([
             'confidence' => 'low',
             'clarification' => 'Did you mean August or a different month?',
-        ]))->parse('the one for last month maybe');
+        ]));
+        $result = $service->parse('the one for last month maybe');
 
+        $this->assertSame([], $service->missingFields($result));
         $this->assertTrue($result['needs_clarification']);
         $this->assertSame('Did you mean August or a different month?', $result['clarification']);
     }
 
     public function test_a_month_on_a_2316_is_discarded(): void
     {
-        $result = $this->service($this->reply([
+        $service = $this->service($this->reply([
             'form_type' => '2316',
             'tax_month' => 8,
             'employee_query' => 'Juan Dela Cruz',
-        ]))->parse("Juan Dela Cruz 2316 August 2026");
+        ]));
+        $result = $service->parse('Juan Dela Cruz 2316 August 2026');
 
         $this->assertNull($result['tax_month']);
         $this->assertSame('2026', $result['period']);
@@ -112,22 +125,40 @@ class BirIntentTest extends TestCase
 
     public function test_an_implausible_year_is_discarded(): void
     {
-        $result = $this->service($this->reply(['tax_year' => 1984]))->parse('1601-C for 1984');
+        $service = $this->service($this->reply(['tax_year' => 1984]));
+        $result = $service->parse('1601-C for 1984');
 
         $this->assertNull($result['tax_year']);
-        $this->assertTrue($result['needs_clarification']);
+        $this->assertContains('the year', $service->missingFields($result));
     }
 
     public function test_a_blank_employee_name_counts_as_missing(): void
     {
-        $result = $this->service($this->reply([
+        $service = $this->service($this->reply([
             'form_type' => '2316',
             'tax_month' => null,
             'employee_query' => '   ',
-        ]))->parse('2316 for 2026');
+        ]));
+        $result = $service->parse('2316 for 2026');
 
         $this->assertNull($result['employee_query']);
-        $this->assertTrue($result['needs_clarification']);
+        $this->assertContains('which employee', $service->missingFields($result));
+    }
+
+    public function test_earlier_context_is_given_to_the_model(): void
+    {
+        $fake = new FakeLlmClient;
+        $service = new BirIntentService($fake);
+
+        $service->parse('August', [
+            'form_type' => '1601-C',
+            'tax_year' => 2026,
+        ]);
+
+        $sent = $fake->calls()[0]['system'];
+
+        $this->assertStringContainsString('already established', $sent);
+        $this->assertStringContainsString('1601-C', $sent);
     }
 
     public function test_a_provider_failure_surfaces_as_an_exception(): void

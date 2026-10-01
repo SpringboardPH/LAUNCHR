@@ -5,8 +5,8 @@ namespace App\Services\BIR\Llm;
 /**
  * The only thing the rest of the BIR feature knows about a language model.
  *
- * Implementations handle transport and parsing; callers get structured data
- * back. Swapping providers — or self-hosting — is a config change, never a
+ * Implementations handle transport and parsing, callers get structured data
+ * back. Swapping providers or self-hosting is a config change, never a
  * change to BirIntentService or anything downstream of it.
  */
 interface LlmClientInterface
