@@ -120,7 +120,12 @@ class BirAggregationService
                     'taxable' => $taxable->count(),
                     'exempt_250k' => $exempt->count(),
                 ],
-                'warnings' => [...self::excludedWarnings($excluded), ...self::warnings($employees)],
+                'warnings' => [
+                    // Zeros everywhere would otherwise look like a finished form.
+                    ...($employees->isEmpty() ? [sprintf('No finalized or paid payroll for %04d-%02d.', $year, $month)] : []),
+                    ...self::excludedWarnings($excluded),
+                    ...self::warnings($employees),
+                ],
             ],
         ];
     }
