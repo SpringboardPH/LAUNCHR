@@ -300,8 +300,11 @@ is untouched.
 Every endpoint reads and writes the `bir_form_drafts` table. These gaps are
 known, not bugs — but check here before reporting one.
 
-**`store` returns an empty `fields` object.** Real drafts get their fields from
-Dev A's mapper in Week 2–4.
+**Settings-sourced fields come back `pending`.** Nothing maps `system_settings`
+into draft fields yet, so the nine `source: settings` fields on the 1601-C
+(items 5–12, including 9A) and the five on the 2316 (items 12–15, including
+14A) start with `value: null`, `origin: pending`. Until that mapping exists,
+the company's own registration details will appear as questions for the user.
 
 **`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
 sets `origin: user` and `edited: true` only. The fixtures show the full shape;
