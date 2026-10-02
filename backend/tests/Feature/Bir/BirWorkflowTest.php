@@ -135,12 +135,12 @@ class BirWorkflowTest extends TestCase
 
         // source_snapshot is $hidden, so it is read off the model rather than the API.
         $snapshot = BirFormDraft::find($id)->source_snapshot;
-        $this->assertCount(1, $snapshot);
-        $this->assertSame('13000.00', $snapshot[0]['gross_pay']);
+        $this->assertCount(1, $snapshot['rows']);
+        $this->assertSame('13000.00', $snapshot['rows'][0]['gross_pay']);
 
         $payroll->gross_pay = 99999;
         $payroll->save();
 
-        $this->assertSame('13000.00', BirFormDraft::find($id)->source_snapshot[0]['gross_pay']);
+        $this->assertSame('13000.00', BirFormDraft::find($id)->source_snapshot['rows'][0]['gross_pay']);
     }
 }

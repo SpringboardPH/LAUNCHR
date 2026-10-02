@@ -9,6 +9,8 @@ use App\Models\BirFormDraft;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
+use App\Services\BIR\Schemas\Form1601CSchema;
+use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
 
 /**
@@ -68,21 +70,26 @@ class BirFormController extends Controller
     public function store(StoreBirDraftRequest $request)
     {
         $validated = $request->validated();
+        $period = $validated['period'];
+
+        $aggregation = $validated['form_type'] === '1601-C'
+            ? BirAggregationService::monthlyWithholding((int) substr($period, 0, 4), (int) substr($period, 5, 2))
+            : BirAggregationService::annualCompensation($validated['employee_id'], (int) $period);
 
         $draft = BirFormDraft::create([
             'form_type' => $validated['form_type'],
-            'period' => $validated['period'],
+            'period' => $period,
             'employee_id' => $validated['employee_id'] ?? null,
             'status' => 'draft',
             'version' => 1,
             'parent_id' => null,
             'prepared_by' => $request->user()->id,
-            // stdClass so the column stores {} rather than [].
-            'fields' => new \stdClass(),
+            'fields' => $this->buildFields($validated['form_type'], $aggregation),
             'source_snapshot' => $this->buildSourceSnapshot(
                 $validated['form_type'],
-                $validated['period'],
+                $period,
                 $validated['employee_id'] ?? null,
+                $aggregation['_meta'],
             ),
             'validation_errors' => [],
         ]);
@@ -97,10 +104,13 @@ class BirFormController extends Controller
     }
 
     /**
-     * The payroll rows a draft's totals are built from, frozen onto source_snapshot.
-     * Same period and status filters as BirAggregationService. Empty when the period has no payroll.
+     * What a draft was built from, and under what conditions, frozen onto source_snapshot:
+     * 'rows' are the payroll rows its totals came from (same period and status filters as
+     * BirAggregationService; empty when the period has no payroll), and 'meta' is the
+     * aggregation's _meta unchanged — excluded payrolls per status, warnings, and on a 2316
+     * the category and payroll range.
      */
-    private function buildSourceSnapshot(string $formType, string $period, ?int $employeeId): array
+    private function buildSourceSnapshot(string $formType, string $period, ?int $employeeId, array $meta): array
     {
         // The cutoff rule (a payroll belongs to the month/year of BirAggregationService::PERIOD_DATE)
         // comes from the service's helpers. Confirmed: it matches how ThirteenthMonthController
@@ -111,7 +121,7 @@ class BirFormController extends Controller
                 : BirAggregationService::yearQuery((int) $period)->where('employee_id', $employeeId))
             ->whereIn('status', BirAggregationService::COUNTED_STATUSES);
 
-        return $query->orderBy('cutoff_end')->orderBy('id')
+        $rows = $query->orderBy('cutoff_end')->orderBy('id')
             ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'status', 'gross_pay', 'deductions', 'allowances'])
             ->map(fn (Payroll $p) => [
                 'id' => $p->id,
@@ -124,6 +134,35 @@ class BirFormController extends Controller
                 'allowances' => $p->allowances ?? [],
             ])
             ->all();
+
+        return ['rows' => $rows, 'meta' => $meta];
+    }
+
+    /**
+     * Turns a BirAggregationService result into the draft's fields object: every schema key,
+     * each a full six-key entry. Missing and empty-string values become pending (contract §3,
+     * invariant 1), so Dev C's prompting loop sees them; _meta and other non-schema keys are dropped.
+     */
+    private function buildFields(string $formType, array $aggregation): array
+    {
+        $schema = $formType === '1601-C' ? Form1601CSchema::fields() : Form2316Schema::fields();
+
+        $fields = [];
+        foreach ($schema as $field) {
+            $value = $aggregation[$field['key']] ?? null;
+            $filled = $value !== null && $value !== '';
+
+            $fields[$field['key']] = [
+                'value' => $filled ? $value : null,
+                'origin' => $filled ? 'payroll' : 'pending',
+                'edited' => false,
+                'system_value' => null,
+                'edited_by' => null,
+                'edited_at' => null,
+            ];
+        }
+
+        return $fields;
     }
 
     public function show(int $id)
