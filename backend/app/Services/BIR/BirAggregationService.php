@@ -371,7 +371,7 @@ class BirAggregationService
     }
 
     /** ###-###-###-branch; the branch code defaults to 000. Anything under 9 digits is returned as stored. */
-    private static function formatTin(?string $tin): string
+    public static function formatTin(?string $tin): string
     {
         $digits = preg_replace('/\D/', '', (string) $tin);
         if (strlen($digits) < 9) {
