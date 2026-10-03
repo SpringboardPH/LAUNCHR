@@ -308,11 +308,15 @@ is untouched.
 Every endpoint reads and writes the `bir_form_drafts` table. These gaps are
 known, not bugs — but check here before reporting one.
 
-**Settings-sourced fields come back `pending`.** Nothing maps `system_settings`
-into draft fields yet, so the nine `source: settings` fields on the 1601-C
-(items 5–12, including 9A) and the five on the 2316 (items 12–15, including
-14A) start with `value: null`, `origin: pending`. Until that mapping exists,
-the company's own registration details will appear as questions for the user.
+**Some settings-sourced fields still come back `pending`.** The nine
+`source: settings` fields on the 1601-C (items 5–12, including 9A) and the five
+on the 2316 (items 12–15, including 14A) are filled from `system_settings` with
+`origin: settings`. Blanks, seed placeholders and values outside a field's
+allowed options are left out on purpose. Those fields stay `value: null`,
+`origin: pending`, so the user is asked for them and they never appear on a
+form as real values. In a freshly seeded database most company details are
+still placeholders. They show as `pending` until someone enters the real
+registration details.
 
 **`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
 sets `origin: user` and `edited: true` only. The fixtures show the full shape;
