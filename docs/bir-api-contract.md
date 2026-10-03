@@ -184,9 +184,17 @@ Any other move returns 400 naming the current status. A finalized form is never
 edited or moved; corrections start a new version and leave the original as
 filed.
 
-**Open:** who may approve. Today any admin, HR or accounting user can. Narrowing
-this is waiting on the supervisor meeting. Separately, from Week 6 a preparer
-will not be able to approve their own draft.
+**Who may approve:** accounting only, confirmed by the supervisor. Admin and HR
+users cannot approve. The system also will not let a preparer approve their own
+form: `approve` is refused when the caller is the draft's `prepared_by`.
+Neither rule is enforced yet. The `bir` routes still allow admin, HR and
+accounting. Role tightening is scheduled for Week 7 and the self-approval check
+for Week 6.
+
+**Assumption:** the two-person rule assumes the client has at least two
+accounting users. If one accounting user both prepares and approves, nobody can
+approve their forms. This needs a decision: either admin becomes a fallback
+approver, or the two-person rule is dropped for that deployment.
 
 ---
 
