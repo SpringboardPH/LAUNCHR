@@ -191,10 +191,12 @@ Neither rule is enforced yet. The `bir` routes still allow admin, HR and
 accounting. Role tightening is scheduled for Week 7 and the self-approval check
 for Week 6.
 
-**Assumption:** the two-person rule assumes the client has at least two
-accounting users. If one accounting user both prepares and approves, nobody can
-approve their forms. This needs a decision: either admin becomes a fallback
-approver, or the two-person rule is dropped for that deployment.
+**Workflow, as decided:** a preparer fills in the form and submits it.
+Accounting reviews the submitted form, may edit it, and approves it in the same
+step. There is no send-back just to fix a figure. The supervisor confirmed that
+the approver is never the person who prepares forms, so the self-approval rule
+never leaves a form with no one able to approve it. Editing in `pending` is not
+implemented yet (see `PUT /bir/drafts/{id}` in §6).
 
 ---
 
@@ -286,6 +288,10 @@ Both required. 201 with the new draft.
 Flat key to value. The server sets `origin`, `edited` and the provenance keys —
 Dev D never sends those.
 
+Editing is currently allowed in `draft` status only. Week 6 widens this so the
+approver can edit a form in `pending` before approving it (§5). That is not
+implemented yet: a `PUT` on a pending form still returns 400.
+
 ### POST /bir/drafts/{id}/reject
 
 ```json
@@ -321,6 +327,10 @@ registration details.
 **`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
 sets `origin: user` and `edited: true` only. The fixtures show the full shape;
 the behaviour is Week 6.
+
+**Editing a form in `pending` returns 400.** The decided workflow (§5) has
+accounting edit a submitted form before approving it. Widening `PUT` to allow
+that is Week 6.
 
 **A finalized form can be revised more than once.** Nothing stops a second
 `revise` on the same finalized draft, so two drafts can end up with the same
