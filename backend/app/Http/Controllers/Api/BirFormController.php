@@ -9,6 +9,7 @@ use App\Models\BirFormDraft;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
+use App\Services\BIR\BirSettingsService;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
@@ -76,6 +77,11 @@ class BirFormController extends Controller
             ? BirAggregationService::monthlyWithholding((int) substr($period, 0, 4), (int) substr($period, 5, 2))
             : BirAggregationService::annualCompensation($validated['employee_id'], (int) $period);
 
+        // Disjoint key sets: the aggregation returns only source: payroll keys, settings only
+        // source: settings keys. values() omits blanks, seed placeholders and out-of-options
+        // values, so those stay pending and get prompted for.
+        $values = $aggregation + BirSettingsService::values($validated['form_type']);
+
         $draft = BirFormDraft::create([
             'form_type' => $validated['form_type'],
             'period' => $period,
@@ -84,7 +90,7 @@ class BirFormController extends Controller
             'version' => 1,
             'parent_id' => null,
             'prepared_by' => $request->user()->id,
-            'fields' => $this->buildFields($validated['form_type'], $aggregation),
+            'fields' => $this->buildFields($validated['form_type'], $values),
             'source_snapshot' => $this->buildSourceSnapshot(
                 $validated['form_type'],
                 $period,
@@ -139,22 +145,23 @@ class BirFormController extends Controller
     }
 
     /**
-     * Turns a BirAggregationService result into the draft's fields object: every schema key,
-     * each a full six-key entry. Missing and empty-string values become pending (contract §3,
+     * Turns the aggregation result merged with the settings values into the draft's fields
+     * object: every schema key, each a full six-key entry. A filled value's origin is its schema
+     * source (payroll or settings). Missing and empty-string values become pending (contract §3,
      * invariant 1), so Dev C's prompting loop sees them; _meta and other non-schema keys are dropped.
      */
-    private function buildFields(string $formType, array $aggregation): array
+    private function buildFields(string $formType, array $values): array
     {
         $schema = $formType === '1601-C' ? Form1601CSchema::fields() : Form2316Schema::fields();
 
         $fields = [];
         foreach ($schema as $field) {
-            $value = $aggregation[$field['key']] ?? null;
+            $value = $values[$field['key']] ?? null;
             $filled = $value !== null && $value !== '';
 
             $fields[$field['key']] = [
                 'value' => $filled ? $value : null,
-                'origin' => $filled ? 'payroll' : 'pending',
+                'origin' => $filled ? $field['source'] : 'pending',
                 'edited' => false,
                 'system_value' => null,
                 'edited_by' => null,
