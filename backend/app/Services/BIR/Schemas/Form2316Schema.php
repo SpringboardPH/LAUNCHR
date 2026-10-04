@@ -13,6 +13,10 @@ namespace App\Services\BIR\Schemas;
  * '2316.<item>.<part>' where one item holds several values, and a descriptive
  * '2316.<area>.<name>' where the field has no item number. Fields that are
  * signed by hand or exist only as internal state carry pdf_anchor => null.
+ *
+ * required_when: see Form1601CSchema. Context facts used here: hired_in_year
+ * (the employee's hire date falls after January 1 of the tax year, or is
+ * unknown), supplied by BirConversationService::context().
  */
 class Form2316Schema
 {
@@ -34,11 +38,13 @@ class Form2316Schema
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required only when the employee did not work the full year at this employer',
                 'pdf_anchor' => '2316.2.from',
+                'required_when' => ['context' => 'hired_in_year'],
             ],
             [
                 'key' => 'period_to', 'item' => '2', 'label' => 'For the Period To (MM/DD)',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required with period_from', 'pdf_anchor' => '2316.2.to',
+                'required_when' => ['field' => 'period_from', 'present' => true],
             ],
             [
                 'key' => 'employee_tin', 'item' => '3', 'label' => 'TIN',
@@ -111,11 +117,13 @@ class Form2316Schema
                 'key' => 'mwe_daily_rate', 'item' => '9', 'label' => 'Statutory Minimum Wage rate per day',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when is_mwe = true', 'pdf_anchor' => '2316.9',
+                'required_when' => ['field' => 'is_mwe', 'equals' => true],
             ],
             [
                 'key' => 'mwe_monthly_rate', 'item' => '10', 'label' => 'Statutory Minimum Wage rate per month',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when is_mwe = true', 'pdf_anchor' => '2316.10',
+                'required_when' => ['field' => 'is_mwe', 'equals' => true],
             ],
             [
                 'key' => 'is_mwe', 'item' => '11',
@@ -153,16 +161,29 @@ class Form2316Schema
             ],
 
             // ── Part III — Employer Information (Previous) ───────────────────
-            // Mid-year hires only; LAUNCHR must ask, not derive.
+            // Mid-year hires only; LAUNCHR must ask, not derive. A mid-year hire
+            // may have had no previous employer at all (a first job), so the
+            // has_previous_employer gate is asked first and items 16, 17 and 22
+            // depend on its answer rather than on the hire date alone.
+            [
+                'key' => 'has_previous_employer', 'item' => null,
+                'label' => 'Had another employer earlier in the year',
+                'type' => 'boolean', 'source' => 'user', 'required' => false,
+                'rule' => 'internal gate, asked only when the employee was hired during the tax year; not derivable — LAUNCHR has no record of other employers',
+                'pdf_anchor' => null,
+                'required_when' => ['context' => 'hired_in_year'],
+            ],
             [
                 'key' => 'previous_employer_tin', 'item' => '16', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required when the employee was hired mid-year and had a prior employer', 'pdf_anchor' => '2316.16',
+                'required_when' => ['field' => 'has_previous_employer', 'equals' => true],
             ],
             [
                 'key' => 'previous_employer_name', 'item' => '17', 'label' => "Employer's Name",
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required with previous_employer_tin', 'pdf_anchor' => '2316.17',
+                'required_when' => ['field' => 'has_previous_employer', 'equals' => true],
             ],
             [
                 'key' => 'previous_employer_address', 'item' => '18', 'label' => 'Registered Address',
@@ -199,6 +220,7 @@ class Form2316Schema
                 'label' => 'Add: Taxable Compensation Income from Previous Employer, if applicable',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when the employee was hired mid-year with a previous employer', 'pdf_anchor' => '2316.22',
+                'required_when' => ['field' => 'has_previous_employer', 'equals' => true],
             ],
             [
                 'key' => 'gross_taxable_income', 'item' => '23',
@@ -221,6 +243,7 @@ class Form2316Schema
                 'key' => 'taxes_withheld_previous', 'item' => '25B', 'label' => 'Amount of Taxes Withheld — Previous Employer, if applicable',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when taxable_income_previous_employer > 0', 'pdf_anchor' => '2316.25B',
+                'required_when' => ['field' => 'taxable_income_previous_employer', 'gt' => 0],
             ],
             [
                 'key' => 'total_taxes_withheld_adjusted', 'item' => '26',
@@ -334,6 +357,7 @@ class Form2316Schema
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required when tax_others_44a_amount > 0',
                 'pdf_anchor' => '2316.44A.desc',
+                'required_when' => ['field' => 'tax_others_44a_amount', 'gt' => 0],
             ],
             [
                 'key' => 'tax_others_44a_amount', 'item' => '44A', 'label' => 'Others, row A — amount',
@@ -345,6 +369,7 @@ class Form2316Schema
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required when tax_others_44b_amount > 0',
                 'pdf_anchor' => '2316.44B.desc',
+                'required_when' => ['field' => 'tax_others_44b_amount', 'gt' => 0],
             ],
             [
                 'key' => 'tax_others_44b_amount', 'item' => '44B', 'label' => 'Others, row B — amount',
@@ -453,17 +478,20 @@ class Form2316Schema
                 'key' => 'employee_ctc_or_id', 'item' => null, 'label' => 'CTC/Valid ID No. of Employee',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required only under substituted filing', 'pdf_anchor' => '2316.ctc.number',
+                'required_when' => ['field' => 'is_substituted_filing', 'equals' => true],
             ],
             [
                 'key' => 'ctc_place_of_issue', 'item' => null, 'label' => 'Place of Issue',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required with employee_ctc_or_id', 'pdf_anchor' => '2316.ctc.place',
+                'required_when' => ['field' => 'employee_ctc_or_id', 'present' => true],
             ],
             [
                 'key' => 'ctc_date_issued', 'item' => null, 'label' => 'Date Issued (CTC/Valid ID)',
                 'type' => 'date', 'source' => 'user', 'required' => false,
                 'rule' => 'MM/DD/YYYY; required when employee_ctc_or_id is present',
                 'pdf_anchor' => '2316.ctc.date_issued',
+                'required_when' => ['field' => 'employee_ctc_or_id', 'present' => true],
             ],
             [
                 'key' => 'ctc_amount_paid', 'item' => null, 'label' => 'Amount paid, if CTC',

@@ -8,7 +8,18 @@ namespace App\Services\BIR\Schemas;
  * Scope: Part I + Part II only (items 1-36).
  *
  * Field shape: key, item (as printed), label, type, source, required, rule,
- * pdf_anchor, options (enum only).
+ * pdf_anchor, options (enum only), required_when (conditional fields only).
+ *
+ * required_when is the machine-readable form of a "required when ..." rule,
+ * read by BirMissingFields. It replaces 'required' for that field, so a field
+ * carrying it always has 'required' => false. One condition per field:
+ *   ['field' => 'has_tax_relief', 'equals' => true]   another field's answer
+ *   ['field' => 'other_remittances', 'gt' => 0]        a number above a limit
+ *   ['field' => 'employee_ctc_or_id', 'present' => true] another field filled
+ *   ['context' => 'hired_in_year']                     a fact about the draft
+ * A condition on a field nobody has answered yet is not met, so a dependent
+ * field is only asked once the field it depends on has been answered.
+ * The prose 'rule' stays as the human-readable version.
  */
 class Form1601CSchema
 {
@@ -98,6 +109,7 @@ class Form1601CSchema
                 'key' => 'tax_relief_details', 'item' => '13A', 'label' => 'If yes, specify',
                 'type' => 'text', 'source' => 'user', 'required' => false,
                 'rule' => 'required when has_tax_relief = true', 'pdf_anchor' => '1601C.13A',
+                'required_when' => ['field' => 'has_tax_relief', 'equals' => true],
             ],
 
             // ── Part II — Computation of Tax ─────────────────────────────────
@@ -150,6 +162,7 @@ class Form1601CSchema
                 'label' => 'Other Non-Taxable Compensation — description',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required when other_nontaxable_compensation > 0', 'pdf_anchor' => '1601C.20',
+                'required_when' => ['field' => 'other_nontaxable_compensation', 'gt' => 0],
             ],
             [
                 'key' => 'total_nontaxable_compensation', 'item' => '21',
@@ -199,6 +212,7 @@ class Form1601CSchema
                 'label' => 'Less: Tax Remitted in Return Previously Filed, if this is an amended return',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required when is_amended = true', 'pdf_anchor' => '1601C.28',
+                'required_when' => ['field' => 'is_amended', 'equals' => true],
             ],
             [
                 'key' => 'other_remittances', 'item' => '29', 'label' => 'Other Remittances Made (specify)',
@@ -209,6 +223,7 @@ class Form1601CSchema
                 'key' => 'other_remittances_desc', 'item' => '29', 'label' => 'Other Remittances Made — description',
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => 'required when other_remittances > 0', 'pdf_anchor' => '1601C.29',
+                'required_when' => ['field' => 'other_remittances', 'gt' => 0],
             ],
             [
                 'key' => 'total_remittances_made', 'item' => '30',
