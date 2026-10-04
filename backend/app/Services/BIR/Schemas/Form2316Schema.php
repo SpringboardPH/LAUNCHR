@@ -412,7 +412,8 @@ class Form2316Schema
             ],
             [
                 'key' => 'tax_others_51a_desc', 'item' => '51A', 'label' => 'Others (specify), row A',
-                'type' => 'string', 'source' => 'user', 'required' => false, 'rule' => 'free text',
+                'type' => 'string', 'source' => 'user', 'required' => false, 'rule' => 'required when tax_others_51a_amount > 0',
+                'required_when' => ['field' => 'tax_others_51a_amount', 'gt' => 0],
                 'pdf_anchor' => '2316.51A.desc',
             ],
             [
