@@ -99,7 +99,8 @@ const edit = (fields, key, value, by, at) => ({
 })
 
 const base = {
-
+  version: 1, parent_id: null, prepared_by: JANE, approved_by: null,
+  rejection_reason: null, validation_errors: [],
 }
 
 const draft1601c = (id, period, status, seed, extra = {}) => ({

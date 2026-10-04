@@ -90,13 +90,19 @@ function FieldRow({ field, entry, error, compare, filed, onFiled }) {
           ) : (
             <p className="text-sm italic text-gray-400">{kind === 'manual' ? 'Signed by hand after printing' : 'Not filled yet'}</p>
           )}
+                    {/* The server records the replaced figure and who changed it from Week 6; until
+              then an edit arrives with neither, so show only what is actually known. */}
           {entry.edited && (
             <p className="mt-0.5 text-[11px] text-amber-800">
-              {entry.system_value != null
-                ? <>Calculated: <span className="line-through tabular-nums">{formatValue(entry.system_value, field.type)}</span></>
-                : 'Original value not recorded'}
-              {' · '}
-              {entry.edited_by ? `${entry.edited_by.name}${entry.edited_at ? `, ${formatWhen(entry.edited_at)}` : ''}` : 'editor not recorded'}
+              {entry.system_value == null && !entry.edited_by
+                ? 'Changed by hand. The calculated figure and who changed it are not on record for this edit.'
+                : <>
+                    {entry.system_value != null && (
+                      <>Calculated: <span className="line-through tabular-nums">{formatValue(entry.system_value, field.type)}</span></>
+                    )}
+                    {entry.system_value != null && entry.edited_by && ' · '}
+                    {entry.edited_by && `Changed by ${entry.edited_by.name}${entry.edited_at ? `, ${formatWhen(entry.edited_at)}` : ''}`}
+                  </>}
             </p>
           )}
           {error && <p className="mt-0.5 text-[11px] text-red-600">{error}</p>}
