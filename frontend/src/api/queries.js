@@ -148,7 +148,7 @@ export const deleteLeaveType = (id) =>
 export const employeeLeaveBalanceKeys = {
   all: ['admin', 'employee-leave-balances'],
   detail: (employeeId) => ['admin', 'employee-leave-balances', employeeId],
-}
+  }
 export const getEmployeeLeaveBalances = (employeeId) =>
   api.get(`/admin/employee-leave-balances/${employeeId}`).then(r => r.data.data)
 
@@ -548,7 +548,6 @@ export const getDtrConfig = () =>
 
 export const getDtrs = (params = {}) =>
   api.get('/dtr', { params }).then(r => r.data.data)
-
 export const uploadDtr = (formData) =>
   api.post('/dtr', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
 
@@ -574,14 +573,17 @@ export const birKeys = {
   lists:  ['bir', 'drafts'],
   list:   (params) => ['bir', 'drafts', 'list', params],
   detail: (id) => ['bir', 'drafts', id],
+  employees: ['bir', 'employees'],
 }
 
-// Returns { data, pagination } — filter with params, never client-side (only one page is loaded).
+// Returns { enabled, form_types, status_flow, schemas? } — schemas is the per-form field
+// list (key, item, label, type, source, required) once the backend serves it.
 export const getBirConfig = bir(
   () => api.get('/bir/config').then(r => r.data.data),
   birMockApi.getConfig,
 )
 
+// Returns { data, pagination } — filter with params, never client-side (only one page is loaded).
 export const getBirDrafts = bir(
   (params = {}) => api.get('/bir/drafts', { params }).then(r => ({ data: r.data.data, pagination: r.data.pagination })),
   birMockApi.getDrafts,
@@ -640,9 +642,17 @@ export const exportBirDraft = bir(
   birMockApi.exportDraft,
 )
 
-// Returns { understood, intent, reply }. A 503 means the assistant is down —
-// the page must still let the user pick a form and period manually.
+// Returns { understood, intent, candidates, reply }. The server remembers the
+// conversation; pass { reset: true } to start a new one. A 503 means the assistant
+// is down — the page must still let the user pick a form and period manually.
 export const sendBirChatMessage = bir(
-  (message) => api.post('/bir/chat', { message }).then(r => r.data.data),
+  (message, { reset = false } = {}) => api.post('/bir/chat', { message, ...(reset && { reset: true }) }).then(r => r.data.data),
   birMockApi.chat,
+)
+
+// Employees a 2316 can be prepared for. Not filtered by status: someone who left
+// mid-year still gets a 2316.
+export const getBirEmployees = bir(
+  () => api.get('/employees', { params: { per_page: 1000 } }).then(r => ({ data: r.data.data, pagination: r.data.pagination })),
+  birMockApi.getEmployees,
 )

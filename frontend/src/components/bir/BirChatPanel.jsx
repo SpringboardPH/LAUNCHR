@@ -66,7 +66,24 @@ function IntentCard({ intent, status, onConfirm, onDecline }) {
   )
 }
 
-function Message({ msg, onConfirm, onDecline }) {
+function Candidates({ candidates, disabled, onPick }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {candidates.map(c => (
+        <button
+          key={c.id}
+          onClick={() => onPick(c)}
+          disabled={disabled}
+          className="rounded-full border border-brand-200 bg-white px-3 py-1 text-xs text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {c.name} <span className="text-gray-400">({c.employee_id})</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Message({ msg, onConfirm, onDecline, onPick, busy }) {
   const isUser = msg.role === 'user'
   return (
     <div className={clsx('flex gap-2.5', isUser && 'flex-row-reverse')}>
@@ -81,8 +98,11 @@ function Message({ msg, onConfirm, onDecline }) {
         isUser && 'bg-brand-600 text-white rounded-tr-sm',
         !isUser && !msg.error && 'bg-gray-100 text-gray-800 rounded-tl-sm',
         msg.error && 'bg-amber-50 text-amber-900 border border-amber-200 rounded-tl-sm'
-      )}>
+        )}>
         {msg.text}
+        {msg.candidates?.length > 0 && (
+          <Candidates candidates={msg.candidates} disabled={busy || msg.picked} onPick={(c) => onPick(msg, c)} />
+        )}
         {msg.intent && (
           <IntentCard
             intent={msg.intent}
@@ -121,23 +141,31 @@ export default function BirChatPanel({ onDraftCreated }) {
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
+  // The server remembers a conversation for 30 minutes; the first message after
+  // opening the page or "New conversation" tells it to start over.
+  const freshRef = useRef(true)
 
   const push = (msg) => setMessages(prev => [...prev, { id: nextId(), ...msg }])
   const patch = (id, changes) => setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...changes } : m)))
 
   const chat = useMutation({
-    mutationFn: sendBirChatMessage,
+    mutationFn: ({ message, reset }) => sendBirChatMessage(message, { reset }),
     onSuccess: (res) => push({
       role: 'assistant',
       text: res.reply,
       intent: res.understood ? res.intent : null,
       intentStatus: res.understood ? 'open' : null,
+      candidates: res.candidates ?? [],
     }),
     onError: (err) => push({ role: 'assistant', error: true, text: errorText(err) }),
   })
 
   const create = useMutation({
-    mutationFn: ({ intent }) => createBirDraft({ form_type: intent.form_type, period: intent.period }),
+    mutationFn: ({ intent }) => createBirDraft({
+      form_type: intent.form_type,
+      period: intent.period,
+      ...(intent.employee_id && { employee_id: intent.employee_id }),
+    }),
     onSuccess: (res, { msgId }) => {
       const draft = res.data
       const entries = Object.values(draft.fields ?? {})
@@ -173,7 +201,13 @@ export default function BirChatPanel({ onDraftCreated }) {
     if (!message || busy) return
     push({ role: 'user', text: message })
     setInput('')
-    chat.mutate(message)
+    chat.mutate({ message, reset: freshRef.current })
+    freshRef.current = false
+  }
+
+  const pick = (msg, candidate) => {
+    patch(msg.id, { picked: true })
+    send(candidate.employee_id)
   }
 
   const confirm = (msg) => {
@@ -189,6 +223,7 @@ export default function BirChatPanel({ onDraftCreated }) {
   const reset = () => {
     setMessages([GREETING])
     setInput('')
+    freshRef.current = true
   }
 
   const onKeyDown = (e) => {
@@ -214,7 +249,7 @@ export default function BirChatPanel({ onDraftCreated }) {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4" role="log" aria-live="polite">
         {messages.map(m => (
-          <Message key={m.id} msg={m} onConfirm={confirm} onDecline={decline} />
+          <Message key={m.id} msg={m} onConfirm={confirm} onDecline={decline} onPick={pick} busy={busy} />
         ))}
         {busy && <TypingIndicator />}
         {showSuggestions && (
