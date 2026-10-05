@@ -27,6 +27,8 @@ const EMPLOYEES = [
   { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-000' },
   { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-000' },
   { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-000' },
+  // Paid at minimum wage: nothing taxable, so the 2316's taxable section does not apply.
+  { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-000', annual: 168000 },
 ]
 const fullName = (e) => `${e.first_name} ${e.last_name}`
 
@@ -66,10 +68,13 @@ const payroll1601c = (seed = 0) => {
 
 const payroll2316 = (employee, annual) => {
   const thirteenth = annual / 12, contributions = annual * 0.072
-  const nontax = thirteenth + contributions + 12000
+  // At or under P250,000 nothing is taxable: basic pay moves to item 29, as the real aggregation does.
+  const exempt = annual <= 250000
+  const nontax = exempt ? annual : thirteenth + contributions + 12000
   const taxable = annual - nontax
   const tax = Math.max(0, Math.round((taxable - 250000) * 0.15 * 100) / 100)
   return {
+    ...(exempt && { nontax_mwe_basic: money(annual - thirteenth - contributions - 12000) }),
     employee_tin: employee.tin, employee_last_name: employee.last_name,
     employee_first_name: employee.first_name, basic_salary_annual: money(annual - thirteenth),
     gross_compensation_present: money(annual), less_nontaxable_present: money(nontax),
@@ -192,12 +197,11 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
     return fail(422, 'The form type and period are required.')
   }
   let draft
-  if (form_type === '1601-C') {
-    draft = draft1601c(nextId++, period, 'draft', Number(period.slice(5, 7)) % 5)
+  if (form_type === '1601-C') { draft = draft1601c(nextId++, period, 'draft', Number(period.slice(5, 7)) % 5)
   } else {
     const employee = EMPLOYEES.find(e => e.id === Number(employee_id))
     if (!employee) return fail(422, 'A 2316 is per employee — an employee is required.')
-    draft = { ...draft2316(nextId++, employee, 540000, 'draft'), period }
+    draft = { ...draft2316(nextId++, employee, employee.annual ?? 540000, 'draft'), period }
   }
   drafts.push(draft)
   return ok(draft, 'Draft created (mock)')
@@ -243,7 +247,7 @@ const revise = async (id) => {
   await delay()
   const d = find(id)
   if (!d) return fail(404, 'Draft not found')
-  if (d.status !== 'finalized') {
+    if (d.status !== 'finalized') {
     return fail(400, `Only finalized forms can be revised; this one is in ${d.status} status`)
   }
   const revision = {

@@ -22,6 +22,13 @@ const GREETING = {
 let seq = 0
 const nextId = () => `m${++seq}`
 
+// Official titles, used wherever a form is named on screen.
+export const FORM_NAMES = {
+  '1601-C': 'Monthly Remittance Return of Income Taxes Withheld on Compensation',
+  '2316': 'Certificate of Compensation Payment/Tax Withheld',
+}
+export const formName = (formType) => FORM_NAMES[formType] ?? formType
+
 export const describePeriod = (formType, period) => {
   if (!period) return '—'
   if (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)) {
@@ -39,7 +46,7 @@ function IntentCard({ intent, status, onConfirm, onDecline }) {
     <div className="mt-2 rounded-lg border border-brand-100 bg-white p-3 text-xs text-gray-700">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         <dt className="text-gray-400">Form</dt>
-        <dd className="font-medium">BIR Form {intent.form_type}</dd>
+        <dd className="font-medium">{formName(intent.form_type)}</dd>
         <dt className="text-gray-400">Period</dt>
         <dd className="font-medium">{describePeriod(intent.form_type, intent.period)}</dd>
         {intent.employee_query && (
@@ -173,7 +180,7 @@ export default function BirChatPanel({ onDraftCreated }) {
       patch(msgId, { intentStatus: 'done' })
       push({
         role: 'assistant',
-        text: `Draft #${draft.id} is ready: BIR Form ${draft.form_type}, ${describePeriod(draft.form_type, draft.period)}. `
+        text: `Draft #${draft.id} is ready: ${formName(draft.form_type)}, ${describePeriod(draft.form_type, draft.period)}. `
           + `${entries.length - pending} of ${entries.length} fields are filled`
           + (pending ? `, ${pending} still need${pending === 1 ? 's' : ''} your input.` : '.'),
       })
@@ -259,7 +266,7 @@ export default function BirChatPanel({ onDraftCreated }) {
                 key={s}
                 onClick={() => send(s)}
                 className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:border-brand-300 hover:text-brand-700 transition-colors"
-              >
+             >
                 {s}
               </button>
             ))}
@@ -289,4 +296,4 @@ export default function BirChatPanel({ onDraftCreated }) {
       </form>
     </div>
   )
-}
+} 

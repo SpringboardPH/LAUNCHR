@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, FlaskConical, ListChecks } from 'lucide-react'
 import { birKeys, getBirConfig, getBirEmployees, createBirDraft, BIR_USE_MOCKS } from '../../api/queries'
 import { PageHeader } from '../../components/ui/index.jsx'
-import BirChatPanel from '../../components/bir/BirChatPanel'
+import BirChatPanel, { formName } from '../../components/bir/BirChatPanel'
 import BirFieldPreview from '../../components/bir/BirFieldPreview'
 
 const CY = new Date().getFullYear()
@@ -47,13 +47,13 @@ function ManualPicker({ formTypes, onCreated }) {
         create.mutate({ form_type: formType, period, ...(is2316 && { employee_id: Number(employeeId) }) })
       }}
     >
-      <div className="grid grid-cols-3 gap-2">
-        <label className="text-xs text-gray-500">
-          Form
-          <select className="input mt-1" value={formType} onChange={(e) => setFormType(e.target.value)}>
-            {formTypes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </label>
+      <label className="block text-xs text-gray-500">
+        Form
+        <select className="input mt-1" value={formType} onChange={(e) => setFormType(e.target.value)}>
+          {formTypes.map(t => <option key={t} value={t}>{formName(t)}</option>)}
+        </select>
+      </label>
+      <div className={is2316 ? 'grid grid-cols-[1fr_2fr] gap-2' : 'grid grid-cols-2 gap-2'}>
         <label className="text-xs text-gray-500">
           Year
           <select className="input mt-1" value={year} onChange={(e) => setYear(Number(e.target.value))}>
@@ -98,7 +98,7 @@ export default function BirFormsPage() {
     queryKey: birKeys.config,
     queryFn: getBirConfig,
     staleTime: Infinity,
-  })
+    })
 
   const onDraft = (draft) => setParams({ draft: String(draft.id) })
 
@@ -106,7 +106,7 @@ export default function BirFormsPage() {
     <div>
       <PageHeader
         title="BIR Forms"
-        description="Prepare Form 1601-C (monthly) and Form 2316 (annual, per employee) from payroll data."
+        description="Prepare the Monthly Remittance Return of Income Taxes Withheld on Compensation and each employee's Certificate of Compensation Payment/Tax Withheld from payroll data."
         action={BIR_USE_MOCKS && (
           <span className="badge-purple gap-1" title="Set VITE_BIR_MOCK=false to use the real API">
             <FlaskConical size={12} /> Mock data

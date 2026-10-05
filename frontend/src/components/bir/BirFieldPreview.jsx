@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X } from 'lucide-react'
+import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import { birKeys, getBirConfig, getBirDraft } from '../../api/queries'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
-import { describePeriod } from './BirChatPanel'
+import { describePeriod, formName } from './BirChatPanel'
 
 // How each kind of value looks. `edited` is a user value that replaced a calculated one.
 const KINDS = {
@@ -35,6 +35,23 @@ const formatWhen = (iso) => {
 
 // Fields compared against a filed form — the same rule as `php artisan bir:compare`.
 const isCompared = (field) => field.source === 'payroll' && field.type === 'decimal' && field.item != null
+
+// 2316 Part IV-B Section B — taxable compensation, items 39 to 52 (including 44A/B, 51A/B).
+const isTaxableSection = (field) => {
+  const n = parseInt(field.item, 10)
+  return n >= 39 && n <= 52
+}
+
+// An employee with pay but nothing taxable (item 52 is zero) — a minimum wage earner, or
+// at or below the P250,000 exemption. The backend classifies them; the figures show it.
+const nonTaxableReason = (draft) => {
+  if (draft.form_type !== '2316') return null
+  const value = (key) => draft.fields?.[key]?.value
+  const taxable = value('tax_regular_total'), gross = value('gross_compensation_present')
+  if (!isNumeric(taxable) || Number(taxable) !== 0 || !isNumeric(gross) || Number(gross) <= 0) return null
+  const mwe = value('is_mwe') === true || value('is_mwe') === 'true'
+  return mwe ? 'is a minimum wage earner' : 'has no taxable compensation (a minimum wage earner, or ₱250,000 or less for the year)'
+}
 const TOLERANCE = 0.005
 
 // Minimal CSV reader for the bir:compare template (quoted labels contain commas).
@@ -68,7 +85,7 @@ function SkeletonRows() {
   )
 }
 
-function FieldRow({ field, entry, error, compare, filed, onFiled }) {
+function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable }) {
   const kind = kindOf(entry)
   const style = KINDS[kind]
   const shown = formatValue(entry.value, field.type)
@@ -77,7 +94,10 @@ function FieldRow({ field, entry, error, compare, filed, onFiled }) {
   const matches = diff !== null && Math.abs(diff) < TOLERANCE
 
   return (
-    <li className={clsx('relative pl-4 pr-3 py-2', style.row, error && 'ring-1 ring-inset ring-red-200')}>
+    <li
+      className={clsx('relative pl-4 pr-3 py-2', notApplicable ? 'bg-gray-50 opacity-50' : style.row, error && 'ring-1 ring-inset ring-red-200')}
+      title={notApplicable ? 'Does not apply to a non-taxable employee' : undefined}
+    >
       <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', style.bar)} />
       <div className="flex items-start gap-3">
         <span className="w-8 shrink-0 pt-0.5 text-[11px] font-medium text-gray-400 tabular-nums">{field.item ?? ''}</span>
@@ -126,7 +146,9 @@ function FieldRow({ field, entry, error, compare, filed, onFiled }) {
             </div>
           )}
         </div>
-        <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium', style.tag)}>{style.label}</span>
+        <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium', notApplicable ? 'bg-gray-200 text-gray-600' : style.tag)}>
+          {notApplicable ? 'Not applicable' : style.label}
+        </span>
       </div>
     </li>
   )
@@ -187,6 +209,7 @@ export default function BirFieldPreview({ draftId }) {
   }
 
   const errors = Object.fromEntries((draft.validation_errors ?? []).map(e => [e.field, e.message]))
+  const nonTaxable = nonTaxableReason(draft)
   const counts = rows.reduce((acc, { entry }) => ({ ...acc, [kindOf(entry)]: (acc[kindOf(entry)] ?? 0) + 1 }), {})
   const fillable = rows.filter(({ field }) => field.type !== 'manual')
   const filledCount = fillable.filter(({ entry }) => entry.value !== null && entry.value !== '').length
@@ -223,7 +246,7 @@ export default function BirFieldPreview({ draftId }) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs text-gray-400">Draft #{draft.id} · version {draft.version}{isFetching && ' · updating…'}</p>
-            <p className="text-base font-semibold text-gray-900">BIR Form {draft.form_type}</p>
+            <p className="text-base font-semibold text-gray-900 leading-snug">{formName(draft.form_type)}</p>
             <p className="text-sm text-gray-600">
               {describePeriod(draft.form_type, draft.period)}{draft.employee_name && ` · ${draft.employee_name}`}
             </p>
@@ -240,6 +263,16 @@ export default function BirFieldPreview({ draftId }) {
             <div className="h-full bg-brand-500 transition-all" style={{ width: `${fillable.length ? (filledCount / fillable.length) * 100 : 0}%` }} />
           </div>
         </div>
+
+        {nonTaxable && (
+          <p className="flex gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            <Info size={14} className="mt-0.5 shrink-0 text-gray-400" />
+            <span>
+              {draft.employee_name ? draft.employee_name.split(', ').reverse().join(' ') : 'This employee'} {nonTaxable}. The taxable compensation section (items 39–52) does not
+              apply, so it is greyed out.
+            </span>
+          </p>
+        )}
 
         {draft.rejection_reason && (
           <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -295,6 +328,7 @@ export default function BirFieldPreview({ draftId }) {
             compare={compare}
             filed={filed[field.key]}
             onFiled={setFiled}
+            notApplicable={!!nonTaxable && isTaxableSection(field)}
           />
         ))}
         {!visible.length && <li className="px-4 py-8 text-center text-xs text-gray-400">No boxes in this group.</li>}
