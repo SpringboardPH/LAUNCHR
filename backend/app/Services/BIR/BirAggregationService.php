@@ -24,9 +24,9 @@ use Illuminate\Support\Collection;
 class BirAggregationService
 {
     /**
-     * The date that decides which month/year a payroll belongs to. Unconfirmed with the
-     * accountant — if they file on payment date, set this to 'paid_at' and
-     * COUNTED_STATUSES to ['paid'] (finalized-but-unpaid rows have no paid_at).
+     * The date that decides which month/year a payroll belongs to. Confirmed with the
+     * accountant: a pay period counts toward the month its end date falls in, so a
+     * Dec 26–Jan 10 cutoff is January's and goes on the next year's 2316.
      */
     public const PERIOD_DATE = 'cutoff_end';
 
