@@ -332,14 +332,25 @@ the behaviour is Week 6.
 accounting edit a submitted form before approving it. Widening `PUT` to allow
 that is Week 6.
 
-**A finalized form can be revised more than once.** Nothing stops a second
-`revise` on the same finalized draft, so two drafts can end up with the same
-`version` and the same `parent_id`. Whether competing corrections should be
-allowed is an open question for the accountant.
+**Revising the same finalized draft twice gives two drafts the same `version`.**
+Decided: there is no limit on revisions. But `revise` sets `version` to the
+parent's version + 1, so a second `revise` on the same finalized draft produces
+another draft with the same `version` and the same `parent_id`. Still open:
+whether "no limit" means a chain (only the latest finalized version can be
+revised) or several corrections of one form at once (`version` would then be
+the highest for that form + 1). The numbering changes once that is settled.
 
 **`validation_errors` is never cleared or recalculated when a field changes.**
 A draft can show an error about a field that has since been corrected or
 emptied. Validation is Week 5.
+
+**Night differential is missing from payroll since 14 July 2026.** It was
+switched off in payroll generation that day and stays off by decision. Drafts
+are built from payroll, so night-shift employees' pay and withheld tax come out
+without it, and the 2316 MWE night differential (item 32,
+`nontax_mwe_night_diff`) only counts payrolls from before that date. Not a BIR
+bug. If the accountant pays it outside LAUNCHR, expect a difference when
+comparing against a filed form.
 
 ---
 
