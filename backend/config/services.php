@@ -40,6 +40,11 @@ return [
         'model' => env('BIR_LLM_MODEL', 'claude-haiku-4-5-20251001'),
     ],
 
+    'ollama' => [
+        'url' => env('OLLAMA_URL', 'http://localhost:11434'),
+        'model' => env('OLLAMA_MODEL', 'qwen2.5:7b'),
+    ],
+
     'bir' => [
         'llm_driver' => env('BIR_LLM_DRIVER', 'fake'),
     ],
