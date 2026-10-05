@@ -163,8 +163,8 @@ class Form2316Schema
             // ── Part III — Employer Information (Previous) ───────────────────
             // Mid-year hires only; LAUNCHR must ask, not derive. A mid-year hire
             // may have had no previous employer at all (a first job), so the
-            // has_previous_employer gate is asked first and items 16, 17 and 22
-            // depend on its answer rather than on the hire date alone.
+            // has_previous_employer gate is asked first and items 16, 17, 22 and
+            // 25B depend on its answer rather than on the hire date alone.
             [
                 'key' => 'has_previous_employer', 'item' => null,
                 'label' => 'Had another employer earlier in the year',
@@ -242,8 +242,8 @@ class Form2316Schema
             [
                 'key' => 'taxes_withheld_previous', 'item' => '25B', 'label' => 'Amount of Taxes Withheld — Previous Employer, if applicable',
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
-                'rule' => 'required when taxable_income_previous_employer > 0', 'pdf_anchor' => '2316.25B',
-                'required_when' => ['field' => 'taxable_income_previous_employer', 'gt' => 0],
+                'rule' => 'required when the employee had a previous employer', 'pdf_anchor' => '2316.25B',
+                'required_when' => ['field' => 'has_previous_employer', 'equals' => true],
             ],
             [
                 'key' => 'total_taxes_withheld_adjusted', 'item' => '26',

@@ -59,28 +59,24 @@ class BirMissingFieldsTest extends TestCase
         );
     }
 
-    public function test_a_yes_brings_in_the_previous_employers_tin_name_and_income_in_form_order(): void
+    public function test_a_yes_brings_in_the_previous_employers_tin_name_income_and_tax_withheld_in_form_order(): void
     {
         $keys = $this->missingKeys2316(['has_previous_employer' => true], ['hired_in_year' => true]);
 
         $this->assertSame(
-            ['previous_employer_tin', 'previous_employer_name', 'taxable_income_previous_employer'],
+            ['previous_employer_tin', 'previous_employer_name', 'taxable_income_previous_employer',
+                'taxes_withheld_previous'],
             array_values(array_intersect($keys, self::PREVIOUS_EMPLOYER_KEYS)),
         );
         $this->assertNotContains('previous_employer_address', $keys, 'Item 18 is optional even with a previous employer.');
     }
 
-    public function test_previous_employer_tax_withheld_is_asked_once_their_income_is_above_zero(): void
+    public function test_previous_employer_tax_withheld_is_asked_even_when_their_taxable_income_is_zero(): void
     {
-        $context = ['hired_in_year' => true];
+        $keys = $this->missingKeys2316(
+            ['has_previous_employer' => true, 'taxable_income_previous_employer' => '0.00'], ['hired_in_year' => true]);
 
-        $withIncome = $this->missingKeys2316(
-            ['has_previous_employer' => true, 'taxable_income_previous_employer' => '150000.00'], $context);
-        $withoutIncome = $this->missingKeys2316(
-            ['has_previous_employer' => true, 'taxable_income_previous_employer' => '0.00'], $context);
-
-        $this->assertContains('taxes_withheld_previous', $withIncome);
-        $this->assertNotContains('taxes_withheld_previous', $withoutIncome);
+        $this->assertContains('taxes_withheld_previous', $keys);
     }
 
     public function test_a_no_means_no_previous_employer_questions_at_all(): void

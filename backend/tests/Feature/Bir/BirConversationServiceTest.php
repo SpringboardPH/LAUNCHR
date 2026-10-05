@@ -47,6 +47,7 @@ class BirConversationServiceTest extends TestCase
         $this->assertContains('previous_employer_tin', $after);
         $this->assertContains('previous_employer_name', $after);
         $this->assertContains('taxable_income_previous_employer', $after);
+        $this->assertContains('taxes_withheld_previous', $after);
     }
 
     public function test_a_real_2316_for_a_full_year_employee_never_mentions_a_previous_employer(): void
