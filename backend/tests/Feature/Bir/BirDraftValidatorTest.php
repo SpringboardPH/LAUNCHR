@@ -149,6 +149,33 @@ class BirDraftValidatorTest extends TestCase
         $this->assertSame("\"{$label}\" should be 5,300.00 (items 25A and 25B) but is 300.00.", $error['message']);
     }
 
+    public function test_an_amount_that_is_not_plain_decimal_text_is_flagged_and_its_total_is_not_checked(): void
+    {
+        $id = $this->create1601C();
+        $this->answer($id, ['surcharge' => 'abc', 'interest' => '1,000.00']);
+
+        $errors = $this->errorsByField($id);
+        $label = Form1601CSchema::byKey()['surcharge']['label'];
+
+        $this->assertSame('invalid_amount', $errors['surcharge']['code']);
+        $this->assertSame("\"{$label}\" must be an amount like 1234.50, without commas or a currency sign.", $errors['surcharge']['message']);
+        $this->assertSame('invalid_amount', $errors['interest']['code']);
+        $this->assertArrayNotHasKey('total_penalties', $errors, 'A total with an invalid part is not checked.');
+    }
+
+    public function test_plain_decimal_amounts_in_any_accepted_shape_are_not_flagged(): void
+    {
+        $id = $this->create1601C();
+        $this->answer($id, [
+            'surcharge' => '1500',
+            'interest' => '20.5',
+            'compromise' => 1000.25,
+            'prior_month_adjustment' => '-250.00',
+        ]);
+
+        $this->assertNotContains('invalid_amount', array_column($this->errorsByField($id), 'code'));
+    }
+
     private function create2316(): int
     {
         $employeeId = Employee::where('employee_id', 'EMP-BIR-V1')->value('id');

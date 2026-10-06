@@ -11,7 +11,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  *
  * Each error is { field, code, message }. field is always a key in the draft's
  * fields. For missing fields, code is BirMissingFields' reason: required,
- * condition or record_gap. A total that doesn't add up is total_mismatch.
+ * condition or record_gap. An amount that isn't plain decimal text is
+ * invalid_amount. A total that doesn't add up is total_mismatch.
  */
 class BirDraftValidator
 {
@@ -65,7 +66,11 @@ class BirDraftValidator
         ], $this->conversation->missingFields($draft));
 
         $totals = $draft->form_type === Form1601CSchema::FORM_TYPE ? self::TOTALS_1601C : self::TOTALS_2316;
-        $errors = [...$errors, ...$this->totalErrors($totals, $draft->fields ?? [], $schema)];
+        $errors = [
+            ...$errors,
+            ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
+            ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
+        ];
 
         // Form order, so the list reads top to bottom like the printed form.
         $position = array_flip(array_keys($schema));
@@ -75,10 +80,37 @@ class BirDraftValidator
     }
 
     /**
+     * One error per amount field holding something other than plain decimal text, the
+     * agreed money format ("842300.00"): commas, currency signs and words are refused.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function invalidAmountErrors(array $fields, array $schema): array
+    {
+        $errors = [];
+
+        foreach ($schema as $key => $field) {
+            if ($field['type'] !== 'decimal' || $this->isBlank($fields[$key] ?? null) || $this->centavos($fields[$key]) !== null) {
+                continue;
+            }
+            $errors[] = [
+                'field' => $key,
+                'code' => 'invalid_amount',
+                'message' => "\"{$field['label']}\" must be an amount like 1234.50, without commas or a currency sign.",
+            ];
+        }
+
+        return $errors;
+    }
+
+    /**
      * One error per total that doesn't equal the sum of its parts. Compared in whole
      * centavos so rounding can't cause a false error. A total, or a required part, that is
      * still blank is skipped: the missing-fields rule already reports it. An optional part
-     * left blank counts as 0, which is what the printed form shows for it.
+     * left blank counts as 0, which is what the printed form shows for it. A total with an
+     * invalid amount in it is skipped too; invalid_amount already reports that.
      *
      * @param  array<string, array{0: array<int, string>, 1: array<int, string>, 2: string}>  $totals
      * @param  array<string, mixed>  $fields
@@ -98,7 +130,10 @@ class BirDraftValidator
             $expected = 0;
             foreach ([[$plus, 1], [$minus, -1]] as [$keys, $sign]) {
                 foreach ($keys as $key) {
-                    $part = $this->centavos($fields[$key] ?? null) ?? ($schema[$key]['required'] ? null : 0);
+                    $part = $this->centavos($fields[$key] ?? null);
+                    if ($part === null && !$schema[$key]['required'] && $this->isBlank($fields[$key] ?? null)) {
+                        $part = 0;
+                    }
                     if ($part === null) {
                         continue 3;
                     }
@@ -118,12 +153,24 @@ class BirDraftValidator
         return $errors;
     }
 
-    /** A field entry's amount in whole centavos, or null if it holds no number. */
+    /** A field entry's amount in whole centavos, or null if it is blank or not a valid amount. */
     private function centavos(mixed $entry): ?int
     {
         $value = is_array($entry) ? ($entry['value'] ?? null) : null;
+        if (is_int($value) || is_float($value)) {
+            $value = (string) $value;
+        }
 
-        return is_numeric($value) ? (int) round((float) $value * 100) : null;
+        return is_string($value) && preg_match('/^-?\d+(\.\d{1,2})?$/', $value) === 1
+            ? (int) round((float) $value * 100)
+            : null;
+    }
+
+    private function isBlank(mixed $entry): bool
+    {
+        $value = is_array($entry) ? ($entry['value'] ?? null) : null;
+
+        return $value === null || $value === '';
     }
 
     private function money(int $centavos): string
