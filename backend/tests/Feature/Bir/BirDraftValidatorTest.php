@@ -26,12 +26,14 @@ class BirDraftValidatorTest extends TestCase
 
         foreach (['is_amended', 'sheets_attached'] as $key) {
             $this->assertSame('required', $errors[$key]['code'], $key);
+            $this->assertSame('error', $errors[$key]['severity'], $key);
             $this->assertSame('"' . Form1601CSchema::byKey()[$key]['label'] . '" is required.', $errors[$key]['message']);
         }
 
         // The test database has no company settings, so every settings field is a record gap.
         foreach (['company_tin', 'company_name', 'rdo_code'] as $key) {
             $this->assertSame('record_gap', $errors[$key]['code'], $key);
+            $this->assertSame('error', $errors[$key]['severity'], $key);
             $this->assertStringContainsString('should come from the company settings', $errors[$key]['message']);
         }
     }
@@ -110,6 +112,7 @@ class BirDraftValidatorTest extends TestCase
         $label = Form1601CSchema::byKey()['total_penalties']['label'];
 
         $this->assertSame('total_mismatch', $errors['total_penalties']['code']);
+        $this->assertSame('error', $errors['total_penalties']['severity']);
         $this->assertSame("\"{$label}\" should be 1,500.00 (items 32 to 34) but is 0.00.", $errors['total_penalties']['message']);
         // Item 36 is checked against what item 35 holds now (still 0), so it isn't flagged yet.
         $this->assertArrayNotHasKey('total_amount_due', $errors);
@@ -199,6 +202,7 @@ class BirDraftValidatorTest extends TestCase
         $label = Form1601CSchema::byKey()['total_taxes_withheld']['label'];
 
         $this->assertSame('payroll_mismatch', $error['code']);
+        $this->assertSame('warning', $error['severity']);
         $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50.", $error['message']);
     }
 
@@ -213,6 +217,7 @@ class BirDraftValidatorTest extends TestCase
         $label = Form2316Schema::byKey()['taxes_withheld_present']['label'];
 
         $this->assertSame('payroll_mismatch', $error['code']);
+        $this->assertSame('warning', $error['severity']);
         $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50.", $error['message']);
     }
 
@@ -242,6 +247,7 @@ class BirDraftValidatorTest extends TestCase
 
         $this->assertCount(1, $errors);
         $this->assertSame('return_period', $errors[0]['field']);
+        $this->assertSame('warning', $errors[0]['severity']);
         $this->assertSame(
             'There is no finalized or paid payroll for 2026-09, so every payroll figure on this form is zero. '
                 . 'Finalize or pay that payroll, then create a new draft.',
@@ -258,6 +264,7 @@ class BirDraftValidatorTest extends TestCase
 
         $this->assertCount(1, $errors);
         $this->assertSame('tax_year', $errors[0]['field']);
+        $this->assertSame('warning', $errors[0]['severity']);
         $this->assertSame(
             'There is no finalized or paid payroll for 2026, so every payroll figure on this form is zero. '
                 . 'Finalize or pay that payroll, then create a new draft.',
@@ -327,7 +334,7 @@ class BirDraftValidatorTest extends TestCase
         return User::firstWhere('role', 'accounting') ?? User::factory()->create(['role' => 'accounting']);
     }
 
-    /** @return array<string, array{field: string, code: string, message: string}> */
+    /** @return array<string, array{field: string, code: string, severity: string, message: string}> */
     private function errorsByField(int $draftId): array
     {
         $errors = app(BirDraftValidator::class)->validate(BirFormDraft::with('employee')->findOrFail($draftId));
@@ -339,7 +346,7 @@ class BirDraftValidatorTest extends TestCase
      * Every error with one code. Unlike errorsByField(), keeps an error that shares its
      * field with another one (empty_period and required are both on item 1).
      *
-     * @return array<int, array{field: string, code: string, message: string}>
+     * @return array<int, array{field: string, code: string, severity: string, message: string}>
      */
     private function errorsWithCode(int $draftId, string $code): array
     {

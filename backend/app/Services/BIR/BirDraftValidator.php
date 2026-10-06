@@ -9,12 +9,14 @@ use App\Services\BIR\Schemas\Form2316Schema;
 /**
  * Checks a draft before it can be submitted, and on demand for the prompting loop.
  *
- * Each error is { field, code, message }. field is always a key in the draft's
+ * Each error is { field, code, severity, message }. field is always a key in the draft's
  * fields. For missing fields, code is BirMissingFields' reason: required,
  * condition or record_gap. An amount that isn't plain decimal text is
  * invalid_amount. A total that doesn't add up is total_mismatch. Tax withheld that the
  * payroll the draft was built from doesn't support is payroll_mismatch. A draft built
  * from a period with no counted payroll is empty_period.
+ *
+ * severity is "error" (blocks submit) or "warning" (shown, never blocks); see WARNING_CODES.
  */
 class BirDraftValidator
 {
@@ -64,11 +66,21 @@ class BirDraftValidator
         Form2316Schema::FORM_TYPE => 'tax_year',
     ];
 
+    /**
+     * Codes that are warnings; every other code is an error. Both stay warnings until the
+     * accountant confirms whether 2316 item 25A is 0 after a year-end refund, and whether a
+     * nil 1601-C must be filed for a month with no payroll.
+     */
+    private const WARNING_CODES = [
+        'payroll_mismatch',
+        'empty_period',
+    ];
+
     public function __construct(private BirConversationService $conversation)
     {
     }
 
-    /** @return array<int, array{field: string, code: string, message: string}> */
+    /** @return array<int, array{field: string, code: string, severity: string, message: string}> */
     public function validate(BirFormDraft $draft): array
     {
         $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();
@@ -87,6 +99,13 @@ class BirDraftValidator
             ...$this->payrollMismatchErrors($draft, $schema),
             ...$this->emptyPeriodErrors($draft),
         ];
+
+        $errors = array_map(fn (array $error) => [
+            'field' => $error['field'],
+            'code' => $error['code'],
+            'severity' => in_array($error['code'], self::WARNING_CODES, true) ? 'warning' : 'error',
+            'message' => $error['message'],
+        ], $errors);
 
         // Form order, so the list reads top to bottom like the printed form.
         $position = array_flip(array_keys($schema));
