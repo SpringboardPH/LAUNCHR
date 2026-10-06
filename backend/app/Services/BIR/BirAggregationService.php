@@ -12,9 +12,15 @@ use Illuminate\Support\Collection;
 
 /**
  * Payroll-derived totals for the BIR forms. Returns only 'payroll'-sourced
- * schema fields; settings/user fields are the mapper's job. Money comes back
- * as plain decimal strings ("55010.00"), the draft value format in
- * docs/bir-api-contract.md §7, and is never null (contract §3 invariant 1).
+ * schema fields; settings and user fields are filled by Mappers\BirFormMapper.
+ * Money comes back as plain decimal strings ("55010.00"), the draft value format
+ * in docs/bir-api-contract.md §7, and is never null (contract §3 invariant 1).
+ *
+ * A total that also takes user-entered items (marked "+ user item" below) holds
+ * payroll's share only. Form1601CMapper / Form2316Mapper::totals() add the user's
+ * figures when a draft is built, and after an edit only if the caller saving it runs
+ * BirFormMapper::recalculate(); otherwise the total stays as built and
+ * BirDraftValidator reports it as total_mismatch.
  *
  * Basic salary is reported net of the EE share, since item 19 (1601-C) and
  * item 36 (2316) already count that share. Matches payroll's own withholding
@@ -34,7 +40,7 @@ class BirAggregationService
     public const COUNTED_STATUSES = ['finalized', 'paid'];
 
     /** Non-MWE employees at or under this annual taxable pay are exempt (1601-C item 23, 2316 item 29). */
-    private const EXEMPT_ANNUAL_CEILING = 250_000;
+    public const EXEMPT_ANNUAL_CEILING = 250_000;
 
     /** 13th month and other benefits are non-taxable up to this much a year; the rest is taxable. */
     private const THIRTEENTH_MONTH_CAP = 90_000;
@@ -94,7 +100,7 @@ class BirAggregationService
         $v['thirteenth_month_and_benefits'] = round($employees->sum('thirteenth'), 2);        // 17
         $v['de_minimis_benefits'] = 0.0;           // 18 — GAP: allowances aren't classified as de minimis
         $v['statutory_contributions_ee'] = round($employees->sum('ee'), 2);                   // 19
-        $v['total_nontaxable_compensation'] = round(                                          // 21 (mapper adds user item 20)
+        $v['total_nontaxable_compensation'] = round(                                          // 21 (+ user item 20, Form1601CMapper)
             $v['mwe_statutory_wage'] + $v['mwe_premium_pay'] + $v['thirteenth_month_and_benefits']
             + $v['de_minimis_benefits'] + $v['statutory_contributions_ee'], 2
         );
@@ -103,11 +109,12 @@ class BirAggregationService
         $v['net_taxable_compensation'] = round($v['total_taxable_compensation'] - $v['exempt_250k_compensation'], 2); // 24
         $v['total_taxes_withheld'] = round($employees->sum('tax'), 2);                        // 25
         $v['has_taxes_withheld'] = $v['total_taxes_withheld'] > 0;                            // 3
-        $v['taxes_withheld_for_remittance'] = $v['total_taxes_withheld'];                     // 27 (mapper adds user item 26)
-        $v['total_remittances_made'] = 0.0;                                                   // 30 (items 28-29 are user)
+        $v['taxes_withheld_for_remittance'] = $v['total_taxes_withheld'];                     // 27 (+ user item 26, Form1601CMapper)
+        $v['total_remittances_made'] = 0.0;                                                   // 30 (+ user items 28-29, Form1601CMapper)
         $v['tax_still_due'] = round($v['taxes_withheld_for_remittance'] - $v['total_remittances_made'], 2); // 31
-        $v['total_penalties'] = 0.0;                                                          // 35 (items 32-34 are user)
+        $v['total_penalties'] = 0.0;                                                          // 35 (+ user items 32-34, Form1601CMapper)
         $v['total_amount_due'] = round($v['tax_still_due'] + $v['total_penalties'], 2);      // 36
+        $v['return_period'] = sprintf('%02d/%04d', $month, $year);                           // 1
 
         return self::contractValues(self::onlySchemaKeys($v, Form1601CSchema::payrollDerivedKeys())) + [
             '_meta' => [
@@ -176,23 +183,27 @@ class BirAggregationService
         $section['tax_thirteenth_month_excess'] = $pay['thirteenth_excess'];                  // 48
         $section['tax_hazard_pay'] = 0.0;                                                     // 49
         $section['tax_overtime'] = $category === 'taxable' ? $pay['overtime'] : 0.0;          // 50 (51A-B are user)
-        $section['tax_regular_total'] = round(array_sum($section), 2);                        // 52 (mapper adds user 44A-B, 51A-B)
+        $section['tax_regular_total'] = round(array_sum($section), 2);                        // 52 (+ user 44A-B, 51A-B, Form2316Mapper)
         $v += $section;
 
         $v['basic_salary_annual'] = round($v['nontax_mwe_basic'] + $v['tax_basic_salary'], 2); // feeds 29 / 39
         $v['gross_compensation_present'] = round($v['nontax_total'] + $v['tax_regular_total'], 2); // 19
         $v['less_nontaxable_present'] = $v['nontax_total'];                                  // 20
         $v['taxable_income_present'] = $v['tax_regular_total'];                              // 21
-        $v['gross_taxable_income'] = $v['taxable_income_present'];                           // 23 (mapper adds user item 22)
-        $v['tax_due'] = $isMwe ? 0.0 : self::annualTaxDue($v['gross_taxable_income']);       // 24
+        $v['gross_taxable_income'] = $v['taxable_income_present'];                           // 23 (+ user item 22, Form2316Mapper)
+        // An MWE's exempt pay never reaches item 23, so anything taxable left (e.g. a 13th month over 90,000) is taxed normally.
+        $v['tax_due'] = self::annualTaxDue($v['gross_taxable_income']);                       // 24
         $v['taxes_withheld_present'] = round($pay['tax'], 2);                                 // 25A
-        $v['total_taxes_withheld_adjusted'] = $v['taxes_withheld_present'];                  // 26 (mapper adds user 25B)
-        $v['total_taxes_withheld_final'] = $v['total_taxes_withheld_adjusted'];              // 28 (mapper adds user 27)
+        $v['total_taxes_withheld_adjusted'] = $v['taxes_withheld_present'];                  // 26 (+ user item 25B, Form2316Mapper)
+        $v['total_taxes_withheld_final'] = $v['total_taxes_withheld_adjusted'];              // 28 (+ user item 27, Form2316Mapper)
 
         $v['employee_tin'] = self::formatTin($employee->tin_number);                          // 3
         $v['employee_last_name'] = (string) $employee->last_name;                             // 4
         $v['employee_first_name'] = (string) $employee->first_name;                           // 4
         $v['employee_contact_number'] = (string) $employee->phone;                            // 8
+        $v['tax_year'] = $year;                                                               // 1
+        [$v['period_from'], $v['period_to']] = self::periodWorked($employee, $year, $rows);   // 2
+        $v['is_mwe'] = $isMwe;                                                                // 11
 
         return self::contractValues(self::onlySchemaKeys($v, Form2316Schema::payrollDerivedKeys())) + [
             '_meta' => [
@@ -211,7 +222,7 @@ class BirAggregationService
         ];
     }
 
-    /** Annual tax due on taxable compensation (2316 item 24). Public so the mapper can recompute once a previous employer's pay (item 22) is added. */
+    /** Annual tax due on taxable compensation (2316 item 24). Public so Form2316Mapper can recompute once a previous employer's pay (item 22) is added. */
     public static function annualTaxDue(float $taxable): float
     {
         foreach (self::ANNUAL_TAX_TABLE as [$over, $base, $rate]) {
@@ -326,6 +337,21 @@ class BirAggregationService
                 => "Employee #{$e['employee_id']} is over P250,000 annualized but had no tax withheld.",
             default => null,
         })->filter()->values()->all();
+    }
+
+    /**
+     * 2316 item 2 as MM/DD. From: the hire date when hired during the year, else 01/01.
+     * To: the last cutoff counted when the employee has left (inactive), else 12/31.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function periodWorked(Employee $employee, int $year, Collection $rows): array
+    {
+        $hired = $employee->hire_date;
+        $from = $hired !== null && $hired->year === $year ? $hired->format('m/d') : '01/01';
+        $to = $employee->status === 'inactive' && $rows->isNotEmpty() ? $rows->last()->cutoff_end->format('m/d') : '12/31';
+
+        return [$from, $to];
     }
 
     /** What a reviewer should check before trusting the 2316. */

@@ -8,7 +8,8 @@ namespace App\Services\BIR\Schemas;
  * Scope: Part I + Part II only (items 1-36).
  *
  * Field shape: key, item (as printed), label, type, source, required, rule,
- * pdf_anchor, options (enum only), required_when (conditional fields only).
+ * pdf_anchor, options (enum only), required_when (conditional fields only),
+ * guidance (help text, from GUIDANCE).
  *
  * required_when is the machine-readable form of a "required when ..." rule,
  * read by BirMissingFields. It replaces 'required' for that field, so a field
@@ -25,16 +26,63 @@ class Form1601CSchema
 {
     public const FORM_TYPE = '1601-C';
 
+    /**
+     * Plain-language help text per field, shown by "what does this mean?". A draft for
+     * accounting's review: wording can change, keys must match fields().
+     */
+    private const GUIDANCE = [
+        'return_period' => "The month this return covers. Filled in from the draft's period.",
+        'is_amended' => 'Answer Yes only if this corrects a 1601-C already filed for the same month. Otherwise No.',
+        'has_taxes_withheld' => 'Yes if any income tax was withheld from employees this month. Filled in from item 25.',
+        'sheets_attached' => 'How many extra sheets are attached to the return, such as the DOLE list of hazard pay. Usually 0.',
+        'atc_code' => 'The BIR tax code for tax withheld on compensation. Always WW010 on this form.',
+        'company_tin' => "The company's Taxpayer Identification Number, including the branch code. Comes from System Settings.",
+        'rdo_code' => 'The 3-digit code of the BIR Revenue District Office where the company is registered. Comes from System Settings.',
+        'company_name' => "The company's registered name, exactly as on its BIR Certificate of Registration. Comes from System Settings.",
+        'company_address' => "The company's registered address, as on its BIR registration. Comes from System Settings.",
+        'company_zip' => "The ZIP code of the company's registered address. Comes from System Settings.",
+        'company_contact_number' => 'A phone number where the BIR can reach the company. Optional.',
+        'agent_category' => 'Private for a private company; Government for a government office or government-owned corporation.',
+        'company_email' => 'An email address where the BIR can reach the company. Optional.',
+        'has_tax_relief' => "Yes only if some employees' pay is tax-exempt under a special law or an international tax treaty. This is rare; usually No.",
+        'tax_relief_details' => 'If you answered Yes above, name the special law or tax treaty.',
+        'total_compensation' => 'Everything paid to all employees this month, taxable and non-taxable, before deductions. Calculated from finalized and paid payroll.',
+        'mwe_statutory_wage' => "Basic pay of minimum wage earners, after their SSS/PhilHealth/Pag-IBIG share. It isn't taxed.",
+        'mwe_premium_pay' => "Holiday, overtime, night shift differential and hazard pay of minimum wage earners only. It isn't taxed for them; for other employees it's taxable pay.",
+        'thirteenth_month_and_benefits' => '13th month pay and other bonuses paid this month, up to the tax-free limit of ₱90,000 a year per employee.',
+        'de_minimis_benefits' => "Small tax-free benefits within BIR limits, such as rice subsidy or uniform allowance. LAUNCHR doesn't classify these yet, so it shows 0.",
+        'statutory_contributions_ee' => "The employees' own share of SSS, PhilHealth and Pag-IBIG (and union dues) deducted this month. It isn't taxed.",
+        'other_nontaxable_compensation' => "Any other tax-exempt pay that isn't in items 15 to 19. Leave it blank if there's none.",
+        'other_nontaxable_compensation_desc' => 'Describe what the amount in item 20 is for.',
+        'total_nontaxable_compensation' => "Items 15 to 20 added up: all the pay that isn't taxed.",
+        'total_taxable_compensation' => 'Item 14 less item 21: the pay that is subject to tax.',
+        'exempt_250k_compensation' => "Taxable pay of employees, other than minimum wage earners, who will earn ₱250,000 or less this year. No tax is withheld from them.",
+        'net_taxable_compensation' => 'Item 22 less item 23: the pay that withholding tax was worked out on.',
+        'total_taxes_withheld' => "All income tax withheld from employees' pay this month, from payroll.",
+        'prior_month_adjustment' => 'A correction to tax withheld in earlier months: positive if too little was withheld, negative if too much. Usually 0.',
+        'taxes_withheld_for_remittance' => 'Item 25 plus item 26: the tax to pay to the BIR for this month.',
+        'previously_remitted_tax' => 'For an amended return only: the tax already paid with the original return for this month.',
+        'other_remittances' => "Any other payment already made for this month's withholding tax. Usually 0.",
+        'other_remittances_desc' => 'Describe the payment entered in item 29.',
+        'total_remittances_made' => 'Item 28 plus item 29: what has already been paid for this month.',
+        'tax_still_due' => 'Item 27 less item 30. A negative amount means more was paid than was due.',
+        'surcharge' => "A penalty for filing or paying after the due date, worked out per BIR rules. Leave it blank when filing on time.",
+        'interest' => 'Interest charged on tax paid late. Leave it blank when filing on time.',
+        'compromise' => "A compromise penalty for late filing, from the BIR's schedule. Leave it blank when filing on time.",
+        'total_penalties' => 'Items 32 to 34 added up.',
+        'total_amount_due' => 'Item 31 plus item 35: the total to pay with this return.',
+    ];
+
     /** @return array<int, array<string, mixed>> */
     public static function fields(): array
     {
-        return [
+        return self::withGuidance([
 
             // ── Part I — Background Information ─────────────────────────────
             [
                 'key' => 'return_period', 'item' => '1', 'label' => 'For the Month (MM/YYYY)',
-                'type' => 'month', 'source' => 'user', 'required' => true,
-                'rule' => 'valid MM/YYYY; must match the requested aggregation month',
+                'type' => 'month', 'source' => 'payroll', 'required' => true,
+                'rule' => "= the draft's period as MM/YYYY",
                 'pdf_anchor' => '1601C.1',
             ],
             [
@@ -134,8 +182,7 @@ class Form1601CSchema
                 'key' => 'thirteenth_month_and_benefits', 'item' => '17',
                 'label' => '13th Month Pay and Other Benefits',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => ">= 0; allowances '13th Month Pay' paid in the month,
-                non-taxable portion only (cap 90,000 per employee — see Form2316Schema item 34)",
+                'rule' => ">= 0; allowances '13th Month Pay' paid in the month, non-taxable portion only (cap 90,000 per employee — see Form2316Schema item 34)",
                 'pdf_anchor' => '1601C.17',
             ],
             [
@@ -263,7 +310,13 @@ class Form1601CSchema
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
                 'rule' => '= 31 + 35', 'pdf_anchor' => '1601C.36',
             ],
-        ];
+        ]);
+    }
+
+    /** Adds each field's 'guidance' from GUIDANCE. */
+    private static function withGuidance(array $fields): array
+    {
+        return array_map(fn (array $f) => $f + ['guidance' => self::GUIDANCE[$f['key']] ?? null], $fields);
     }
 
     /** @return array<string, array<string, mixed>> fields keyed by 'key' */

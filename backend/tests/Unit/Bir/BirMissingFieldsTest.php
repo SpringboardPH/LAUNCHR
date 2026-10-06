@@ -32,15 +32,12 @@ class BirMissingFieldsTest extends TestCase
 
     public function test_a_full_year_2316_asks_only_the_unconditionally_required_user_fields(): void
     {
-        $keys = $this->missingKeys2316([], ['hired_in_year' => false]);
+        // tax_year, period_from/to and is_mwe are filled by the aggregation now; a
+        // full-year employee who isn't an MWE leaves three required user fields.
+        $keys = $this->missingKeys2316(['is_mwe' => false], ['hired_in_year' => false]);
 
-        // 36 user fields start pending; 5 of them are required for everyone.
-        // tax_year and is_mwe are on this list only because nothing fills them yet:
-        // the draft's period already holds the year, and the aggregation already
-        // decided MWE status from settings. When those are filled upstream this
-        // list should shrink to three — update the test then, don't skip it.
         $this->assertSame(
-            ['tax_year', 'employee_rdo_code', 'employee_registered_address', 'employee_birthdate', 'is_mwe'],
+            ['employee_rdo_code', 'employee_registered_address', 'employee_birthdate'],
             $keys,
         );
         foreach (self::PREVIOUS_EMPLOYER_KEYS as $key) {
@@ -50,11 +47,11 @@ class BirMissingFieldsTest extends TestCase
 
     public function test_a_mid_year_hire_is_asked_whether_there_was_a_previous_employer_before_any_figures(): void
     {
-        $keys = $this->missingKeys2316([], ['hired_in_year' => true]);
+        // period_from comes from the hire date, so only the previous-employer gate is added.
+        $keys = $this->missingKeys2316(['is_mwe' => false], ['hired_in_year' => true]);
 
         $this->assertSame(
-            ['tax_year', 'period_from', 'employee_rdo_code', 'employee_registered_address',
-                'employee_birthdate', 'is_mwe', 'has_previous_employer'],
+            ['employee_rdo_code', 'employee_registered_address', 'employee_birthdate', 'has_previous_employer'],
             $keys,
         );
     }
@@ -153,7 +150,8 @@ class BirMissingFieldsTest extends TestCase
             $this->draftFields(Form1601CSchema::fields(), [], ['company_email', 'company_contact_number']),
         ));
 
-        $this->assertSame(['return_period', 'is_amended', 'sheets_attached'], $keys);
+        // return_period is filled from the draft's period by the aggregation.
+        $this->assertSame(['is_amended', 'sheets_attached'], $keys);
     }
 
     public function test_1601c_tax_relief_details_follow_the_answer(): void

@@ -22,28 +22,114 @@ class Form2316Schema
 {
     public const FORM_TYPE = '2316';
 
+    /**
+     * Plain-language help text per field, shown by "what does this mean?". A draft for
+     * accounting's review: wording can change, keys must match fields().
+     */
+    private const GUIDANCE = [
+        'tax_year' => "The calendar year this certificate covers. Filled in from the draft's year.",
+        'period_from' => 'The first day covered this year (MM/DD): 01/01, or the hire date for someone hired during the year.',
+        'period_to' => 'The last day covered this year (MM/DD): 12/31, or the last payroll cutoff for someone who has left.',
+        'employee_tin' => "The employee's Taxpayer Identification Number, from their employee record. If it's missing, update the employee record.",
+        'employee_last_name' => "The employee's last name, from their employee record.",
+        'employee_first_name' => "The employee's first name, from their employee record.",
+        'employee_middle_name' => "The employee's middle name. LAUNCHR doesn't store it yet, so enter it here.",
+        'employee_rdo_code' => "The 3-digit code of the BIR office where the employee's TIN is registered (not the company's). Ask the employee if you don't know it.",
+        'basic_salary_annual' => "The employee's basic pay for the year (item 29 plus item 39), used in the calculations. It isn't printed on the form.",
+        'employee_registered_address' => "The employee's address as registered with the BIR.",
+        'employee_registered_zip' => "The ZIP code of the employee's registered address.",
+        'employee_home_address' => 'Fill in only if the employee lives somewhere other than their registered address.',
+        'employee_home_zip' => 'The ZIP code of the local home address, if one was entered.',
+        'employee_foreign_address' => 'Only for employees who live abroad. Usually left blank.',
+        'employee_birthdate' => "The employee's date of birth (MM/DD/YYYY).",
+        'employee_contact_number' => "The employee's phone number, from their employee record.",
+        'mwe_daily_rate' => "Minimum wage earners only: the statutory minimum wage per day in the employee's region.",
+        'mwe_monthly_rate' => "Minimum wage earners only: the statutory minimum wage per month in the employee's region.",
+        'is_mwe' => 'Yes if the employee is paid the statutory minimum wage; their basic, holiday, overtime, night shift and hazard pay are then not taxed. Comes from the minimum wage earner list in settings.',
+        'present_employer_tin' => "The company's TIN, including the branch code. Comes from System Settings.",
+        'present_employer_name' => "The company's registered name. Comes from System Settings.",
+        'present_employer_address' => "The company's registered address. Comes from System Settings.",
+        'present_employer_zip' => "The ZIP code of the company's registered address. Comes from System Settings.",
+        'employer_type' => "Main if the company is the employee's main employer; Secondary if the employee also works for another employer at the same time.",
+        'has_previous_employer' => "Asked only for employees hired during the year: did they work for another employer earlier this year? If yes, you'll be asked for that employer's details and figures.",
+        'previous_employer_tin' => "The previous employer's TIN, from the 2316 they gave the employee.",
+        'previous_employer_name' => "The previous employer's registered name, from their 2316.",
+        'previous_employer_address' => "The previous employer's registered address. Optional.",
+        'previous_employer_zip' => "The ZIP code of the previous employer's address. Optional.",
+        'gross_compensation_present' => 'All pay from this company for the year, taxable and non-taxable: item 38 plus item 52.',
+        'less_nontaxable_present' => 'The part of item 19 that is not taxed, from item 38.',
+        'taxable_income_present' => 'Item 19 less item 20: the taxable pay from this company.',
+        'taxable_income_previous_employer' => 'The taxable pay the employee got from the previous employer this year, from that employer\'s 2316. Enter 0 if there was none.',
+        'gross_taxable_income' => 'Item 21 plus item 22: the taxable pay for the whole year.',
+        'tax_due' => "The year's income tax on item 23, from the BIR annual tax table.",
+        'taxes_withheld_present' => "The tax this company withheld from the employee's pay during the year, from payroll.",
+        'taxes_withheld_previous' => "The tax the previous employer withheld this year, from that employer's 2316. Enter 0 if there was none.",
+        'total_taxes_withheld_adjusted' => 'Item 25A plus item 25B.',
+        'pera_tax_credit' => 'A 5% tax credit for contributions to a Personal Equity and Retirement Account (PERA). Usually 0.',
+        'total_taxes_withheld_final' => 'Item 26 plus item 27. If it differs from the tax due (item 24), a year-end adjustment is needed: a refund or more tax withheld.',
+        'nontax_mwe_basic' => 'For a minimum wage earner, their statutory minimum wage; for an employee whose taxable pay for the year is ₱250,000 or less, their basic pay. Shown after their SSS/PhilHealth/Pag-IBIG share.',
+        'nontax_mwe_holiday' => "Minimum wage earners only: holiday pay. It isn't taxed.",
+        'nontax_mwe_overtime' => "Minimum wage earners only: overtime pay. It isn't taxed.",
+        'nontax_mwe_night_diff' => "Minimum wage earners only: night shift differential. It isn't taxed.",
+        'nontax_mwe_hazard' => "Minimum wage earners only: hazard pay. It isn't taxed.",
+        'nontax_thirteenth_month' => '13th month pay and other bonuses for the year, up to ₱90,000; this part is tax-free. Anything above ₱90,000 goes to item 48.',
+        'nontax_de_minimis' => "Small tax-free benefits within BIR limits, such as rice subsidy or uniform allowance. LAUNCHR doesn't classify these yet, so it shows 0.",
+        'nontax_statutory_contributions' => "The employee's own share of SSS, PhilHealth and Pag-IBIG (and union dues) for the year. It isn't taxed.",
+        'nontax_other_mwe_compensation' => "Other pay, such as holiday, overtime and night shift pay, of an employee whose taxable pay for the year is ₱250,000 or less. It isn't taxed.",
+        'nontax_total' => "Items 29 to 37 added up: all the pay that isn't taxed.",
+        'tax_basic_salary' => 'Basic pay of a taxable employee, after their SSS/PhilHealth/Pag-IBIG share. It includes holiday pay and night shift differential.',
+        'tax_representation' => "A taxable representation allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
+        'tax_transportation' => "A taxable transportation allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
+        'tax_cola' => "A taxable cost of living allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
+        'tax_housing' => "A taxable fixed housing allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
+        'tax_others_44a_desc' => 'What the amount in 44A is for: other regular taxable pay not listed above.',
+        'tax_others_44a_amount' => "Other regular taxable pay that isn't in items 39 to 43. Leave it blank if there's none.",
+        'tax_others_44b_desc' => 'What the amount in 44B is for.',
+        'tax_others_44b_amount' => 'A second amount of other regular taxable pay, if needed.',
+        'tax_commission' => "Sales commissions. LAUNCHR payroll doesn't track these separately yet, so it shows 0.",
+        'tax_profit_sharing' => "Profit sharing paid to the employee. LAUNCHR payroll doesn't track this yet, so it shows 0.",
+        'tax_directors_fees' => "Fees, including director's fees. LAUNCHR payroll doesn't track these yet, so it shows 0.",
+        'tax_thirteenth_month_excess' => '13th month pay and other bonuses above the ₱90,000 tax-free limit. This part is taxed.',
+        'tax_hazard_pay' => "Hazard pay of an employee who isn't a minimum wage earner. It's taxed.",
+        'tax_overtime' => 'Overtime pay, including rest day pay, of a taxable employee.',
+        'tax_others_51a_desc' => 'What the amount in 51A is for: other supplementary taxable pay not listed above.',
+        'tax_others_51a_amount' => "Other supplementary taxable pay that isn't in items 45 to 50, such as pay given outside payroll. Leave it blank if there's none.",
+        'tax_others_51b_desc' => 'What the amount in 51B is for.',
+        'tax_others_51b_amount' => 'A second amount of other supplementary taxable pay, if needed.',
+        'tax_regular_total' => 'Items 39 to 51B added up: all the taxable pay from this company.',
+        'is_substituted_filing' => "Yes if the employee qualifies for substituted filing: only salary income, from this one employer for the whole year, with the tax withheld equal to the tax due. Then this 2316 serves as their income tax return.",
+        'employer_signature_date' => "The date the company's authorized signatory signs the certificate.",
+        'employee_signature_date' => 'The date the employee signs to confirm the figures.',
+        'substituted_employer_signature' => 'Signed by hand on the printed form, for substituted filing.',
+        'substituted_employee_signature' => 'Signed by hand on the printed form, for substituted filing.',
+        'employee_ctc_or_id' => "For substituted filing: the employee's Community Tax Certificate (cedula) number or a valid ID number.",
+        'ctc_place_of_issue' => 'Where the CTC or ID was issued.',
+        'ctc_date_issued' => 'When the CTC or ID was issued (MM/DD/YYYY).',
+        'ctc_amount_paid' => 'If a CTC was used: the amount paid for it.',
+    ];
+
     /** @return array<int, array<string, mixed>> */
     public static function fields(): array
     {
-        return [
+        return self::withGuidance([
 
             // ── Part I — Employee Information ────────────────────────────────
             [
                 'key' => 'tax_year', 'item' => '1', 'label' => 'For the Year (YYYY)',
-                'type' => 'integer', 'source' => 'user', 'required' => true,
-                'rule' => '4-digit year', 'pdf_anchor' => '2316.1',
+                'type' => 'integer', 'source' => 'payroll', 'required' => true,
+                'rule' => "= the draft's year", 'pdf_anchor' => '2316.1',
             ],
             [
                 'key' => 'period_from', 'item' => '2', 'label' => 'For the Period From (MM/DD)',
-                'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => 'required only when the employee did not work the full year at this employer',
+                'type' => 'string', 'source' => 'payroll', 'required' => false,
+                'rule' => 'MM/DD: the hire date when hired during the year, else 01/01; required only when the employee did not work the full year at this employer',
                 'pdf_anchor' => '2316.2.from',
                 'required_when' => ['context' => 'hired_in_year'],
             ],
             [
                 'key' => 'period_to', 'item' => '2', 'label' => 'For the Period To (MM/DD)',
-                'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => 'required with period_from', 'pdf_anchor' => '2316.2.to',
+                'type' => 'string', 'source' => 'payroll', 'required' => false,
+                'rule' => 'MM/DD: the last cutoff counted when the employee has left (inactive), else 12/31; required with period_from', 'pdf_anchor' => '2316.2.to',
                 'required_when' => ['field' => 'period_from', 'present' => true],
             ],
             [
@@ -128,8 +214,8 @@ class Form2316Schema
             [
                 'key' => 'is_mwe', 'item' => '11',
                 'label' => 'Minimum Wage Earner (MWE) whose compensation is exempt from withholding tax',
-                'type' => 'boolean', 'source' => 'user', 'required' => true,
-                'rule' => 'GAP: no MWE flag or minimum-wage table; must be asked, defaults false',
+                'type' => 'boolean', 'source' => 'payroll', 'required' => true,
+                'rule' => 'true when the employee is in the bir_mwe_employee_ids setting (stopgap until employees carry an MWE flag)',
                 'pdf_anchor' => '2316.11',
             ],
 
@@ -195,8 +281,7 @@ class Form2316Schema
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => '4 digits', 'pdf_anchor' => '2316.18A',
             ],
-
-            // ── Part IV-A — Summary ───────────────────────────────────────────
+                        // ── Part IV-A — Summary ───────────────────────────────────────────
             [
                 'key' => 'gross_compensation_present', 'item' => '19',
                 'label' => 'Gross Compensation Income from Present Employer (Sum of Items 38 and 52)',
@@ -231,7 +316,7 @@ class Form2316Schema
             [
                 'key' => 'tax_due', 'item' => '24', 'label' => 'Tax Due',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '= BirAggregationService::annualTaxDue(item 23), TRAIN annual table from 2023; 0 for an MWE', 'pdf_anchor' => '2316.24',
+                'rule' => '= BirAggregationService::annualTaxDue(item 23), TRAIN annual table from 2023; Form2316Mapper::totals() reworks it from item 23 when the draft is built or recalculated', 'pdf_anchor' => '2316.24',
             ],
             [
                 'key' => 'taxes_withheld_present', 'item' => '25A', 'label' => 'Amount of Taxes Withheld — Present Employer',
@@ -324,7 +409,6 @@ class Form2316Schema
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
                 'rule' => '= sum(29..37)', 'pdf_anchor' => '2316.38',
             ],
-
             // ── Part IV-B, Section B — Taxable Compensation Income (Regular) ──
             [
                 'key' => 'tax_basic_salary', 'item' => '39', 'label' => 'Basic Salary',
@@ -500,7 +584,13 @@ class Form2316Schema
                 'type' => 'decimal', 'source' => 'user', 'required' => false,
                 'rule' => 'required only when employee_ctc_or_id is a CTC number', 'pdf_anchor' => '2316.ctc.amount',
             ],
-        ];
+        ]);
+    }
+
+    /** Adds each field's 'guidance' from GUIDANCE. */
+    private static function withGuidance(array $fields): array
+    {
+        return array_map(fn (array $f) => $f + ['guidance' => self::GUIDANCE[$f['key']] ?? null], $fields);
     }
 
     /** @return array<string, array<string, mixed>> fields keyed by 'key' */
