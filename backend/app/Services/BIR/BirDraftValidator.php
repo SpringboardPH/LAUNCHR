@@ -12,7 +12,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * Each error is { field, code, message }. field is always a key in the draft's
  * fields. For missing fields, code is BirMissingFields' reason: required,
  * condition or record_gap. An amount that isn't plain decimal text is
- * invalid_amount. A total that doesn't add up is total_mismatch.
+ * invalid_amount. A total that doesn't add up is total_mismatch. Tax withheld that the
+ * payroll the draft was built from doesn't support is payroll_mismatch.
  */
 class BirDraftValidator
 {
@@ -50,6 +51,12 @@ class BirDraftValidator
             [], 'items 39 to 51B'],
     ];
 
+    /** The tax-withheld field checked against the draft's payroll snapshot: 1601-C item 25, 2316 item 25A. */
+    private const PAYROLL_TAX_FIELDS = [
+        Form1601CSchema::FORM_TYPE => 'total_taxes_withheld',
+        Form2316Schema::FORM_TYPE => 'taxes_withheld_present',
+    ];
+
     public function __construct(private BirConversationService $conversation)
     {
     }
@@ -70,6 +77,7 @@ class BirDraftValidator
             ...$errors,
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
+            ...$this->payrollMismatchErrors($draft, $schema),
         ];
 
         // Form order, so the list reads top to bottom like the printed form.
@@ -151,6 +159,52 @@ class BirDraftValidator
         }
 
         return $errors;
+    }
+
+    /**
+     * One error if the form's tax withheld differs from what the payroll frozen onto
+     * source_snapshot at creation withheld. Live payroll is never read, so later payroll
+     * edits don't matter. Skipped when there is no snapshot (revisions, seeded fixtures),
+     * and when the field is blank or invalid, which other rules already report.
+     *
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function payrollMismatchErrors(BirFormDraft $draft, array $schema): array
+    {
+        $rows = $draft->source_snapshot['rows'] ?? null;
+        $field = self::PAYROLL_TAX_FIELDS[$draft->form_type];
+        $actual = $this->centavos(($draft->fields ?? [])[$field] ?? null);
+        if (!is_array($rows) || $actual === null) {
+            return [];
+        }
+
+        $expected = $this->snapshotTaxCentavos($rows);
+        if ($expected === $actual) {
+            return [];
+        }
+
+        return [[
+            'field' => $field,
+            'code' => 'payroll_mismatch',
+            'message' => "\"{$schema[$field]['label']}\" is {$this->money($actual)}, but the payroll this draft was built from withheld {$this->money($expected)}.",
+        ]];
+    }
+
+    /**
+     * Tax withheld across snapshot rows, summed the way BirAggregationService::payTotals()
+     * does (raw amounts, rounded once at the end) so an untouched draft always matches.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function snapshotTaxCentavos(array $rows): int
+    {
+        $tax = 0.0;
+        foreach ($rows as $row) {
+            $tax += (float) ($row['deductions']['Withholding Tax'] ?? 0);
+        }
+
+        return (int) round(round($tax, 2) * 100);
     }
 
     /** A field entry's amount in whole centavos, or null if it is blank or not a valid amount. */

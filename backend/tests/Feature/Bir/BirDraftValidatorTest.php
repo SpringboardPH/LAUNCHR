@@ -176,6 +176,62 @@ class BirDraftValidatorTest extends TestCase
         $this->assertNotContains('invalid_amount', array_column($this->errorsByField($id), 'code'));
     }
 
+    public function test_a_draft_built_from_payroll_has_no_payroll_mismatch(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300.25]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['Withholding Tax' => 300.25]);
+
+        $this->assertNotContains('payroll_mismatch', array_column($this->errorsByField($this->create1601C()), 'code'));
+        $this->assertNotContains('payroll_mismatch', array_column($this->errorsByField($this->create2316()), 'code'));
+    }
+
+    public function test_overwriting_1601c_tax_withheld_is_flagged_against_the_payroll(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300.25]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['Withholding Tax' => 300.25]);
+        $id = $this->create1601C();
+        $this->answer($id, ['total_taxes_withheld' => '1234.56']);
+
+        $error = $this->errorsByField($id)['total_taxes_withheld'];
+        $label = Form1601CSchema::byKey()['total_taxes_withheld']['label'];
+
+        $this->assertSame('payroll_mismatch', $error['code']);
+        $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50.", $error['message']);
+    }
+
+    public function test_overwriting_2316_tax_withheld_is_flagged_against_the_payroll(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300.25]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['Withholding Tax' => 300.25]);
+        $id = $this->create2316();
+        $this->answer($id, ['taxes_withheld_present' => '1234.56']);
+
+        $error = $this->errorsByField($id)['taxes_withheld_present'];
+        $label = Form2316Schema::byKey()['taxes_withheld_present']['label'];
+
+        $this->assertSame('payroll_mismatch', $error['code']);
+        $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50.", $error['message']);
+    }
+
+    public function test_a_draft_without_a_payroll_snapshot_is_never_flagged(): void
+    {
+        // Like a revision or a seeded fixture: fields but no source_snapshot.
+        $draft = BirFormDraft::create([
+            'form_type' => '1601-C',
+            'period' => '2026-09',
+            'status' => 'draft',
+            'version' => 1,
+            'prepared_by' => $this->accounting()->id,
+            'fields' => ['total_taxes_withheld' => [
+                'value' => '999.00', 'origin' => 'user', 'edited' => true,
+                'system_value' => null, 'edited_by' => null, 'edited_at' => null,
+            ]],
+            'validation_errors' => [],
+        ]);
+
+        $this->assertNotContains('payroll_mismatch', array_column($this->errorsByField($draft->id), 'code'));
+    }
+
     private function create2316(): int
     {
         $employeeId = Employee::where('employee_id', 'EMP-BIR-V1')->value('id');
