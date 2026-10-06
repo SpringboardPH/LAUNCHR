@@ -109,17 +109,19 @@ class BirWorkflowTest extends TestCase
         $this->assertSame('finalized', $draft->fresh()->status);
     }
 
-    public function test_a_draft_can_be_submitted()
+    // A draft that passes and is submitted is covered in BirSubmitTest, which builds one.
+    public function test_a_draft_that_fails_validation_is_not_submitted()
     {
         $accounting = User::factory()->create(['role' => 'accounting']);
         $draft = $this->makeDraft('draft', $accounting);
 
+        // No fields at all, so every required field is missing.
         $this->actingAs($accounting)
             ->postJson("/api/bir/drafts/{$draft->id}/submit")
-            ->assertOk()
-            ->assertJson(['success' => true]);
+            ->assertStatus(422)
+            ->assertJson(['success' => false]);
 
-        $this->assertSame('pending', $draft->fresh()->status);
+        $this->assertSame('draft', $draft->fresh()->status);
     }
 
     public function test_editing_payroll_after_creating_a_draft_does_not_change_its_snapshot()

@@ -235,14 +235,7 @@ class BirFormController extends Controller
             ], 400);
         }
 
-        $errors = $validator->validate($draft);
-        // MySQL's JSON column re-sorts object keys, so Eloquent's strict compare always sees a change.
-        // == ignores key order; only save, and so audit, when the result really differs.
-        $changed = $errors != $draft->validation_errors;
-        $draft->validation_errors = $errors;
-        if ($changed) {
-            $draft->save();
-        }
+        $this->storeValidation($draft, $validator);
 
         $draft->load('preparer', 'approver', 'employee');
 
@@ -258,6 +251,19 @@ class BirFormController extends Controller
             'data' => new BirFormDraftResource($draft),
             'message' => 'Draft validated: ' . $count('error') . ', ' . $count('warning'),
         ]);
+    }
+
+    /** Runs the validator and stores its result on validation_errors, saving only when it changed. */
+    private function storeValidation(BirFormDraft $draft, BirDraftValidator $validator): void
+    {
+        $errors = $validator->validate($draft);
+        // MySQL's JSON column re-sorts object keys, so Eloquent's strict compare always sees a change.
+        // == ignores key order; only save, and so audit, when the result really differs.
+        $changed = $errors != $draft->validation_errors;
+        $draft->validation_errors = $errors;
+        if ($changed) {
+            $draft->save();
+        }
     }
 
     private function transition(int $id, string $to, ?string $reason = null)
@@ -290,8 +296,40 @@ class BirFormController extends Controller
         return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => "Draft moved to {$to}"]);
     }
 
-    public function submit(int $id)
+    /**
+     * draft -> pending, but only once the draft passes validation. The status check comes
+     * first, so a form that can't be submitted is never validated or changed. The result is
+     * stored either way: a refused draft shows why, and warnings, which never block, stay
+     * visible to the reviewer. Refused with 422, so the screen can tell "fix the form" from
+     * the 400 for an illegal move.
+     */
+    public function submit(BirDraftValidator $validator, int $id)
     {
+        // employee: BirConversationService::context() needs the hire date for a 2316.
+        $draft = BirFormDraft::with('employee')->find($id);
+        if (!$draft) {
+            return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+        }
+
+        if (!in_array('pending', self::STATUS_FLOW[$draft->status] ?? [], true)) {
+            return $this->transition($id, 'pending'); // returns the 400 naming the current status
+        }
+
+        $this->storeValidation($draft, $validator);
+
+        $errors = count(array_filter($draft->validation_errors, fn (array $entry) => $entry['severity'] === 'error'));
+        if ($errors > 0) {
+            $draft->load('preparer', 'approver', 'employee');
+
+            return response()->json([
+                'success' => false,
+                'data' => new BirFormDraftResource($draft),
+                'message' => $errors === 1
+                    ? 'Draft has 1 error; fix it before submitting'
+                    : "Draft has {$errors} errors; fix them before submitting",
+            ], 422);
+        }
+
         return $this->transition($id, 'pending');
     }
 
