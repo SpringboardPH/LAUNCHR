@@ -40,7 +40,8 @@ class BirValidateEndpointTest extends TestCase
     public function test_fixing_a_field_and_validating_again_clears_its_entry(): void
     {
         $id = $this->create1601C();
-        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00']);
+        // PUT recalculates totals, so type item 35 by hand to make it wrong.
+        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00', 'total_penalties' => '0.00']);
 
         $entry = $this->entriesFor($this->validateDraft($id)->assertOk(), 'total_penalties');
         $this->assertCount(1, $entry);

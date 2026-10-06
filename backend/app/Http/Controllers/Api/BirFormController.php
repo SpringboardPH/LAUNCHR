@@ -10,7 +10,7 @@ use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
 use App\Services\BIR\BirDraftValidator;
-use App\Services\BIR\BirSettingsService;
+use App\Services\BIR\Mappers\BirFormMapper;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
@@ -75,14 +75,9 @@ class BirFormController extends Controller
         $validated = $request->validated();
         $period = $validated['period'];
 
-        $aggregation = $validated['form_type'] === '1601-C'
-            ? BirAggregationService::monthlyWithholding((int) substr($period, 0, 4), (int) substr($period, 5, 2))
-            : BirAggregationService::annualCompensation($validated['employee_id'], (int) $period);
-
-        // Disjoint key sets: the aggregation returns only source: payroll keys, settings only
-        // source: settings keys. values() omits blanks, seed placeholders and out-of-options
-        // values, so those stay pending and get prompted for.
-        $values = $aggregation + BirSettingsService::values($validated['form_type']);
+        // Dev A's mapper: payroll totals plus company settings as full six-key entries, totals
+        // worked out, anything it can't supply left pending. meta is the aggregation's _meta.
+        $built = BirFormMapper::build($validated['form_type'], $period, $validated['employee_id'] ?? null);
 
         $draft = BirFormDraft::create([
             'form_type' => $validated['form_type'],
@@ -92,12 +87,12 @@ class BirFormController extends Controller
             'version' => 1,
             'parent_id' => null,
             'prepared_by' => $request->user()->id,
-            'fields' => $this->buildFields($validated['form_type'], $values),
+            'fields' => $built['fields'],
             'source_snapshot' => $this->buildSourceSnapshot(
                 $validated['form_type'],
                 $period,
                 $validated['employee_id'] ?? null,
-                $aggregation['_meta'],
+                $built['meta'],
             ),
             'validation_errors' => [],
         ]);
@@ -146,34 +141,6 @@ class BirFormController extends Controller
         return ['rows' => $rows, 'meta' => $meta];
     }
 
-    /**
-     * Turns the aggregation result merged with the settings values into the draft's fields
-     * object: every schema key, each a full six-key entry. A filled value's origin is its schema
-     * source (payroll or settings). Missing and empty-string values become pending (contract §3,
-     * invariant 1), so Dev C's prompting loop sees them; _meta and other non-schema keys are dropped.
-     */
-    private function buildFields(string $formType, array $values): array
-    {
-        $schema = $formType === '1601-C' ? Form1601CSchema::fields() : Form2316Schema::fields();
-
-        $fields = [];
-        foreach ($schema as $field) {
-            $value = $values[$field['key']] ?? null;
-            $filled = $value !== null && $value !== '';
-
-            $fields[$field['key']] = [
-                'value' => $filled ? $value : null,
-                'origin' => $filled ? $field['source'] : 'pending',
-                'edited' => false,
-                'system_value' => null,
-                'edited_by' => null,
-                'edited_at' => null,
-            ];
-        }
-
-        return $fields;
-    }
-
     public function show(int $id)
     {
         $draft = BirFormDraft::with('preparer', 'approver', 'employee')->find($id);
@@ -206,7 +173,9 @@ class BirFormController extends Controller
                 ? ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null]
                 : ['value' => $value, 'origin' => 'user', 'edited' => true]);
         }
-        $draft->fields = $fields;
+        // Totals follow their parts. A total someone typed (edited) is never overwritten, so a
+        // hand-typed total that doesn't add up is still left for the validator to flag.
+        $draft->fields = BirFormMapper::recalculate($draft->form_type, $fields);
         $draft->save();
 
         $draft->load('preparer', 'approver', 'employee');

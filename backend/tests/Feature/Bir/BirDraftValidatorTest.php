@@ -103,10 +103,11 @@ class BirDraftValidatorTest extends TestCase
         $this->assertNotContains('total_mismatch', $codes);
     }
 
-    public function test_a_penalty_entered_without_updating_its_total_is_flagged_on_that_total(): void
+    public function test_a_hand_typed_total_that_does_not_add_up_is_flagged_on_that_total(): void
     {
         $id = $this->create1601C();
-        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00']);
+        // PUT recalculates totals, so only a total typed by hand can go stale.
+        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00', 'total_penalties' => '0.00']);
 
         $errors = $this->errorsByField($id);
         $label = Form1601CSchema::byKey()['total_penalties']['label'];
@@ -114,14 +115,16 @@ class BirDraftValidatorTest extends TestCase
         $this->assertSame('total_mismatch', $errors['total_penalties']['code']);
         $this->assertSame('error', $errors['total_penalties']['severity']);
         $this->assertSame("\"{$label}\" should be 1,500.00 (items 32 to 34) but is 0.00.", $errors['total_penalties']['message']);
-        // Item 36 is checked against what item 35 holds now (still 0), so it isn't flagged yet.
+        // Item 36 is recalculated from what item 35 holds (the typed 0), so it adds up.
         $this->assertArrayNotHasKey('total_amount_due', $errors);
     }
 
-    public function test_correcting_one_total_brings_up_the_next_until_all_are_correct(): void
+    public function test_correcting_one_hand_typed_total_brings_up_the_next_until_all_are_correct(): void
     {
         $id = $this->create1601C();
-        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00']);
+        $this->answer($id, [
+            'surcharge' => '1000.00', 'interest' => '500.00', 'total_penalties' => '0.00', 'total_amount_due' => '0.00',
+        ]);
 
         $this->answer($id, ['total_penalties' => '1500.00']);
         $errors = $this->errorsByField($id);
@@ -142,11 +145,11 @@ class BirDraftValidatorTest extends TestCase
         $this->assertNotContains('total_mismatch', $codes);
     }
 
-    public function test_a_2316_previous_employer_tax_entered_without_updating_the_total_is_flagged(): void
+    public function test_a_2316_hand_typed_total_that_leaves_out_previous_employer_tax_is_flagged(): void
     {
         $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300]);
         $id = $this->create2316();
-        $this->answer($id, ['taxes_withheld_previous' => '5000.00']);
+        $this->answer($id, ['taxes_withheld_previous' => '5000.00', 'total_taxes_withheld_adjusted' => '300.00']);
 
         $error = $this->errorsByField($id)['total_taxes_withheld_adjusted'];
         $label = Form2316Schema::byKey()['total_taxes_withheld_adjusted']['label'];

@@ -344,8 +344,15 @@ Editing is currently allowed in `draft` status only. Week 6 widens this so the
 approver can edit a form in `pending` before approving it (§5). That is not
 implemented yet: a `PUT` on a pending form still returns 400.
 
-`PUT` does not run validation and does not recalculate totals (§7). Call
-`validate` afterwards to refresh `validation_errors`.
+After merging the answers, `PUT` recalculates the form's totals (Dev A's
+`BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
+in the same response. A total someone typed by hand (`edited: true`) is never
+overwritten, and the totals after it are worked out from the typed value.
+Clearing it (`null`) hands it back to the calculation. A typed total that
+doesn't add up is reported by `validate` as `total_mismatch`.
+
+`PUT` does not run validation. Call `validate` afterwards to refresh
+`validation_errors`.
 
 ### POST /bir/drafts/{id}/validate
 
@@ -423,13 +430,6 @@ another draft with the same `version` and the same `parent_id`. Still open:
 whether "no limit" means a chain (only the latest finalized version can be
 revised) or several corrections of one form at once (`version` would then be
 the highest for that form + 1). The numbering changes once that is settled.
-
-**`PUT` does not recalculate totals.** If someone edits a part (a surcharge, a
-previous employer's tax), its total keeps its old value and `validate` reports
-`total_mismatch` until the total is corrected by hand. Dev A's
-`BirFormMapper::recalculate()` exists for this but is not wired into `PUT` yet;
-once it is, totals follow their parts and only a hand-typed total that doesn't
-add up is flagged.
 
 **`payroll_mismatch` and `empty_period` are warnings, pending the accountant.**
 On the real filed 2316s, item 25A is 0 for every employee even though the
