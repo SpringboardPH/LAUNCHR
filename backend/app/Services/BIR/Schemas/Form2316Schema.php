@@ -281,7 +281,6 @@ class Form2316Schema
                 'type' => 'string', 'source' => 'user', 'required' => false,
                 'rule' => '4 digits', 'pdf_anchor' => '2316.18A',
             ],
-                        // ── Part IV-A — Summary ───────────────────────────────────────────
             [
                 'key' => 'gross_compensation_present', 'item' => '19',
                 'label' => 'Gross Compensation Income from Present Employer (Sum of Items 38 and 52)',
