@@ -11,10 +11,27 @@ use App\Services\BIR\Schemas\Form2316Schema;
  *
  * Each error is { field, code, message }. field is always a key in the draft's
  * fields. For missing fields, code is BirMissingFields' reason: required,
- * condition or record_gap.
+ * condition or record_gap. A total that doesn't add up is total_mismatch.
  */
 class BirDraftValidator
 {
+    /**
+     * Totals on the 1601-C, written out by hand from Form1601CSchema's rules. The schema's
+     * rule text is prose and its item numbers aren't unique, so it is never parsed.
+     * Each total => [fields added, fields subtracted, the items it covers in words].
+     */
+    private const TOTALS_1601C = [
+        'total_nontaxable_compensation' => [['mwe_statutory_wage', 'mwe_premium_pay', 'thirteenth_month_and_benefits',
+            'de_minimis_benefits', 'statutory_contributions_ee', 'other_nontaxable_compensation'], [], 'items 15 to 20'],
+        'total_taxable_compensation' => [['total_compensation'], ['total_nontaxable_compensation'], 'item 14 less item 21'],
+        'net_taxable_compensation' => [['total_taxable_compensation'], ['exempt_250k_compensation'], 'item 22 less item 23'],
+        'taxes_withheld_for_remittance' => [['total_taxes_withheld', 'prior_month_adjustment'], [], 'items 25 and 26'],
+        'total_remittances_made' => [['previously_remitted_tax', 'other_remittances'], [], 'items 28 and 29'],
+        'tax_still_due' => [['taxes_withheld_for_remittance'], ['total_remittances_made'], 'item 27 less item 30'],
+        'total_penalties' => [['surcharge', 'interest', 'compromise'], [], 'items 32 to 34'],
+        'total_amount_due' => [['tax_still_due', 'total_penalties'], [], 'items 31 and 35'],
+    ];
+
     public function __construct(private BirConversationService $conversation)
     {
     }
@@ -24,11 +41,78 @@ class BirDraftValidator
     {
         $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();
 
-        return array_map(fn (array $missing) => [
+        $errors = array_map(fn (array $missing) => [
             'field' => $missing['key'],
             'code' => $missing['reason'],
             'message' => $this->missingMessage($missing, $schema),
         ], $this->conversation->missingFields($draft));
+
+        if ($draft->form_type === Form1601CSchema::FORM_TYPE) {
+            $errors = [...$errors, ...$this->totalErrors(self::TOTALS_1601C, $draft->fields ?? [], $schema)];
+        }
+
+        // Form order, so the list reads top to bottom like the printed form.
+        $position = array_flip(array_keys($schema));
+        usort($errors, fn (array $a, array $b) => $position[$a['field']] <=> $position[$b['field']]);
+
+        return $errors;
+    }
+
+    /**
+     * One error per total that doesn't equal the sum of its parts. Compared in whole
+     * centavos so rounding can't cause a false error. A total, or a required part, that is
+     * still blank is skipped: the missing-fields rule already reports it. An optional part
+     * left blank counts as 0, which is what the printed form shows for it.
+     *
+     * @param  array<string, array{0: array<int, string>, 1: array<int, string>, 2: string}>  $totals
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function totalErrors(array $totals, array $fields, array $schema): array
+    {
+        $errors = [];
+
+        foreach ($totals as $total => [$plus, $minus, $items]) {
+            $actual = $this->centavos($fields[$total] ?? null);
+            if ($actual === null) {
+                continue;
+            }
+
+            $expected = 0;
+            foreach ([[$plus, 1], [$minus, -1]] as [$keys, $sign]) {
+                foreach ($keys as $key) {
+                    $part = $this->centavos($fields[$key] ?? null) ?? ($schema[$key]['required'] ? null : 0);
+                    if ($part === null) {
+                        continue 3;
+                    }
+                    $expected += $sign * $part;
+                }
+            }
+
+            if ($expected !== $actual) {
+                $errors[] = [
+                    'field' => $total,
+                    'code' => 'total_mismatch',
+                    'message' => "\"{$schema[$total]['label']}\" should be {$this->money($expected)} ({$items}) but is {$this->money($actual)}.",
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    /** A field entry's amount in whole centavos, or null if it holds no number. */
+    private function centavos(mixed $entry): ?int
+    {
+        $value = is_array($entry) ? ($entry['value'] ?? null) : null;
+
+        return is_numeric($value) ? (int) round((float) $value * 100) : null;
+    }
+
+    private function money(int $centavos): string
+    {
+        return number_format($centavos / 100, 2);
     }
 
     /**

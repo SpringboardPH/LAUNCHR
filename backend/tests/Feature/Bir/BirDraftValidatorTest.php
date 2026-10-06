@@ -3,6 +3,8 @@
 namespace Tests\Feature\Bir;
 
 use App\Models\BirFormDraft;
+use App\Models\Employee;
+use App\Models\Payroll;
 use App\Models\User;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Schemas\Form1601CSchema;
@@ -83,6 +85,74 @@ class BirDraftValidatorTest extends TestCase
         }
 
         $this->assertSame([], $reported);
+    }
+
+    public function test_a_1601c_built_from_payroll_has_totals_that_add_up(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
+
+        $codes = array_column($this->errorsByField($this->create1601C()), 'code');
+
+        $this->assertNotContains('total_mismatch', $codes);
+    }
+
+    public function test_a_penalty_entered_without_updating_its_total_is_flagged_on_that_total(): void
+    {
+        $id = $this->create1601C();
+        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00']);
+
+        $errors = $this->errorsByField($id);
+        $label = Form1601CSchema::byKey()['total_penalties']['label'];
+
+        $this->assertSame('total_mismatch', $errors['total_penalties']['code']);
+        $this->assertSame("\"{$label}\" should be 1,500.00 (items 32 to 34) but is 0.00.", $errors['total_penalties']['message']);
+        // Item 36 is checked against what item 35 holds now (still 0), so it isn't flagged yet.
+        $this->assertArrayNotHasKey('total_amount_due', $errors);
+    }
+
+    public function test_correcting_one_total_brings_up_the_next_until_all_are_correct(): void
+    {
+        $id = $this->create1601C();
+        $this->answer($id, ['surcharge' => '1000.00', 'interest' => '500.00']);
+
+        $this->answer($id, ['total_penalties' => '1500.00']);
+        $errors = $this->errorsByField($id);
+        $this->assertArrayNotHasKey('total_penalties', $errors);
+        $this->assertSame('total_mismatch', $errors['total_amount_due']['code']);
+
+        $this->answer($id, ['total_amount_due' => '1500.00']);
+        $this->assertNotContains('total_mismatch', array_column($this->errorsByField($id), 'code'));
+    }
+
+    private function answer(int $draftId, array $fields): void
+    {
+        $this->actingAs($this->accounting())->putJson("/api/bir/drafts/{$draftId}", ['fields' => $fields])->assertOk();
+    }
+
+    private function payrollFor(string $start, string $end, array $deductions): void
+    {
+        $employee = Employee::firstOrCreate(['employee_id' => 'EMP-BIR-V1'], [
+            'first_name' => 'Bir',
+            'last_name' => 'Validator',
+            'email' => 'bir-validator@example.com',
+            'position' => 'Staff',
+            'hire_date' => '2025-01-06',
+            'salary' => 30000,
+            'status' => 'active',
+            'rate_type' => 'monthly',
+        ]);
+
+        Payroll::create([
+            'employee_id' => $employee->id,
+            'cutoff_start' => $start,
+            'cutoff_end' => $end,
+            'base_salary' => 30000,
+            'gross_pay' => 15000,
+            'deductions' => $deductions,
+            'allowances' => [],
+            'status' => 'finalized',
+        ]);
     }
 
     private function create1601C(): int
