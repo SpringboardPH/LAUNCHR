@@ -8,6 +8,7 @@ use App\Models\Payroll;
 use App\Models\User;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Schemas\Form1601CSchema;
+use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -123,6 +124,39 @@ class BirDraftValidatorTest extends TestCase
 
         $this->answer($id, ['total_amount_due' => '1500.00']);
         $this->assertNotContains('total_mismatch', array_column($this->errorsByField($id), 'code'));
+    }
+
+    public function test_a_2316_built_from_payroll_has_totals_that_add_up(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
+
+        $codes = array_column($this->errorsByField($this->create2316()), 'code');
+
+        $this->assertNotContains('total_mismatch', $codes);
+    }
+
+    public function test_a_2316_previous_employer_tax_entered_without_updating_the_total_is_flagged(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300]);
+        $id = $this->create2316();
+        $this->answer($id, ['taxes_withheld_previous' => '5000.00']);
+
+        $error = $this->errorsByField($id)['total_taxes_withheld_adjusted'];
+        $label = Form2316Schema::byKey()['total_taxes_withheld_adjusted']['label'];
+
+        $this->assertSame('total_mismatch', $error['code']);
+        $this->assertSame("\"{$label}\" should be 5,300.00 (items 25A and 25B) but is 300.00.", $error['message']);
+    }
+
+    private function create2316(): int
+    {
+        $employeeId = Employee::where('employee_id', 'EMP-BIR-V1')->value('id');
+
+        return $this->actingAs($this->accounting())
+            ->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $employeeId])
+            ->assertCreated()
+            ->json('data.id');
     }
 
     private function answer(int $draftId, array $fields): void

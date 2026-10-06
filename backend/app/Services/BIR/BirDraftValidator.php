@@ -32,6 +32,23 @@ class BirDraftValidator
         'total_amount_due' => [['tax_still_due', 'total_penalties'], [], 'items 31 and 35'],
     ];
 
+    /** Totals on the 2316, the same way: written out from Form2316Schema's rules, never parsed. */
+    private const TOTALS_2316 = [
+        'gross_compensation_present' => [['nontax_total', 'tax_regular_total'], [], 'items 38 and 52'],
+        'less_nontaxable_present' => [['nontax_total'], [], 'item 38'],
+        'taxable_income_present' => [['gross_compensation_present'], ['less_nontaxable_present'], 'item 19 less item 20'],
+        'gross_taxable_income' => [['taxable_income_present', 'taxable_income_previous_employer'], [], 'items 21 and 22'],
+        'total_taxes_withheld_adjusted' => [['taxes_withheld_present', 'taxes_withheld_previous'], [], 'items 25A and 25B'],
+        'total_taxes_withheld_final' => [['total_taxes_withheld_adjusted', 'pera_tax_credit'], [], 'items 26 and 27'],
+        'nontax_total' => [['nontax_mwe_basic', 'nontax_mwe_holiday', 'nontax_mwe_overtime', 'nontax_mwe_night_diff',
+            'nontax_mwe_hazard', 'nontax_thirteenth_month', 'nontax_de_minimis', 'nontax_statutory_contributions',
+            'nontax_other_mwe_compensation'], [], 'items 29 to 37'],
+        'tax_regular_total' => [['tax_basic_salary', 'tax_representation', 'tax_transportation', 'tax_cola', 'tax_housing',
+            'tax_others_44a_amount', 'tax_others_44b_amount', 'tax_commission', 'tax_profit_sharing', 'tax_directors_fees',
+            'tax_thirteenth_month_excess', 'tax_hazard_pay', 'tax_overtime', 'tax_others_51a_amount', 'tax_others_51b_amount'],
+            [], 'items 39 to 51B'],
+    ];
+
     public function __construct(private BirConversationService $conversation)
     {
     }
@@ -47,9 +64,8 @@ class BirDraftValidator
             'message' => $this->missingMessage($missing, $schema),
         ], $this->conversation->missingFields($draft));
 
-        if ($draft->form_type === Form1601CSchema::FORM_TYPE) {
-            $errors = [...$errors, ...$this->totalErrors(self::TOTALS_1601C, $draft->fields ?? [], $schema)];
-        }
+        $totals = $draft->form_type === Form1601CSchema::FORM_TYPE ? self::TOTALS_1601C : self::TOTALS_2316;
+        $errors = [...$errors, ...$this->totalErrors($totals, $draft->fields ?? [], $schema)];
 
         // Form order, so the list reads top to bottom like the printed form.
         $position = array_flip(array_keys($schema));
