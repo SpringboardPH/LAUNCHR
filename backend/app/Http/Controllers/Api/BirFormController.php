@@ -14,6 +14,7 @@ use App\Services\BIR\Mappers\BirFormMapper;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * BIR Form Assistant drafts: CRUD, the draft -> pending -> approved -> finalized
@@ -332,20 +333,32 @@ class BirFormController extends Controller
             ], 400);
         }
 
-        $revision = BirFormDraft::create([
-            'form_type' => $draft->form_type,
-            'period' => $draft->period,
-            'employee_id' => $draft->employee_id,
-            'status' => 'draft',
-            'version' => $draft->version + 1,
-            'parent_id' => $draft->id,
-            'prepared_by' => $request->user()->id,
-            'approved_by' => null,
-            'rejection_reason' => null,
-            // stdClass so an empty set stores {} rather than [].
-            'fields' => $draft->fields ?: new \stdClass(),
-            'validation_errors' => [],
-        ]);
+        // Numbered after the highest version of this form (type, period, employee), not the
+        // parent's: revising the same filed v1 twice gives v2 then v3, never two v2s. Whether
+        // only the latest version may be revised is still open with the accountant. The lock
+        // keeps two revisions created at the same moment from reading the same highest version.
+        $revision = DB::transaction(function () use ($draft, $request) {
+            $highest = BirFormDraft::where('form_type', $draft->form_type)
+                ->where('period', $draft->period)
+                ->where('employee_id', $draft->employee_id)
+                ->lockForUpdate()
+                ->max('version');
+
+            return BirFormDraft::create([
+                'form_type' => $draft->form_type,
+                'period' => $draft->period,
+                'employee_id' => $draft->employee_id,
+                'status' => 'draft',
+                'version' => $highest + 1,
+                'parent_id' => $draft->id,
+                'prepared_by' => $request->user()->id,
+                'approved_by' => null,
+                'rejection_reason' => null,
+                // stdClass so an empty set stores {} rather than [].
+                'fields' => $draft->fields ?: new \stdClass(),
+                'validation_errors' => [],
+            ]);
+        });
 
         $revision->load('preparer', 'approver', 'employee');
 

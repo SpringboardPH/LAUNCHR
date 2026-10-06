@@ -394,7 +394,8 @@ Required, max 1000 characters. 422 if missing.
 ### POST /bir/drafts/{id}/revise
 
 Only on a finalized draft, else 400. Returns 201 with a copy in `draft` status,
-`version` + 1, `parent_id` set to the original, `approved_by` and
+`parent_id` set to the original, `version` one above the highest version of the
+same form (form type, period and employee) so two drafts never share a number, `approved_by` and
 `rejection_reason` cleared, `prepared_by` set to the current user. The original
 is untouched.
 
@@ -423,13 +424,12 @@ the behaviour is Week 6.
 accounting edit a submitted form before approving it. Widening `PUT` to allow
 that is Week 6.
 
-**Revising the same finalized draft twice gives two drafts the same `version`.**
-Decided: there is no limit on revisions. But `revise` sets `version` to the
-parent's version + 1, so a second `revise` on the same finalized draft produces
-another draft with the same `version` and the same `parent_id`. Still open:
-whether "no limit" means a chain (only the latest finalized version can be
-revised) or several corrections of one form at once (`version` would then be
-the highest for that form + 1). The numbering changes once that is settled.
+**Any finalized version can be revised, any number of times.** Decided: there is
+no limit on revisions. Versions never repeat — revising the same filed v1 twice
+gives v2 then v3, both with `parent_id` pointing at v1. Still open with the
+accountant: whether "no limit" means a chain, where only the latest finalized
+version may be revised. If so, `revise` will refuse older versions; the
+numbering stays as it is.
 
 **`payroll_mismatch` and `empty_period` are warnings, pending the accountant.**
 On the real filed 2316s, item 25A is 0 for every employee even though the
