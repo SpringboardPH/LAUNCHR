@@ -1,6 +1,6 @@
 # BIR Form Assistant — API contract
 
-**Owner:** Dev B · **Week 1** · Branch `BIRsystems`
+**Owner:** Dev B · **Week 1, updated Week 5** · Branch `BIRsystems-ollama`
 
 What Dev C and Dev D build against. Everything here describes the stub as it
 actually behaves today — verified against the running app, not aspirational.
@@ -29,13 +29,18 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move |
+| 400 | Illegal status move, or a finalized form that is locked |
+| 403 | Caller's role cannot reach `/bir` (employees) |
 | 404 | Draft not found |
-| 422 | Request body failed validation |
+| 422 | Request body failed validation, or `submit` refused a draft that fails validation (§6) |
 | 501 | Not built yet (export) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
+
+A 422 from `submit` is "fix the form", not "bad request": it carries the draft in
+`data`, with `validation_errors` filled in. Tell it apart from a 400, which means
+the move itself is not allowed from the current status.
 
 ---
 
@@ -133,11 +138,45 @@ These always hold. Build on them.
 ### Validation errors
 
 ```json
-[ { "field": "total_taxes_withheld", "message": "Does not match calculated payroll total." } ]
+[
+  {
+    "field": "total_taxes_withheld",
+    "code": "payroll_mismatch",
+    "severity": "warning",
+    "message": "\"Total Taxes Withheld\" is 55,010.00, but the payroll this draft was built from withheld 54,872.50."
+  }
+]
 ```
 
-`field` always matches a key in `fields`, so Dev D can anchor the message to the
-row that caused it.
+| Key | Meaning |
+|---|---|
+| `field` | Always a key in `fields`, so Dev D can anchor the message to the row that caused it |
+| `code` | Which rule failed (table below) |
+| `severity` | `error` blocks `submit`; `warning` is shown but never blocks |
+| `message` | Plain-language explanation, ready to show the user |
+
+**Read entries by key, never by position.** `validate` returns them in the order
+above, but MySQL re-sorts object keys, so `GET /bir/drafts/{id}` returns the same
+entry with its keys in a different order. Entries come back sorted in
+printed-form order.
+
+| `code` | Severity | Meaning |
+|---|---|---|
+| `required` | error | A required question nobody has answered |
+| `condition` | error | Required because of another answer; the message names it |
+| `record_gap` | error | Should come from payroll or company settings, but nothing was there. Fix the record, or enter it on the draft. |
+| `total_mismatch` | error | A total does not equal the sum of its parts on the form as it stands (8 totals per form) |
+| `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words |
+| `payroll_mismatch` | warning | Tax withheld (1601-C item 25, 2316 item 25A) differs from the payroll the draft was built from |
+| `empty_period` | warning | The draft was built from a period with no finalized or paid payroll, so every payroll figure is zero |
+
+`payroll_mismatch` and `empty_period` are warnings only until the accountant
+answers two open questions (§7). Every other code is an error. Changing a code's
+severity is one line, `WARNING_CODES` in `BirDraftValidator`.
+
+`validation_errors` is the **last known result**, not live truth. Validation runs
+only on `validate` and `submit` (§6), never on `PUT` or `GET`, so after an edit
+call `validate` to bring it up to date.
 
 ---
 
@@ -148,14 +187,16 @@ fixtures:
 
 - `App\Services\BIR\Schemas\Form1601CSchema` — 40 fields, items 1–36 of the
   printed form
-- `App\Services\BIR\Schemas\Form2316Schema` — 74 fields
+- `App\Services\BIR\Schemas\Form2316Schema` — 79 fields
 
 Both expose `fields()`, `byKey()` and `payrollDerivedKeys()`; the 2316 schema
 also has `unverifiedKeys()`. Each field carries `key`, `item`, `label`, `type`,
-`source`, `required`, `rule` and `pdf_anchor`.
+`source`, `required`, `rule`, `pdf_anchor` and `guidance` (help text), plus
+`options` on enums and `required_when` on conditional fields. Both schemas are
+served on `GET /bir/config` (§6).
 
 **Dev D: do not hardcode field keys.** Read them from the draft response and use
-the schema's `label` and `item` for display. The fixtures carry a handful of
+the schema's `label`, `item` and `guidance` for display. The fixtures carry a handful of
 keys only, as sample data — a real draft will have all of them.
 
 ---
@@ -180,7 +221,9 @@ draft ──submit──▶ pending ──approve──▶ approved ──finali
 | approved | finalized | finalize |
 | finalized | — | none — `revise` creates a new draft instead |
 
-Any other move returns 400 naming the current status. A finalized form is never
+Any other move returns 400 naming the current status. `submit` also checks the
+draft first and refuses it with 422 if it has any `severity: error` entry (§6).
+A finalized form is never
 edited or moved; corrections start a new version and leave the original as
 filed.
 
@@ -204,12 +247,13 @@ implemented yet (see `PUT /bir/drafts/{id}` in §6).
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/bir/config` | Feature flag, form types, status flow |
+| GET | `/bir/config` | Feature flag, form types, status flow, both form schemas |
 | GET | `/bir/drafts` | Paginated list, filterable by `status` and `form_type` |
 | POST | `/bir/drafts` | Create |
 | GET | `/bir/drafts/{id}` | One draft |
 | PUT | `/bir/drafts/{id}` | Edit field values |
-| POST | `/bir/drafts/{id}/submit` | draft → pending |
+| POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` |
+| POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation |
 | POST | `/bir/drafts/{id}/approve` | pending → approved |
 | POST | `/bir/drafts/{id}/reject` | pending → draft |
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized |
@@ -228,6 +272,10 @@ implemented yet (see `PUT /bir/drafts/{id}` in §6).
     "pending": ["approved", "draft"],
     "approved": ["finalized"],
     "finalized": []
+  },
+  "schemas": {
+    "1601-C": [ { "key": "return_period", "item": "1", "label": "For the Month (MM/YYYY)", "guidance": "…" } ],
+    "2316": [ ]
   }
 }
 ```
@@ -236,6 +284,10 @@ implemented yet (see `PUT /bir/drafts/{id}` in §6).
 default — the Week 8 feature switch. `status_flow` is served from the same
 constant the controller enforces, so Dev D can drive button visibility from it
 rather than hardcoding the transitions.
+
+`schemas` is each schema's `fields()` (§4), every field with all its keys
+(shortened above). The screen reads keys, labels, item numbers and help text
+from here instead of keeping its own copy.
 
 ### GET /bir/drafts
 
@@ -292,6 +344,38 @@ Editing is currently allowed in `draft` status only. Week 6 widens this so the
 approver can edit a form in `pending` before approving it (§5). That is not
 implemented yet: a `PUT` on a pending form still returns 400.
 
+`PUT` does not run validation and does not recalculate totals (§7). Call
+`validate` afterwards to refresh `validation_errors`.
+
+### POST /bir/drafts/{id}/validate
+
+No request body. Runs every check in §3 on the draft, stores the result on
+`validation_errors`, and returns the draft.
+
+| Code | Response |
+|---|---|
+| 200 | `data` is the draft (§2) with `validation_errors` freshly filled in. `message` counts both, e.g. "Draft validated: 3 errors, 1 warning". |
+| 400 | "Finalized forms are locked and can't be revalidated". Allowed in `draft`, `pending` and `approved`. |
+| 404 | "Draft not found" |
+
+Cheap to call repeatedly: when the result has not changed, nothing is written
+and no audit row is added. Dev C's prompting loop calls it after each saved
+answer and takes its "still needs your input" count from the entries with
+`severity: error`, which also covers totals and invalid amounts, not just blanks.
+
+### POST /bir/drafts/{id}/submit
+
+No request body. Checks the move first, then validates:
+
+| Code | When |
+|---|---|
+| 400 | The draft is not in `draft` status. Nothing is validated or changed. |
+| 422 | The draft has at least one `severity: error` entry. `success: false`, the draft in `data` with `validation_errors` filled in, and a message like "Draft has 3 errors; fix them before submitting". The draft stays in `draft`. |
+| 200 | Warnings only, or nothing: the draft moves to `pending`. Any warnings stay on the draft for the reviewer. |
+
+The validation result is stored in every case except the 400, so a refused draft
+shows why.
+
 ### POST /bir/drafts/{id}/reject
 
 ```json
@@ -340,9 +424,24 @@ whether "no limit" means a chain (only the latest finalized version can be
 revised) or several corrections of one form at once (`version` would then be
 the highest for that form + 1). The numbering changes once that is settled.
 
-**`validation_errors` is never cleared or recalculated when a field changes.**
-A draft can show an error about a field that has since been corrected or
-emptied. Validation is Week 5.
+**`PUT` does not recalculate totals.** If someone edits a part (a surcharge, a
+previous employer's tax), its total keeps its old value and `validate` reports
+`total_mismatch` until the total is corrected by hand. Dev A's
+`BirFormMapper::recalculate()` exists for this but is not wired into `PUT` yet;
+once it is, totals follow their parts and only a hand-typed total that doesn't
+add up is flagged.
+
+**`payroll_mismatch` and `empty_period` are warnings, pending the accountant.**
+On the real filed 2316s, item 25A is 0 for every employee even though the
+1601-Cs show tax withheld, so it is open whether 25A should be 0 when tax is
+refunded at year-end. It is also open whether a nil 1601-C has to be filed for a
+month with no payroll. Until both are answered these two codes never block
+`submit` (§3).
+
+**Week 4 real-form check.** LAUNCHR's 1601-C (two months) and 2316 (19
+employees) were compared with real filed returns, kept outside the repo. Every
+computed total matches; the remaining differences are classification questions
+pending with the accountant (Dev A holds the list).
 
 **Night differential is missing from payroll since 14 July 2026.** It was
 switched off in payroll generation that day and stays off by decision. Drafts
@@ -383,4 +482,9 @@ and `--class=DemoOpsSeeder` — `DatabaseSeeder` does not call the demo seeders.
 | 5 | 1601-C | 2026-05 | draft | Returned by reviewer — carries a rejection reason, a validation error, and an edited field whose `system_value` explains the error |
 
 Draft 5 is the most useful one to build against: it exercises every part of the
-shape at once.
+shape at once. Its stored validation error predates `code` and `severity`;
+calling `validate` on it replaces it with the current shape.
+
+The fixtures hold only a handful of fields, so every one of them fails
+`validate` with many `required` and `record_gap` entries, and `submit` on draft
+1 or 5 returns 422. That is expected.
