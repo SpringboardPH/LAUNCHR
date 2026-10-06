@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw } from 'lucide-react'
 import clsx from 'clsx'
-import { birKeys, sendBirChatMessage, createBirDraft } from '../../api/queries'
+import { birKeys, sendBirChatMessage, createBirDraft, validateBirDraft } from '../../api/queries'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December']
@@ -168,23 +168,30 @@ export default function BirChatPanel({ onDraftCreated }) {
   })
 
   const create = useMutation({
-    mutationFn: ({ intent }) => createBirDraft({
-      form_type: intent.form_type,
-      period: intent.period,
-      ...(intent.employee_id && { employee_id: intent.employee_id }),
-    }),
+    mutationFn: async ({ intent }) => {
+      const created = await createBirDraft({
+        form_type: intent.form_type,
+        period: intent.period,
+        ...(intent.employee_id && { employee_id: intent.employee_id }),
+      })
+      return validateBirDraft(created.data.id)
+    },
     onSuccess: (res, { msgId }) => {
       const draft = res.data
-      const entries = Object.values(draft.fields ?? {})
-      const pending = entries.filter(e => e.origin === 'pending').length
+      const issues = draft.validation_errors ?? []
+      const errors = issues.filter(e => e.severity === 'error').length
+      const warnings = issues.filter(e => e.severity === 'warning').length
       patch(msgId, { intentStatus: 'done' })
       push({
         role: 'assistant',
         text: `Draft #${draft.id} is ready: ${formName(draft.form_type)}, ${describePeriod(draft.form_type, draft.period)}. `
-          + `${entries.length - pending} of ${entries.length} fields are filled`
-          + (pending ? `, ${pending} still need${pending === 1 ? 's' : ''} your input.` : '.'),
+          + (errors
+            ? `${errors} issue${errors === 1 ? '' : 's'} must be fixed before it can be submitted`
+            : 'Nothing is blocking submission')
+          + (warnings ? ` (${warnings} warning${warnings === 1 ? '' : 's'} to review).` : '.'),
       })
       qc.invalidateQueries({ queryKey: birKeys.lists })
+      qc.invalidateQueries({ queryKey: birKeys.detail(draft.id) })
       onDraftCreated?.(draft)
     },
     onError: (err, { msgId }) => {

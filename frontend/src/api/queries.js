@@ -606,6 +606,11 @@ export const updateBirDraft = bir(
   birMockApi.updateDraft,
 )
 
+export const validateBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/validate`).then(r => r.data),
+  (id) => birMockApi.validate(id),
+)
+
 export const submitBirDraft = bir(
   (id) => api.post(`/bir/drafts/${id}/submit`).then(r => r.data),
   (id) => birMockApi.transition(id, 'pending'),
