@@ -135,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
         Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
         Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
+        Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);
         Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
         Route::post('/chat', [BirChatController::class, 'message']);
     });

@@ -9,6 +9,7 @@ use App\Models\BirFormDraft;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
+use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirSettingsService;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
@@ -211,6 +212,52 @@ class BirFormController extends Controller
         $draft->load('preparer', 'approver', 'employee');
 
         return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft updated']);
+    }
+
+    /**
+     * Runs BirDraftValidator and stores the result on validation_errors, so it holds the
+     * last known result rather than live truth. Named validateDraft so it isn't mistaken
+     * for $request->validate(). Nothing is written, and so no audit_logs entry, when the
+     * result hasn't changed, so the chatbot can call this after every answer.
+     */
+    public function validateDraft(BirDraftValidator $validator, int $id)
+    {
+        // employee: BirConversationService::context() needs the hire date for a 2316.
+        $draft = BirFormDraft::with('employee')->find($id);
+        if (!$draft) {
+            return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+        }
+
+        if ($draft->status === 'finalized') {
+            return response()->json([
+                'success' => false,
+                'message' => "Finalized forms are locked and can't be revalidated",
+            ], 400);
+        }
+
+        $errors = $validator->validate($draft);
+        // MySQL's JSON column re-sorts object keys, so Eloquent's strict compare always sees a change.
+        // == ignores key order; only save, and so audit, when the result really differs.
+        $changed = $errors != $draft->validation_errors;
+        $draft->validation_errors = $errors;
+        if ($changed) {
+            $draft->save();
+        }
+
+        $draft->load('preparer', 'approver', 'employee');
+
+        $severities = array_count_values(array_column($draft->validation_errors, 'severity'));
+        $count = function (string $severity) use ($severities) {
+            $n = $severities[$severity] ?? 0;
+
+            return "{$n} {$severity}" . ($n === 1 ? '' : 's');
+        };
+
+        return response()->json([
+            'success' => true,
+            'data' => new BirFormDraftResource($draft),
+            'message' => 'Draft validated: ' . $count('error') . ', ' . $count('warning'),
+        ]);
     }
 
     private function transition(int $id, string $to, ?string $reason = null)
