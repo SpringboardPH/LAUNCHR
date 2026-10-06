@@ -13,7 +13,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * fields. For missing fields, code is BirMissingFields' reason: required,
  * condition or record_gap. An amount that isn't plain decimal text is
  * invalid_amount. A total that doesn't add up is total_mismatch. Tax withheld that the
- * payroll the draft was built from doesn't support is payroll_mismatch.
+ * payroll the draft was built from doesn't support is payroll_mismatch. A draft built
+ * from a period with no counted payroll is empty_period.
  */
 class BirDraftValidator
 {
@@ -57,6 +58,12 @@ class BirDraftValidator
         Form2316Schema::FORM_TYPE => 'taxes_withheld_present',
     ];
 
+    /** The period field an empty_period error points at: item 1 on both forms. */
+    private const PERIOD_FIELDS = [
+        Form1601CSchema::FORM_TYPE => 'return_period',
+        Form2316Schema::FORM_TYPE => 'tax_year',
+    ];
+
     public function __construct(private BirConversationService $conversation)
     {
     }
@@ -78,6 +85,7 @@ class BirDraftValidator
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
             ...$this->payrollMismatchErrors($draft, $schema),
+            ...$this->emptyPeriodErrors($draft),
         ];
 
         // Form order, so the list reads top to bottom like the printed form.
@@ -188,6 +196,27 @@ class BirDraftValidator
             'field' => $field,
             'code' => 'payroll_mismatch',
             'message' => "\"{$schema[$field]['label']}\" is {$this->money($actual)}, but the payroll this draft was built from withheld {$this->money($expected)}.",
+        ]];
+    }
+
+    /**
+     * One error if the draft was built from a period with no finalized or paid payroll, so
+     * every payroll figure on it is zero. An empty snapshot row list is the same condition
+     * as the aggregation's "No finalized or paid payroll" warning, without depending on its
+     * wording. Skipped when there is no snapshot (revisions, seeded fixtures).
+     *
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function emptyPeriodErrors(BirFormDraft $draft): array
+    {
+        if (($draft->source_snapshot['rows'] ?? null) !== []) {
+            return [];
+        }
+
+        return [[
+            'field' => self::PERIOD_FIELDS[$draft->form_type],
+            'code' => 'empty_period',
+            'message' => "There is no finalized or paid payroll for {$draft->period}, so every payroll figure on this form is zero. Finalize or pay that payroll, then create a new draft.",
         ]];
     }
 

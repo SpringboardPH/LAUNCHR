@@ -56,6 +56,9 @@ class BirDraftValidatorTest extends TestCase
 
     public function test_errors_point_at_draft_fields_in_form_order_and_clear_once_everything_is_answered(): void
     {
+        // Payroll for the month, or empty_period stays however much is answered.
+        $this->payrollFor('2026-09-01', '2026-09-15', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['SSS EE Contribution' => 700, 'Withholding Tax' => 300]);
         $id = $this->create1601C();
         $schema = Form1601CSchema::byKey();
 
@@ -230,6 +233,45 @@ class BirDraftValidatorTest extends TestCase
         ]);
 
         $this->assertNotContains('payroll_mismatch', array_column($this->errorsByField($draft->id), 'code'));
+        $this->assertSame([], $this->errorsWithCode($draft->id, 'empty_period'));
+    }
+
+    public function test_a_1601c_for_a_month_with_no_payroll_is_an_empty_period(): void
+    {
+        $errors = $this->errorsWithCode($this->create1601C(), 'empty_period');
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('return_period', $errors[0]['field']);
+        $this->assertSame(
+            'There is no finalized or paid payroll for 2026-09, so every payroll figure on this form is zero. '
+                . 'Finalize or pay that payroll, then create a new draft.',
+            $errors[0]['message'],
+        );
+    }
+
+    public function test_a_2316_for_a_year_with_no_payroll_is_an_empty_period(): void
+    {
+        // Creates the employee; this payroll belongs to 2025, so the 2026 certificate has none.
+        $this->payrollFor('2025-12-01', '2025-12-15', ['Withholding Tax' => 300]);
+
+        $errors = $this->errorsWithCode($this->create2316(), 'empty_period');
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('tax_year', $errors[0]['field']);
+        $this->assertSame(
+            'There is no finalized or paid payroll for 2026, so every payroll figure on this form is zero. '
+                . 'Finalize or pay that payroll, then create a new draft.',
+            $errors[0]['message'],
+        );
+    }
+
+    public function test_a_draft_built_from_payroll_is_not_an_empty_period(): void
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300]);
+        $this->payrollFor('2026-09-16', '2026-09-30', ['Withholding Tax' => 300]);
+
+        $this->assertSame([], $this->errorsWithCode($this->create1601C(), 'empty_period'));
+        $this->assertSame([], $this->errorsWithCode($this->create2316(), 'empty_period'));
     }
 
     private function create2316(): int
@@ -291,5 +333,18 @@ class BirDraftValidatorTest extends TestCase
         $errors = app(BirDraftValidator::class)->validate(BirFormDraft::with('employee')->findOrFail($draftId));
 
         return array_column($errors, null, 'field');
+    }
+
+    /**
+     * Every error with one code. Unlike errorsByField(), keeps an error that shares its
+     * field with another one (empty_period and required are both on item 1).
+     *
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function errorsWithCode(int $draftId, string $code): array
+    {
+        $errors = app(BirDraftValidator::class)->validate(BirFormDraft::with('employee')->findOrFail($draftId));
+
+        return array_values(array_filter($errors, fn (array $error) => $error['code'] === $code));
     }
 }
