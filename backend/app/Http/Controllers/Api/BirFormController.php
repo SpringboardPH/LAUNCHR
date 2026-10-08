@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreBirDraftRequest;
+use App\Http\Requests\UpdateBirDraftFieldsRequest;
 use App\Http\Resources\BirFormDraftResource;
 use App\Models\BirFormDraft;
 use App\Models\Payroll;
@@ -152,9 +153,14 @@ class BirFormController extends Controller
         return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft retrieved']);
     }
 
-    public function update(Request $request, int $id)
+    /**
+     * Saves answers to a draft. UpdateBirDraftFieldsRequest has already refused unknown keys
+     * and values that don't suit their field (422); it skips those checks for a missing or
+     * non-draft form, so the 404 and 400 below still apply.
+     */
+    public function update(UpdateBirDraftFieldsRequest $request, int $id)
     {
-        $draft = BirFormDraft::find($id);
+        $draft = $request->draft();
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
@@ -168,7 +174,7 @@ class BirFormController extends Controller
 
         // Merge per key: other keys, and system_value/edited_by/edited_at on edited keys, are kept.
         $fields = $draft->fields ?? [];
-        foreach ((array) $request->input('fields', []) as $key => $value) {
+        foreach ($request->answers() as $key => $value) {
             // Clearing a field is not an edit: a null value is always pending (contract §3, invariant 1).
             $fields[$key] = array_merge($fields[$key] ?? [], $value === null
                 ? ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null]

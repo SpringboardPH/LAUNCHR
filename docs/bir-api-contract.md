@@ -166,7 +166,7 @@ printed-form order.
 | `condition` | error | Required because of another answer; the message names it |
 | `record_gap` | error | Should come from payroll or company settings, but nothing was there. Fix the record, or enter it on the draft. |
 | `total_mismatch` | error | A total does not equal the sum of its parts on the form as it stands (8 totals per form) |
-| `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words |
+| `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words. `PUT` refuses these already (§6); this still catches one held over from older data. |
 | `payroll_mismatch` | warning | Tax withheld (1601-C item 25, 2316 item 25A) differs from the payroll the draft was built from |
 | `empty_period` | warning | The draft was built from a period with no finalized or paid payroll, so every payroll figure is zero |
 
@@ -351,8 +351,38 @@ overwritten, and the totals after it are worked out from the typed value.
 Clearing it (`null`) hands it back to the calculation. A typed total that
 doesn't add up is reported by `validate` as `total_mismatch`.
 
-`PUT` does not run validation. Call `validate` afterwards to refresh
-`validation_errors`.
+Each answer is checked as it is saved. Every key must be a field on the draft's
+form, and each value must suit the field's type (§4 schemas):
+
+| Type | Accepted |
+|---|---|
+| decimal | Plain decimal text (`"1500"`, `"20.5"`, `"-250.00"`) or a JSON number |
+| boolean | `true`/`false`, `"true"`/`"false"`, `"1"`/`"0"`, `"yes"`/`"no"`; stored as `true`/`false` |
+| enum | One of the field's `options` |
+| integer | A whole number, e.g. `2026` |
+| month | `MM/YYYY`, e.g. `09/2026` |
+| date | A real date as `YYYY-MM-DD` |
+| string / text | Text, at most 255 / 1000 characters |
+| manual | Never: signed on the printed form, not entered here |
+
+`null` is always accepted and clears the field. One bad answer refuses the whole
+request with 422, and nothing in it is saved:
+
+```json
+{
+  "message": "\"Surcharge\" must be an amount like 1234.50, without commas or a currency sign.",
+  "errors": {
+    "fields.surcharge": ["\"Surcharge\" must be an amount like 1234.50, without commas or a currency sign."]
+  }
+}
+```
+
+Each key in `errors` is `fields.<field key>`, so the message can be shown on the
+row and Dev C's prompts can re-ask that question. A missing draft is still 404
+and a non-draft form still 400, whatever the body.
+
+`PUT` checks single answers only. Whether the draft as a whole is complete and
+adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
 
 ### POST /bir/drafts/{id}/validate
 
@@ -450,6 +480,12 @@ without it, and the 2316 MWE night differential (item 32,
 `nontax_mwe_night_diff`) only counts payrolls from before that date. Not a BIR
 bug. If the accountant pays it outside LAUNCHR, expect a difference when
 comparing against a filed form.
+
+**Signatures are signed by hand.** Items 55 and 56 on the 2316 (`manual`) are
+refused by `PUT`, and items 53 and 54 hold only the date signed. An e-signature
+for the employer/authorized agent is proposed (a separate `sign` endpoint for
+accounting on approved forms), pending confirmation that BIR and the client
+accept it.
 
 ---
 

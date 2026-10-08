@@ -161,7 +161,13 @@ class BirDraftValidatorTest extends TestCase
     public function test_an_amount_that_is_not_plain_decimal_text_is_flagged_and_its_total_is_not_checked(): void
     {
         $id = $this->create1601C();
-        $this->answer($id, ['surcharge' => 'abc', 'interest' => '1,000.00']);
+        // PUT now refuses these (UpdateBirDraftFieldsRequest); write them straight onto the draft,
+        // as older data could hold them, to check the validator still catches them.
+        $draft = BirFormDraft::findOrFail($id);
+        $fields = $draft->fields;
+        $fields['surcharge'] = array_merge($fields['surcharge'], ['value' => 'abc', 'origin' => 'user', 'edited' => true]);
+        $fields['interest'] = array_merge($fields['interest'], ['value' => '1,000.00', 'origin' => 'user', 'edited' => true]);
+        $draft->update(['fields' => $fields]);
 
         $errors = $this->errorsByField($id);
         $label = Form1601CSchema::byKey()['surcharge']['label'];

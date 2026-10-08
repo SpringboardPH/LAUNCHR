@@ -76,6 +76,9 @@ class BirDraftValidator
         'empty_period',
     ];
 
+    /** The money format (contract §7): digits, up to two decimals, an optional leading minus. Shared with UpdateBirDraftFieldsRequest. */
+    public const AMOUNT_PATTERN = '/^-?\d+(\.\d{1,2})?$/';
+
     public function __construct(private BirConversationService $conversation)
     {
     }
@@ -263,7 +266,7 @@ class BirDraftValidator
             $value = (string) $value;
         }
 
-        return is_string($value) && preg_match('/^-?\d+(\.\d{1,2})?$/', $value) === 1
+        return is_string($value) && preg_match(self::AMOUNT_PATTERN, $value) === 1
             ? (int) round((float) $value * 100)
             : null;
     }
