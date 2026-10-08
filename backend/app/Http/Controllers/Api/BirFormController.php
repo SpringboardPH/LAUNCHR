@@ -318,6 +318,7 @@ class BirFormController extends Controller
     /**
      * pending -> approved, but only if the form still passes validation. The approver may have
      * edited it since it was submitted (EDITABLE_STATUSES), so submit's result can be stale.
+     * The preparer can never approve their own form (contract §5): 403.
      */
     public function approve(BirDraftValidator $validator, int $id)
     {
@@ -341,6 +342,14 @@ class BirFormController extends Controller
 
         if (!in_array($to, self::STATUS_FLOW[$draft->status] ?? [], true)) {
             return $this->transition($id, $to); // returns the 400 naming the current status
+        }
+
+        // Before validating, so a refused self-approval stores nothing on the form.
+        if ($to === 'approved' && (int) $draft->prepared_by === (int) request()->user()->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You prepared this form, so someone else must approve it',
+            ], 403);
         }
 
         $this->storeValidation($draft, $validator);

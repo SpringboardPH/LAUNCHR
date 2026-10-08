@@ -30,7 +30,7 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (approved or finalized) |
-| 403 | Caller's role cannot reach `/bir` (employees) |
+| 403 | Caller's role cannot reach `/bir` (employees), or the caller prepared the form they are trying to approve |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
 | 501 | Not built yet (export) |
@@ -245,10 +245,10 @@ corrections start a new version and leave the original as filed.
 
 **Who may approve:** accounting only, confirmed by the supervisor. Admin and HR
 users cannot approve. The system also will not let a preparer approve their own
-form: `approve` is refused when the caller is the draft's `prepared_by`.
-Neither rule is enforced yet. The `bir` routes still allow admin, HR and
-accounting. Role tightening is scheduled for Week 7 and the self-approval check
-for Week 6.
+form: `approve` is refused with 403 when the caller is the draft's
+`prepared_by`. The self-approval rule is enforced. The accounting-only rule is
+not yet: the `bir` routes still allow admin, HR and accounting to approve, and
+role tightening is scheduled for Week 7.
 
 **Workflow, as decided:** a preparer fills in the form and submits it.
 Accounting reviews the submitted form, may edit it, and approves it in the same
@@ -440,6 +440,7 @@ since it was submitted, so it is checked again.
 | Code | When |
 |---|---|
 | 400 | The form is not in `pending` status. Nothing is validated or changed. |
+| 403 | The caller prepared this form: "You prepared this form, so someone else must approve it". Checked before validating, so nothing is validated or changed. |
 | 422 | At least one `severity: error` entry. Same shape as `submit`'s 422, with "Draft has 1 error; fix it before approving". The form stays `pending` and `approved_by` stays null. |
 | 200 | Warnings only, or nothing: the form moves to `approved` and `approved_by` is the caller. |
 

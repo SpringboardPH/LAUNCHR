@@ -15,7 +15,8 @@ use Tests\TestCase;
 /**
  * POST /bir/drafts/{id}/approve validates first, like submit: the approver may have edited the
  * pending form since it was submitted, so it is checked again. Any severity=error entry is a
- * 422 and the form stays pending; warnings never block. The approver is never the preparer.
+ * 422 and the form stays pending; warnings never block. The preparer can't approve their own
+ * form (403), so the other tests use a separate HR preparer and accounting approver.
  */
 class BirApproveTest extends TestCase
 {
@@ -62,6 +63,36 @@ class BirApproveTest extends TestCase
         $this->assertSame(['empty_period'], array_column($draft->validation_errors, 'code'));
     }
 
+    public function test_the_preparer_cannot_approve_their_own_form(): void
+    {
+        // An accounting preparer, so this is refused for preparing it, not for the role.
+        $preparer = User::factory()->create(['role' => 'accounting']);
+        $id = $this->submittedClean1601C($preparer);
+        $errorsBefore = BirFormDraft::findOrFail($id)->validation_errors;
+
+        $this->actingAs($preparer)
+            ->postJson("/api/bir/drafts/{$id}/approve")
+            ->assertForbidden()
+            ->assertJson(['success' => false, 'message' => 'You prepared this form, so someone else must approve it']);
+
+        $draft = BirFormDraft::findOrFail($id);
+        $this->assertSame('pending', $draft->status);
+        $this->assertNull($draft->approved_by);
+        $this->assertEquals($errorsBefore, $draft->validation_errors, 'Refused before validating, so nothing stored.');
+    }
+
+    public function test_someone_else_can_approve_a_form_its_preparer_could_not(): void
+    {
+        $preparer = User::factory()->create(['role' => 'accounting']);
+        $id = $this->submittedClean1601C($preparer);
+        $this->actingAs($preparer)->postJson("/api/bir/drafts/{$id}/approve")->assertForbidden();
+
+        $other = User::factory()->create(['role' => 'accounting']);
+        $this->actingAs($other)->postJson("/api/bir/drafts/{$id}/approve")->assertOk();
+
+        $this->assertSame($other->id, BirFormDraft::findOrFail($id)->approved_by);
+    }
+
     public function test_a_draft_is_refused_without_being_validated(): void
     {
         $id = $this->create1601C();
@@ -80,12 +111,13 @@ class BirApproveTest extends TestCase
         return $this->actingAs($this->approver())->postJson("/api/bir/drafts/{$draftId}/approve");
     }
 
-    /** A 1601-C with every error answered, submitted by the preparer, so it is pending. */
-    private function submittedClean1601C(): int
+    /** A 1601-C with every error answered, submitted by its preparer, so it is pending. */
+    private function submittedClean1601C(?User $preparer = null): int
     {
-        $id = $this->create1601C();
-        $this->answerEveryError($id);
-        $this->actingAs($this->preparer())->postJson("/api/bir/drafts/{$id}/submit")->assertOk();
+        $preparer ??= $this->preparer();
+        $id = $this->create1601C($preparer);
+        $this->answerEveryError($id, $preparer);
+        $this->actingAs($preparer)->postJson("/api/bir/drafts/{$id}/submit")->assertOk();
 
         return $id;
     }
@@ -94,7 +126,7 @@ class BirApproveTest extends TestCase
      * Answers every field reported with severity error until none are left. An answer can make
      * another field required, so this loops; ten rounds is far more than any form needs.
      */
-    private function answerEveryError(int $draftId): void
+    private function answerEveryError(int $draftId, User $preparer): void
     {
         $schema = Form1601CSchema::byKey();
 
@@ -117,7 +149,7 @@ class BirApproveTest extends TestCase
                     default => 'X',
                 };
             }
-            $this->actingAs($this->preparer())->putJson("/api/bir/drafts/{$draftId}", ['fields' => $answers])->assertOk();
+            $this->actingAs($preparer)->putJson("/api/bir/drafts/{$draftId}", ['fields' => $answers])->assertOk();
         }
 
         $this->fail('Errors were still reported after ten rounds of answers.');
@@ -151,9 +183,9 @@ class BirApproveTest extends TestCase
         }
     }
 
-    private function create1601C(): int
+    private function create1601C(?User $preparer = null): int
     {
-        return $this->actingAs($this->preparer())
+        return $this->actingAs($preparer ?? $this->preparer())
             ->postJson('/api/bir/drafts', ['form_type' => '1601-C', 'period' => '2026-09'])
             ->assertCreated()
             ->json('data.id');
