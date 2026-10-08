@@ -58,7 +58,7 @@ class UpdateBirDraftFieldsRequest extends FormRequest
     public function validateResolved()
     {
         $draft = $this->draft();
-        if ($draft === null || $draft->status !== 'draft') {
+        if ($draft === null || !in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
             return;
         }
 

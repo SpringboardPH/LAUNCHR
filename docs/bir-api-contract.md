@@ -29,16 +29,16 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move, or a finalized form that is locked |
+| 400 | Illegal status move, or a form that is locked (approved or finalized) |
 | 403 | Caller's role cannot reach `/bir` (employees) |
 | 404 | Draft not found |
-| 422 | Request body failed validation, or `submit` refused a draft that fails validation (§6) |
+| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
 | 501 | Not built yet (export) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
 
-A 422 from `submit` is "fix the form", not "bad request": it carries the draft in
+A 422 from `submit` or `approve` is "fix the form", not "bad request": it carries the draft in
 `data`, with `validation_errors` filled in. Tell it apart from a 400, which means
 the move itself is not allowed from the current status.
 
@@ -237,11 +237,11 @@ draft ──submit──▶ pending ──approve──▶ approved ──finali
 | approved | finalized | finalize |
 | finalized | — | none — `revise` creates a new draft instead |
 
-Any other move returns 400 naming the current status. `submit` also checks the
-draft first and refuses it with 422 if it has any `severity: error` entry (§6).
-A finalized form is never
-edited or moved; corrections start a new version and leave the original as
-filed.
+Any other move returns 400 naming the current status. `submit` and `approve`
+also check the form first and refuse it with 422 if it has any `severity: error`
+entry (§6). Fields can be edited in `draft` and `pending` only; an approved or
+finalized form is locked. A finalized form is never edited or moved;
+corrections start a new version and leave the original as filed.
 
 **Who may approve:** accounting only, confirmed by the supervisor. Admin and HR
 users cannot approve. The system also will not let a preparer approve their own
@@ -254,8 +254,9 @@ for Week 6.
 Accounting reviews the submitted form, may edit it, and approves it in the same
 step. There is no send-back just to fix a figure. The supervisor confirmed that
 the approver is never the person who prepares forms, so the self-approval rule
-never leaves a form with no one able to approve it. Editing in `pending` is not
-implemented yet (see `PUT /bir/drafts/{id}` in §6).
+never leaves a form with no one able to approve it. The approver's edits are
+recorded like any other (`edited_by`, §3), and `approve` validates again, so an
+edit that breaks the form blocks approval until it is fixed.
 
 ---
 
@@ -270,7 +271,7 @@ implemented yet (see `PUT /bir/drafts/{id}` in §6).
 | PUT | `/bir/drafts/{id}` | Edit field values |
 | POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` |
 | POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation |
-| POST | `/bir/drafts/{id}/approve` | pending → approved |
+| POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation |
 | POST | `/bir/drafts/{id}/reject` | pending → draft |
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft |
@@ -356,9 +357,10 @@ Both required. 201 with the new draft.
 Flat key to value. The server sets `origin`, `edited` and the provenance keys —
 Dev D never sends those.
 
-Editing is currently allowed in `draft` status only. Week 6 widens this so the
-approver can edit a form in `pending` before approving it (§5). That is not
-implemented yet: a `PUT` on a pending form still returns 400.
+Editing is allowed in `draft` and `pending` status, so the approver can correct
+a submitted form before approving it (§5). A pending form stays `pending`. An
+approved or finalized form returns 400 "Only draft and pending forms can be
+edited; this form is in approved status".
 
 After merging the answers, `PUT` recalculates the form's totals (Dev A's
 `BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
@@ -394,8 +396,9 @@ request with 422, and nothing in it is saved:
 ```
 
 Each key in `errors` is `fields.<field key>`, so the message can be shown on the
-row and Dev C's prompts can re-ask that question. A missing draft is still 404
-and a non-draft form still 400, whatever the body.
+row and Dev C's prompts can re-ask that question. The same checks apply to a
+pending form. A missing draft is still 404 and a locked form still 400, whatever
+the body.
 
 `PUT` checks single answers only. Whether the draft as a whole is complete and
 adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
@@ -429,6 +432,17 @@ No request body. Checks the move first, then validates:
 The validation result is stored in every case except the 400, so a refused draft
 shows why.
 
+### POST /bir/drafts/{id}/approve
+
+No request body. Works like `submit`: the approver may have edited the form
+since it was submitted, so it is checked again.
+
+| Code | When |
+|---|---|
+| 400 | The form is not in `pending` status. Nothing is validated or changed. |
+| 422 | At least one `severity: error` entry. Same shape as `submit`'s 422, with "Draft has 1 error; fix it before approving". The form stays `pending` and `approved_by` stays null. |
+| 200 | Warnings only, or nothing: the form moves to `approved` and `approved_by` is the caller. |
+
 ### POST /bir/drafts/{id}/reject
 
 ```json
@@ -461,10 +475,6 @@ allowed options are left out on purpose. Those fields stay `value: null`,
 form as real values. In a freshly seeded database most company details are
 still placeholders. They show as `pending` until someone enters the real
 registration details.
-
-**Editing a form in `pending` returns 400.** The decided workflow (§5) has
-accounting edit a submitted form before approving it. Widening `PUT` to allow
-that is Week 6.
 
 **Any finalized version can be revised, any number of times.** Decided: there is
 no limit on revisions. Versions never repeat — revising the same filed v1 twice
@@ -534,5 +544,5 @@ shape at once. Its stored validation error predates `code` and `severity`;
 calling `validate` on it replaces it with the current shape.
 
 The fixtures hold only a handful of fields, so every one of them fails
-`validate` with many `required` and `record_gap` entries, and `submit` on draft
-1 or 5 returns 422. That is expected.
+`validate` with many `required` and `record_gap` entries, `submit` on draft 1 or
+5 returns 422, and so does `approve` on draft 2. That is expected.

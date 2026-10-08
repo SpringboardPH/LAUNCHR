@@ -14,6 +14,13 @@ class BirFormDraft extends Model
 
     protected $table = 'bir_form_drafts';
 
+    /**
+     * Statuses whose fields can be changed with PUT. pending is included so the approver can
+     * correct a submitted form and approve it in the same step (contract §5). Read by both
+     * UpdateBirDraftFieldsRequest and BirFormController::update(), so they can't drift apart.
+     */
+    public const EDITABLE_STATUSES = ['draft', 'pending'];
+
     protected $fillable = [
         'form_type',
         'period',

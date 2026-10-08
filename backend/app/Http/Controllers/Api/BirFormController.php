@@ -155,9 +155,10 @@ class BirFormController extends Controller
     }
 
     /**
-     * Saves answers to a draft. UpdateBirDraftFieldsRequest has already refused unknown keys
-     * and values that don't suit their field (422); it skips those checks for a missing or
-     * non-draft form, so the 404 and 400 below still apply.
+     * Saves answers to a draft or pending form (BirFormDraft::EDITABLE_STATUSES); pending lets
+     * the approver correct a submitted form before approving it. UpdateBirDraftFieldsRequest
+     * has already refused unknown keys and values that don't suit their field (422); it skips
+     * those checks for a missing or locked form, so the 404 and 400 below still apply.
      */
     public function update(UpdateBirDraftFieldsRequest $request, int $id)
     {
@@ -166,10 +167,10 @@ class BirFormController extends Controller
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        if ($draft->status !== 'draft') {
+        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
             return response()->json([
                 'success' => false,
-                'message' => "Only drafts can be edited; this form is in {$draft->status} status",
+                'message' => "Only draft and pending forms can be edited; this form is in {$draft->status} status",
             ], 400);
         }
 
@@ -308,14 +309,29 @@ class BirFormController extends Controller
         return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => "Draft moved to {$to}"]);
     }
 
-    /**
-     * draft -> pending, but only once the draft passes validation. The status check comes
-     * first, so a form that can't be submitted is never validated or changed. The result is
-     * stored either way: a refused draft shows why, and warnings, which never block, stay
-     * visible to the reviewer. Refused with 422, so the screen can tell "fix the form" from
-     * the 400 for an illegal move.
-     */
+    /** draft -> pending, but only once the draft passes validation (see validatedTransition()). */
     public function submit(BirDraftValidator $validator, int $id)
+    {
+        return $this->validatedTransition($validator, $id, 'pending', 'submitting');
+    }
+
+    /**
+     * pending -> approved, but only if the form still passes validation. The approver may have
+     * edited it since it was submitted (EDITABLE_STATUSES), so submit's result can be stale.
+     */
+    public function approve(BirDraftValidator $validator, int $id)
+    {
+        return $this->validatedTransition($validator, $id, 'approved', 'approving');
+    }
+
+    /**
+     * A status move that first requires the form to pass validation: submit and approve. The
+     * status check comes first, so a form that can't make the move is never validated or
+     * changed. The result is stored either way: a refused form shows why, and warnings, which
+     * never block, stay visible to the reviewer. Refused with 422, so the screen can tell
+     * "fix the form" from the 400 for an illegal move.
+     */
+    private function validatedTransition(BirDraftValidator $validator, int $id, string $to, string $doing)
     {
         // employee: BirConversationService::context() needs the hire date for a 2316.
         $draft = BirFormDraft::with('employee')->find($id);
@@ -323,8 +339,8 @@ class BirFormController extends Controller
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        if (!in_array('pending', self::STATUS_FLOW[$draft->status] ?? [], true)) {
-            return $this->transition($id, 'pending'); // returns the 400 naming the current status
+        if (!in_array($to, self::STATUS_FLOW[$draft->status] ?? [], true)) {
+            return $this->transition($id, $to); // returns the 400 naming the current status
         }
 
         $this->storeValidation($draft, $validator);
@@ -337,17 +353,12 @@ class BirFormController extends Controller
                 'success' => false,
                 'data' => new BirFormDraftResource($draft),
                 'message' => $errors === 1
-                    ? 'Draft has 1 error; fix it before submitting'
-                    : "Draft has {$errors} errors; fix them before submitting",
+                    ? "Draft has 1 error; fix it before {$doing}"
+                    : "Draft has {$errors} errors; fix them before {$doing}",
             ], 422);
         }
 
-        return $this->transition($id, 'pending');
-    }
-
-    public function approve(int $id)
-    {
-        return $this->transition($id, 'approved');
+        return $this->transition($id, $to);
     }
 
     public function reject(Request $request, int $id)

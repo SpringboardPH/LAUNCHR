@@ -118,16 +118,16 @@ class BirUpdateFieldsRequestTest extends TestCase
         $this->assertSame($before, BirFormDraft::findOrFail($id)->fields['interest'], 'The good answer was not saved either.');
     }
 
-    public function test_a_missing_draft_is_404_and_a_submitted_one_is_400_even_with_bad_answers(): void
+    public function test_a_missing_draft_is_404_and_a_locked_one_is_400_even_with_bad_answers(): void
     {
         $this->answer(999999, ['not_a_field' => 'abc'])->assertNotFound();
 
         $id = $this->create1601C();
-        BirFormDraft::whereKey($id)->update(['status' => 'pending']);
+        BirFormDraft::whereKey($id)->update(['status' => 'approved']);
 
         $this->answer($id, ['not_a_field' => 'abc'])
             ->assertStatus(400)
-            ->assertJsonPath('message', 'Only drafts can be edited; this form is in pending status');
+            ->assertJsonPath('message', 'Only draft and pending forms can be edited; this form is in approved status');
     }
 
     private function answer(int $draftId, array $fields): TestResponse
