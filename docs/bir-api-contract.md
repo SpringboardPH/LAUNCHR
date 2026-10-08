@@ -106,6 +106,22 @@ Each entry under `fields` looks like this:
 | `edited_by` | `{ id, name }` of whoever changed it, else null |
 | `edited_at` | ISO 8601 timestamp of that change, else null |
 
+### When `PUT` marks a field edited
+
+Only an answer to a field the system supplies (schema `source` `payroll` or
+`settings`) is an override: `edited: true`, `edited_by` the person saving it,
+`edited_at` the system time (`SystemClock`, Manila offset), and `system_value`
+the figure it replaced. That figure is `null` when the field was a gap, such as
+a company TIN still unset. Edited again, `system_value` keeps the original
+calculated figure and `edited_by`/`edited_at` show the latest change; the audit
+log holds the full history.
+
+An answer to a field only a person answers (`source: user`, e.g. "Amended
+Return?") replaces nothing: `origin: user`, `edited: false`, no history.
+
+`edited_by.name` is the name at the time of the edit, so it stays as it was if
+the user is renamed later. Clearing a field (`null`) wipes all three.
+
 ### `origin` is not the schema's `source`
 
 Dev A's schemas also have a `source` on every field. **They mean different
@@ -445,10 +461,6 @@ allowed options are left out on purpose. Those fields stay `value: null`,
 form as real values. In a freshly seeded database most company details are
 still placeholders. They show as `pending` until someone enters the real
 registration details.
-
-**`PUT` does not populate `system_value`, `edited_by` or `edited_at` yet.** It
-sets `origin: user` and `edited: true` only. The fixtures show the full shape;
-the behaviour is Week 6.
 
 **Editing a form in `pending` returns 400.** The decided workflow (§5) has
 accounting edit a submitted form before approving it. Widening `PUT` to allow

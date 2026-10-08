@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\SystemClock;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreBirDraftRequest;
 use App\Http\Requests\UpdateBirDraftFieldsRequest;
@@ -172,13 +173,13 @@ class BirFormController extends Controller
             ], 400);
         }
 
-        // Merge per key: other keys, and system_value/edited_by/edited_at on edited keys, are kept.
+        $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();
+        $editor = ['id' => $request->user()->id, 'name' => $request->user()->name];
+        $now = SystemClock::now()->toIso8601String();
+
         $fields = $draft->fields ?? [];
         foreach ($request->answers() as $key => $value) {
-            // Clearing a field is not an edit: a null value is always pending (contract §3, invariant 1).
-            $fields[$key] = array_merge($fields[$key] ?? [], $value === null
-                ? ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null]
-                : ['value' => $value, 'origin' => 'user', 'edited' => true]);
+            $fields[$key] = $this->answeredEntry($fields[$key] ?? [], $value, $schema[$key]['source'], $editor, $now);
         }
         // Totals follow their parts. A total someone typed (edited) is never overwritten, so a
         // hand-typed total that doesn't add up is still left for the validator to flag.
@@ -188,6 +189,41 @@ class BirFormController extends Controller
         $draft->load('preparer', 'approver', 'employee');
 
         return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft updated']);
+    }
+
+    /**
+     * A field entry after a person's answer (contract §3).
+     *
+     * - null clears it: back to pending, with no history (invariant 1).
+     * - On a field the system supplies (schema source payroll or settings) the answer is an
+     *   override: edited, with who and when, and system_value keeping the figure it replaced.
+     *   Edited again, system_value keeps the original calculated figure, not the earlier answer.
+     * - On a field only a person answers, nothing was replaced: origin user, not edited.
+     *
+     * @param  array<string, mixed>  $entry  the field's current entry
+     * @param  array{id: int, name: string}  $editor
+     * @return array<string, mixed>
+     */
+    private function answeredEntry(array $entry, mixed $value, string $source, array $editor, string $now): array
+    {
+        $none = ['system_value' => null, 'edited_by' => null, 'edited_at' => null];
+
+        if ($value === null) {
+            return ['value' => null, 'origin' => 'pending', 'edited' => false] + $none;
+        }
+
+        if (!in_array($source, ['payroll', 'settings'], true)) {
+            return ['value' => $value, 'origin' => 'user', 'edited' => false] + $none;
+        }
+
+        return [
+            'value' => $value,
+            'origin' => 'user',
+            'edited' => true,
+            'system_value' => !empty($entry['edited']) ? ($entry['system_value'] ?? null) : ($entry['value'] ?? null),
+            'edited_by' => $editor,
+            'edited_at' => $now,
+        ];
     }
 
     /**
