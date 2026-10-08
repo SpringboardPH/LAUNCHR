@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR\Mappers;
 
+use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use InvalidArgumentException;
@@ -78,8 +79,8 @@ abstract class BirFormMapper
 
     /**
      * A field's amount for arithmetic. Only plain decimal text counts ("1234.50", the
-     * contract §7 format, read the same way as BirDraftValidator); pending, blank or
-     * anything else ("1,000", "₱500") counts as 0 and is left for the validator to flag.
+     * contract §7 format, BirDraftValidator::AMOUNT_PATTERN); pending, blank or anything
+     * else ("1,000", "₱500") counts as 0 and is left for the validator to flag.
      */
     protected static function amount(array $fields, string $key): float
     {
@@ -88,7 +89,7 @@ abstract class BirFormMapper
             $value = (string) $value;
         }
 
-        return is_string($value) && preg_match('/^-?\d+(\.\d{1,2})?$/', $value) === 1 ? (float) $value : 0.0;
+        return is_string($value) && preg_match(BirDraftValidator::AMOUNT_PATTERN, $value) === 1 ? (float) $value : 0.0;
     }
 
     /**
