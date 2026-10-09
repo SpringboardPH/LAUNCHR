@@ -120,7 +120,19 @@ An answer to a field only a person answers (`source: user`, e.g. "Amended
 Return?") replaces nothing: `origin: user`, `edited: false`, no history.
 
 `edited_by.name` is the name at the time of the edit, so it stays as it was if
-the user is renamed later. Clearing a field (`null`) wipes all three.
+the user is renamed later.
+
+**Clearing a field (`null`)** depends on whether the system has a figure for it:
+
+- An overridden `payroll` or `settings` field gets its calculated figure back:
+  `value` is the old `system_value`, `origin` is the schema source,
+  `edited: false`, and `system_value`, `edited_by` and `edited_at` are null.
+  Clearing means "undo my override".
+- A `payroll` or `settings` field still holding its calculated figure is left
+  exactly as it is.
+- Only a field with no calculated figure (a gap, such as a company TIN still
+  unset, even after someone answered it) or a field only a person answers
+  (`source: user`) goes back to `pending`.
 
 ### `origin` is not the schema's `source`
 
@@ -366,7 +378,9 @@ After merging the answers, `PUT` recalculates the form's totals (Dev A's
 `BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
 in the same response. A total someone typed by hand (`edited: true`) is never
 overwritten, and the totals after it are worked out from the typed value.
-Clearing it (`null`) hands it back to the calculation. A typed total that
+Clearing it (`null`) hands it back to the calculation. Clearing any other
+figure follows §3: an override is undone, and a calculated figure is never
+blanked. A typed total that
 doesn't add up is reported by `validate` as `total_mismatch`.
 
 Each answer is checked as it is saved. Every key must be a field on the draft's

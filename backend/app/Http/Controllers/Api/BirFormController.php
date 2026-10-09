@@ -195,7 +195,11 @@ class BirFormController extends Controller
     /**
      * A field entry after a person's answer (contract §3).
      *
-     * - null clears it: back to pending, with no history (invariant 1).
+     * - null on a field the system supplies (schema source payroll or settings) never throws
+     *   its figure away, since recalculate() only rebuilds totals: an override is undone (the
+     *   calculated figure comes back, not edited, no history), and an untouched calculated
+     *   figure is left as it is. Only a field that never had a figure goes back to pending.
+     * - null on a field only a person answers clears it: back to pending, with no history.
      * - On a field the system supplies (schema source payroll or settings) the answer is an
      *   override: edited, with who and when, and system_value keeping the figure it replaced.
      *   Edited again, system_value keeps the original calculated figure, not the earlier answer.
@@ -209,11 +213,21 @@ class BirFormController extends Controller
     {
         $none = ['system_value' => null, 'edited_by' => null, 'edited_at' => null];
 
+        $systemSupplied = in_array($source, ['payroll', 'settings'], true);
+
         if ($value === null) {
+            if ($systemSupplied && !empty($entry['edited']) && ($entry['system_value'] ?? null) !== null) {
+                return ['value' => $entry['system_value'], 'origin' => $source, 'edited' => false] + $none;
+            }
+            if ($systemSupplied && empty($entry['edited']) && ($entry['value'] ?? null) !== null
+                && in_array($entry['origin'] ?? null, ['payroll', 'settings'], true)) {
+                return $entry;
+            }
+
             return ['value' => null, 'origin' => 'pending', 'edited' => false] + $none;
         }
 
-        if (!in_array($source, ['payroll', 'settings'], true)) {
+        if (!$systemSupplied) {
             return ['value' => $value, 'origin' => 'user', 'edited' => false] + $none;
         }
 

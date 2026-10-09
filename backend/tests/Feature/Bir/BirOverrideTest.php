@@ -110,6 +110,95 @@ class BirOverrideTest extends TestCase
         $this->assertNull($entry['edited_at']);
     }
 
+    public function test_clearing_an_overridden_payroll_figure_restores_the_calculated_figure(): void
+    {
+        $this->payroll(0, deductions: ['SSS EE Contribution' => 1000]);
+        $id = $this->create1601C();
+        $before = $this->fields($id);
+        $this->assertSame('15000.00', $before['total_compensation']['value']);
+        $this->assertSame('14000.00', $before['total_taxable_compensation']['value']);
+
+        $this->answer($id, ['total_compensation' => '20000.00']);
+        $fields = $this->answer($id, ['total_compensation' => null])->json('data.fields');
+
+        $entry = $fields['total_compensation'];
+        $this->assertSame('15000.00', $entry['value']);
+        $this->assertSame('payroll', $entry['origin']);
+        $this->assertFalse($entry['edited']);
+        $this->assertNull($entry['system_value']);
+        $this->assertNull($entry['edited_by']);
+        $this->assertNull($entry['edited_at']);
+        $this->assertSame('14000.00', $fields['total_taxable_compensation']['value']);
+        $this->assertInvariants($fields);
+    }
+
+    public function test_clearing_an_untouched_calculated_figure_changes_nothing(): void
+    {
+        $this->payroll(0, deductions: ['SSS EE Contribution' => 1000]);
+        $id = $this->create1601C();
+        $before = $this->fields($id);
+
+        $fields = $this->answer($id, ['total_compensation' => null])->json('data.fields');
+
+        // MySQL's JSON column re-sorts object keys, so compare the entries key-sorted.
+        $was = $before['total_compensation'];
+        $now = $fields['total_compensation'];
+        ksort($was);
+        ksort($now);
+        $this->assertSame($was, $now);
+        $this->assertSame('14000.00', $fields['total_taxable_compensation']['value']);
+        $this->assertInvariants($fields);
+    }
+
+    public function test_clearing_a_settings_field_that_never_had_a_figure_leaves_it_pending(): void
+    {
+        $id = $this->create1601C();
+
+        // The test database has no company settings, so the TIN starts pending.
+        $fields = $this->answer($id, ['company_tin' => null])->json('data.fields');
+        $this->assertSame('pending', $fields['company_tin']['origin']);
+        $this->assertNull($fields['company_tin']['value']);
+        $this->assertInvariants($fields);
+
+        // Answered, it's an override with no calculated figure; cleared, there's nothing to restore.
+        $this->answer($id, ['company_tin' => '123-456-789-000']);
+        $fields = $this->answer($id, ['company_tin' => null])->json('data.fields');
+        $this->assertNull($fields['company_tin']['value']);
+        $this->assertSame('pending', $fields['company_tin']['origin']);
+        $this->assertFalse($fields['company_tin']['edited']);
+        $this->assertNull($fields['company_tin']['edited_by']);
+        $this->assertInvariants($fields);
+    }
+
+    public function test_clearing_an_answer_to_a_user_question_leaves_it_pending(): void
+    {
+        $id = $this->create1601C();
+        $this->answer($id, ['is_amended' => false]);
+
+        $fields = $this->answer($id, ['is_amended' => null])->json('data.fields');
+
+        $this->assertNull($fields['is_amended']['value']);
+        $this->assertSame('pending', $fields['is_amended']['origin']);
+        $this->assertFalse($fields['is_amended']['edited']);
+        $this->assertInvariants($fields);
+    }
+
+    public function test_clearing_after_two_overrides_restores_the_original_calculated_figure(): void
+    {
+        $this->payroll(0, deductions: ['SSS EE Contribution' => 1000]);
+        $id = $this->create1601C();
+        $this->answer($id, ['total_compensation' => '20000.00']);
+        $this->answer($id, ['total_compensation' => '25000.00']);
+
+        $fields = $this->answer($id, ['total_compensation' => null])->json('data.fields');
+
+        $this->assertSame('15000.00', $fields['total_compensation']['value'], 'The calculated figure, not the first override.');
+        $this->assertSame('payroll', $fields['total_compensation']['origin']);
+        $this->assertFalse($fields['total_compensation']['edited']);
+        $this->assertSame('14000.00', $fields['total_taxable_compensation']['value']);
+        $this->assertInvariants($fields);
+    }
+
     public function test_the_time_of_an_override_comes_from_the_system_clock(): void
     {
         // Real time and the admin-set system time differ, so this shows which one is used.
@@ -137,7 +226,27 @@ class BirOverrideTest extends TestCase
             ->assertOk();
     }
 
-    private function payroll(float $tax, string $start = '2026-09-01', string $end = '2026-09-15'): void
+    private function fields(int $draftId): array
+    {
+        return $this->actingAs($this->accounting())->getJson("/api/bir/drafts/{$draftId}")->assertOk()->json('data.fields');
+    }
+
+    /** Contract §3's three invariants, on every field of a draft. */
+    private function assertInvariants(array $fields): void
+    {
+        foreach ($fields as $key => $entry) {
+            $this->assertSame($entry['value'] === null, $entry['origin'] === 'pending', "{$key}: value null ⟺ origin pending");
+            if ($entry['edited']) {
+                $this->assertSame('user', $entry['origin'], "{$key}: edited ⟹ origin user");
+            } else {
+                $this->assertNull($entry['system_value'], "{$key}: system_value null unless edited");
+                $this->assertNull($entry['edited_by'], "{$key}: edited_by null unless edited");
+                $this->assertNull($entry['edited_at'], "{$key}: edited_at null unless edited");
+            }
+        }
+    }
+
+    private function payroll(float $tax, string $start = '2026-09-01', string $end = '2026-09-15', array $deductions = []): void
     {
         $employee = Employee::firstOrCreate(['employee_id' => 'EMP-BIR-O1'], [
             'first_name' => 'Bir',
@@ -156,7 +265,7 @@ class BirOverrideTest extends TestCase
             'cutoff_end' => $end,
             'base_salary' => 30000,
             'gross_pay' => 15000,
-            'deductions' => ['Withholding Tax' => $tax],
+            'deductions' => ['Withholding Tax' => $tax] + $deductions,
             'allowances' => [],
             'status' => 'finalized',
         ]);
