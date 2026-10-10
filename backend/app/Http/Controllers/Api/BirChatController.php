@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BirFormDraft;
+use App\Services\BIR\BirConversationService;
 use App\Services\BIR\BirConversationState;
+use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirEmployeeResolver;
 use App\Services\BIR\BirIntentService;
 use App\Services\BIR\Schemas\Form2316Schema;
@@ -13,29 +16,37 @@ use RuntimeException;
 /**
  * POST /api/bir/chat
  *
- * Sequences the three steps of understanding a request: parse it, merge it
- * with what earlier messages established, then find the employee if one was
- * named. Each step is a service call — nothing is computed here.
+ * Without draft_id: understands a request. Sequences parse it, merge it with what
+ * earlier messages established, then find the employee if one was named. The merged
+ * intent carries a ready-to-use period string for POST /bir/drafts.
  *
- * The merged intent carries a ready-to-use period string, so the caller can
- * pass it straight to POST /bir/drafts without rebuilding it.
+ * With draft_id (Week 5): fills in that draft, one missing field at a time. Send no
+ * message to get the next question; send the field just asked and the user's message
+ * to have it read. PHP only, so it works with the language model down.
  *
- * Week 3 scope: the request is understood and the employee identified. Draft
- * creation follows in Week 5.
+ * Each step is a service call — nothing is computed here.
  */
 class BirChatController extends Controller
 {
     public function __construct(
         private readonly BirIntentService $intent,
         private readonly BirEmployeeResolver $employees,
+        private readonly BirConversationService $conversation,
+        private readonly BirDraftValidator $validator,
     ) {}
 
     public function message(Request $request)
     {
         $validated = $request->validate([
-            'message' => ['required', 'string', 'max:500'],
+            'message' => ['required_without:draft_id', 'nullable', 'string', 'max:500'],
             'reset' => ['sometimes', 'boolean'],
+            'draft_id' => ['sometimes', 'integer'],
+            'field' => ['sometimes', 'string'],
         ]);
+
+        if (isset($validated['draft_id'])) {
+            return $this->draftTurn((int) $validated['draft_id'], $validated['field'] ?? null, $validated['message'] ?? null);
+        }
 
         $state = new BirConversationState($request->user()->id);
 
@@ -112,6 +123,62 @@ class BirChatController extends Controller
             $employee->employee_id,
             $merged['period'],
         ));
+    }
+
+    /**
+     * One turn of filling in a draft. Nothing is saved here: an accepted answer comes back
+     * as data.answer for the caller to save through PUT /bir/drafts/{id}.
+     */
+    private function draftTurn(int $draftId, ?string $field, ?string $message)
+    {
+        // employee: BirConversationService::context() needs the hire date for a 2316.
+        $draft = BirFormDraft::with('employee')->find($draftId);
+        if (!$draft) {
+            return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+        }
+
+        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
+            return $this->draftReply($draft, ['question' => null, 'answer' => null], "This form is {$draft->status}, so it can't be changed here.");
+        }
+
+        $turn = $this->conversation->turn($draft, $field, $message);
+
+        return $this->draftReply($draft, $turn, $turn['reply'] ?? $this->finished($draft));
+    }
+
+    /** Once nothing is left to ask: whether anything else still blocks submitting. */
+    private function finished(BirFormDraft $draft): string
+    {
+        $errors = count(array_filter($this->validator->validate($draft), fn (array $entry) => $entry['severity'] === 'error'));
+
+        return $errors === 0
+            ? 'That is everything this form needs from you. Check the preview, then use Submit to send it for review.'
+            : "That is everything I can ask here, but {$errors} " . ($errors === 1 ? 'issue still needs' : 'issues still need')
+                . ' fixing before it can be submitted. They are listed on the draft.';
+    }
+
+    /**
+     * Same envelope as reply(), plus the draft turn: question is the field now being asked
+     * (null when nothing is), answer is { field, value } to save, done means nothing is left.
+     *
+     * @param  array{question: ?array, answer: ?array}  $turn
+     */
+    private function draftReply(BirFormDraft $draft, array $turn, string $reply)
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'understood' => false,
+                'intent' => null,
+                'candidates' => [],
+                'reply' => $reply,
+                'draft_id' => $draft->id,
+                'question' => $turn['question'],
+                'answer' => $turn['answer'],
+                'done' => $turn['question'] === null && $turn['answer'] === null,
+            ],
+            'message' => $turn['answer'] !== null ? 'Answer read' : ($turn['question'] !== null ? 'Question asked' : 'Nothing left to ask'),
+        ]);
     }
 
     /**

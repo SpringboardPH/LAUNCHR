@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw } from 'lucide-react'
 import clsx from 'clsx'
-import { birKeys, sendBirChatMessage, createBirDraft, validateBirDraft } from '../../api/queries'
+import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December']
@@ -40,6 +40,10 @@ export const describePeriod = (formType, period) => {
 
 const errorText = (err) =>
   err?.response?.data?.message || 'Something went wrong. Please try again.'
+
+// PUT refuses a bad answer with a 422 naming the field: { errors: { "fields.<key>": ["…"] } }.
+const fieldError = (err, field) =>
+  err?.response?.data?.errors?.[`fields.${field}`]?.[0] ?? errorText(err)
 
 function IntentCard({ intent, status, onConfirm, onDecline }) {
   return (
@@ -151,20 +155,50 @@ export default function BirChatPanel({ onDraftCreated }) {
   // The server remembers a conversation for 30 minutes; the first message after
   // opening the page or "New conversation" tells it to start over.
   const freshRef = useRef(true)
+  // While the chat is filling in a draft: which draft, and which field it just asked about.
+  const [filling, setFilling] = useState(null)
 
   const push = (msg) => setMessages(prev => [...prev, { id: nextId(), ...msg }])
   const patch = (id, changes) => setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...changes } : m)))
 
   const chat = useMutation({
-    mutationFn: ({ message, reset }) => sendBirChatMessage(message, { reset }),
-    onSuccess: (res) => push({
-      role: 'assistant',
-      text: res.reply,
-      intent: res.understood ? res.intent : null,
-      intentStatus: res.understood ? 'open' : null,
-      candidates: res.candidates ?? [],
-    }),
+    mutationFn: ({ message, reset, draftId, field }) => sendBirChatMessage(message, { reset, draftId, field }),
+    onSuccess: (res) => {
+      // An answer the chat read is saved first; "Got it" is only shown once it is.
+      if (res.answer) {
+        save.mutate({ draftId: res.draft_id, ...res.answer, reply: res.reply })
+        return
+      }
+      push({
+        role: 'assistant',
+        text: res.reply,
+        intent: res.understood ? res.intent : null,
+        intentStatus: res.understood ? 'open' : null,
+        candidates: res.candidates ?? [],
+      })
+      if ('draft_id' in res) setFilling(res.question ? { draftId: res.draft_id, field: res.question.field } : null)
+    },
     onError: (err) => push({ role: 'assistant', error: true, text: errorText(err) }),
+  })
+
+  // Saves an answer through PUT, so it is checked and tracked like any other edit, then asks
+  // the next question. A refused answer leaves the same question open for another try.
+  const save = useMutation({
+    mutationFn: async ({ draftId, field, value }) => {
+      await updateBirDraft(draftId, { [field]: value })
+      try {
+        await validateBirDraft(draftId) // keeps validation_errors current for the preview
+      } catch {
+        // The answer is saved either way; the next validate brings the errors up to date.
+      }
+    },
+    onSuccess: (_, { draftId, reply }) => {
+      push({ role: 'assistant', text: reply })
+      qc.invalidateQueries({ queryKey: birKeys.lists })
+      qc.invalidateQueries({ queryKey: birKeys.detail(draftId) })
+      chat.mutate({ draftId })
+    },
+    onError: (err, { field }) => push({ role: 'assistant', error: true, text: fieldError(err, field) }),
   })
 
   const create = useMutation({
@@ -193,6 +227,7 @@ export default function BirChatPanel({ onDraftCreated }) {
       qc.invalidateQueries({ queryKey: birKeys.lists })
       qc.invalidateQueries({ queryKey: birKeys.detail(draft.id) })
       onDraftCreated?.(draft)
+      chat.mutate({ draftId: draft.id }) // first missing question, if any
     },
     onError: (err, { msgId }) => {
       patch(msgId, { intentStatus: 'open' })
@@ -200,7 +235,7 @@ export default function BirChatPanel({ onDraftCreated }) {
     },
   })
 
-  const busy = chat.isPending || create.isPending
+  const busy = chat.isPending || create.isPending || save.isPending
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -215,7 +250,9 @@ export default function BirChatPanel({ onDraftCreated }) {
     if (!message || busy) return
     push({ role: 'user', text: message })
     setInput('')
-    chat.mutate({ message, reset: freshRef.current })
+    chat.mutate(filling
+      ? { message, draftId: filling.draftId, field: filling.field }
+      : { message, reset: freshRef.current })
     freshRef.current = false
   }
 
@@ -237,6 +274,7 @@ export default function BirChatPanel({ onDraftCreated }) {
   const reset = () => {
     setMessages([GREETING])
     setInput('')
+    setFilling(null)
     freshRef.current = true
   }
 
@@ -293,7 +331,7 @@ export default function BirChatPanel({ onDraftCreated }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={busy}
-          placeholder={busy ? 'Waiting for the assistant…' : 'e.g. Generate the August 2026 1601-C'}
+          placeholder={busy ? 'Waiting for the assistant…' : filling ? 'Type your answer…' : 'e.g. Generate the August 2026 1601-C'}
           className="input flex-1 resize-none max-h-32 disabled:bg-gray-50"
           aria-label="Message the form assistant"
         />

@@ -650,8 +650,16 @@ export const exportBirDraft = bir(
 // Returns { understood, intent, candidates, reply }. The server remembers the
 // conversation; pass { reset: true } to start a new one. A 503 means the assistant
 // is down — the page must still let the user pick a form and period manually.
+// With { draftId } it fills in that draft instead (Week 5): no message asks the next question,
+// { message, field } has the answer to that field read. Returns { reply, draft_id, question,
+// answer, done }; an answer is { field, value } for the caller to save with updateBirDraft.
 export const sendBirChatMessage = bir(
-  (message, { reset = false } = {}) => api.post('/bir/chat', { message, ...(reset && { reset: true }) }).then(r => r.data.data),
+  (message, { reset = false, draftId, field } = {}) => api.post('/bir/chat', {
+    ...(message != null && { message }),
+    ...(reset && { reset: true }),
+    ...(draftId && { draft_id: draftId }),
+    ...(field && { field }),
+  }).then(r => r.data.data),
   birMockApi.chat,
 )
 
