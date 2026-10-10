@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Helpers\SystemClock;
 use App\Http\Controllers\Controller;
 use App\Models\BirFormDraft;
+use App\Services\BIR\BirAnswerParser;
 use App\Services\BIR\BirConversationService;
 use App\Services\BIR\BirConversationState;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirEmployeeResolver;
+use App\Services\BIR\BirExplanationService;
 use App\Services\BIR\BirIntentService;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
@@ -24,6 +27,12 @@ use RuntimeException;
  * message to get the next question; send the field just asked and the user's message
  * to have it read. PHP only, so it works with the language model down.
  *
+ * Week 6: a message that isn't a readable answer is sorted by the model (a question
+ * about a box, a tax question, a new request) and answered in PHP from the draft's
+ * records and the schema's help text. The model labels; it never writes a reply.
+ * Fixes from chat testing: a refused year is explained (B3), and the model's label only
+ * replaces the re-ask with an explanation when the message reads as a question (D4).
+ *
  * Each step is a service call — nothing is computed here.
  */
 class BirChatController extends Controller
@@ -33,6 +42,7 @@ class BirChatController extends Controller
         private readonly BirEmployeeResolver $employees,
         private readonly BirConversationService $conversation,
         private readonly BirDraftValidator $validator,
+        private readonly BirExplanationService $explanations,
     ) {}
 
     public function message(Request $request)
@@ -64,11 +74,30 @@ class BirChatController extends Controller
             ], 503);
         }
 
+        // Not a form request: a fixed reply, and nothing is remembered from it.
+        if ($parsed['kind'] !== 'form_request') {
+            return $this->reply($state->get(), false, $parsed['kind'] === 'tax_question'
+                ? BirExplanationService::DECLINE
+                : BirExplanationService::NOT_A_REQUEST);
+        }
+
         $merged = $state->merge($parsed);
         $missing = $this->intent->missingFields($merged);
 
-        if ($missing !== [] || $parsed['needs_clarification']) {
-            return $this->reply($merged, false, $parsed['clarification'] ?? $this->question($missing));
+        // A year no form can be prepared for: say so, then ask for the year, rather than
+        // asking as if none was given.
+        if ($parsed['rejected_year'] !== null) {
+            return $this->reply($merged, false, $this->refusedYear($parsed['rejected_year']) . ' '
+                . $this->question($this->intent->missingFields(['tax_year' => null] + $merged)));
+        }
+
+        // What's missing is asked in PHP's words. The model's own question is used only when
+        // nothing is missing but it was unsure, so it can't promise what the system can't do.
+        if ($missing !== []) {
+            return $this->reply($merged, false, $this->question($missing));
+        }
+        if ($parsed['needs_clarification']) {
+            return $this->reply($merged, false, $parsed['clarification'] ?? $this->question([]));
         }
 
         // Only 2316 names an employee; 1601-C is company-wide.
@@ -137,13 +166,56 @@ class BirChatController extends Controller
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
-            return $this->draftReply($draft, ['question' => null, 'answer' => null], "This form is {$draft->status}, so it can't be changed here.");
+        // A locked form asks nothing and saves nothing, but can still be explained.
+        $turn = in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)
+            ? $this->conversation->turn($draft, $field, $message)
+            : ['question' => null, 'answer' => null, 'reply' => "This form is {$draft->status}, so it can't be changed here.", 'unread' => $message !== null];
+
+        if ($turn['unread']) {
+            $turn['reply'] = $this->sorted($draft, $turn, (string) $message) ?? $turn['reply'];
         }
 
-        $turn = $this->conversation->turn($draft, $field, $message);
-
         return $this->draftReply($draft, $turn, $turn['reply'] ?? $this->finished($draft));
+    }
+
+    /**
+     * A message that wasn't a readable answer: sorted by the model, answered in PHP. Null
+     * keeps turn()'s own reply (the re-ask, or the next question), which is also all that
+     * happens with the model down, so filling in a draft never depends on it.
+     *
+     * @param  array{question: ?array}  $turn
+     */
+    private function sorted(BirFormDraft $draft, array $turn, string $message): ?string
+    {
+        $open = $turn['question']['field'] ?? null;
+
+        try {
+            $sorted = $this->intent->classifyDraftMessage($message, $draft->form_type, $this->conversation->boxes($draft->form_type), $open);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        $box = $sorted['field'] ?? $open;
+
+        // Explaining the open box only replaces the re-ask when the message asks for it.
+        // "around 150k" is a muddled answer whatever the label, and the parser's own message
+        // says what to type instead.
+        if (in_array($sorted['kind'], ['explain_meaning', 'explain_source'], true) && $box === $open
+            && !BirAnswerParser::looksLikeQuestion($message)) {
+            return null;
+        }
+
+        $reply = match ($sorted['kind']) {
+            'explain_meaning' => $box !== null ? $this->explanations->meaning($draft, $box) : BirExplanationService::WHICH_BOX,
+            'explain_source' => $box !== null ? $this->explanations->source($draft, $box) : BirExplanationService::WHICH_BOX,
+            'tax_question' => BirExplanationService::DECLINE,
+            'new_request' => BirExplanationService::NEW_REQUEST,
+            'other' => BirExplanationService::OTHER,
+            default => null, // a muddled answer: keep the re-ask
+        };
+
+        // The side question is answered; then the open question is asked again.
+        return $reply !== null && $turn['question'] !== null ? "{$reply}\n\n{$turn['question']['text']}" : $reply;
     }
 
     /** Once nothing is left to ask: whether anything else still blocks submitting. */
@@ -199,6 +271,14 @@ class BirChatController extends Controller
         ]);
     }
 
+    /** Why a year was refused. Years from FIRST_YEAR up to next year are accepted. */
+    private function refusedYear(int $year): string
+    {
+        return $year > SystemClock::now()->year
+            ? "I can't prepare a form for {$year} because that year hasn't happened yet."
+            : "I can't prepare a form for {$year}. I prepare forms from " . BirIntentService::FIRST_YEAR . ' onward.';
+    }
+
     /** @param array<int,string> $missing */
     private function question(array $missing): string
     {
@@ -206,12 +286,15 @@ class BirChatController extends Controller
             return 'Which form and period did you need?';
         }
 
+        // One month per 1601-C: saying so stops "every month of 2025" going round in circles.
+        $note = in_array('the month', $missing, true) ? ' I prepare one 1601-C at a time.' : '';
+
         if (count($missing) === 1) {
-            return 'Could you tell me ' . $missing[0] . '?';
+            return 'Could you tell me ' . $missing[0] . '?' . $note;
         }
 
         $last = array_pop($missing);
 
-        return 'Could you tell me ' . implode(', ', $missing) . ' and ' . $last . '?';
+        return 'Could you tell me ' . implode(', ', $missing) . ' and ' . $last . '?' . $note;
     }
 }

@@ -63,37 +63,76 @@ class BirConversationService
 
     /**
      * One turn of filling in a draft. A message that answers the question still open ($key)
-     * is read with BirAnswerParser; anything else gets the next question. Nothing is saved
+     * is read with BirAnswerParser; no message gets the next question. Nothing is saved
      * here: an accepted answer goes back to the caller, which saves it through PUT, where it
      * is checked again and its history kept. reply is null once nothing is left to ask.
      *
-     * @return array{question: ?array, answer: ?array{field: string, value: mixed}, reply: ?string}
+     * unread is true when a message came in that isn't a readable answer: a muddled answer,
+     * or a question about a box. The caller can then have it sorted (Week 6); reply already
+     * holds what to say if it can't be.
+     *
+     * @return array{question: ?array, answer: ?array{field: string, value: mixed}, reply: ?string, unread: bool}
      */
     public function turn(BirFormDraft $draft, ?string $key, ?string $message): array
     {
         $next = $this->nextQuestion($draft);
 
+        if ($message === null) {
+            return ['question' => $next, 'answer' => null, 'reply' => $next['text'] ?? null, 'unread' => false];
+        }
+
         // Only an answer to the question still open is read. If that field was filled in the
         // meantime (in the preview, say), the message is never applied to whatever comes next.
-        if ($next !== null && $key === $next['field'] && $message !== null) {
+        if ($next !== null && $key === $next['field']) {
             $parsed = BirAnswerParser::parse($message, $next);
 
             if (!$parsed['ok']) {
-                return ['question' => $next, 'answer' => null, 'reply' => $parsed['problem']];
+                return ['question' => $next, 'answer' => null, 'reply' => $parsed['problem'], 'unread' => true];
             }
 
             return [
                 'question' => null,
                 'answer' => ['field' => $key, 'value' => $parsed['value']],
-                'reply' => "Got it: {$next['label']}: " . self::shown($parsed['value'], $next['type']) . '.',
+                'reply' => "Got it: {$next['label']}: " . self::display($parsed['value'], $next['type']) . '.',
+                'unread' => false,
             ];
         }
 
-        return ['question' => $next, 'answer' => null, 'reply' => $next['text'] ?? null];
+        return ['question' => $next, 'answer' => null, 'reply' => $next['text'] ?? null, 'unread' => true];
     }
 
-    /** An accepted answer as the user should check it. Dates are spelled out so 05/06 can't be misread. */
-    private static function shown(mixed $value, string $type): string
+    /**
+     * The draft's boxes for the model to choose from: key => "Item 22: label". Signature
+     * boxes are left out, since they are signed on paper and never discussed here.
+     *
+     * @return array<string, string>
+     */
+    public function boxes(string $formType): array
+    {
+        $boxes = [];
+        foreach ($this->schemaFor($formType) as $field) {
+            if ($field['source'] !== 'manual') {
+                $boxes[$field['key']] = ($field['item'] !== null ? "Item {$field['item']}: " : '') . $field['label'];
+            }
+        }
+
+        return $boxes;
+    }
+
+    /** @return array<string, mixed> one schema field, by key */
+    public function field(string $formType, string $key): array
+    {
+        return array_column($this->schemaFor($formType), null, 'key')[$key];
+    }
+
+    /** How a box is named to the user: "Item 22, Taxable income…", in quotes. */
+    public static function boxName(array $field): string
+    {
+        return '"' . ($field['item'] !== null ? "Item {$field['item']}, {$field['label']}" : $field['label']) . '"';
+    }
+
+    /** A value as the user should read it. Dates are spelled out so 05/06 can't be misread. */
+    public static function display(mixed $value, string $type): string
     {
         return match ($type) {
             'boolean' => $value ? 'yes' : 'no',
@@ -113,7 +152,7 @@ class BirConversationService
      */
     private function questionText(array $missing, array $field, array $schema): string
     {
-        $name = '"' . ($field['item'] !== null ? "Item {$field['item']}, {$field['label']}" : $field['label']) . '"';
+        $name = self::boxName($field);
 
         $why = match ($missing['reason']) {
             BirMissingFields::REASON_RECORD_GAP => " should come from the "

@@ -155,7 +155,8 @@ export default function BirChatPanel({ onDraftCreated }) {
   // The server remembers a conversation for 30 minutes; the first message after
   // opening the page or "New conversation" tells it to start over.
   const freshRef = useRef(true)
-  // While the chat is filling in a draft: which draft, and which field it just asked about.
+  // Once a draft exists, the chat stays on it until "New conversation": which draft, and the
+  // field it just asked about (null when nothing is open, so a message is a question about it).
   const [filling, setFilling] = useState(null)
 
   const push = (msg) => setMessages(prev => [...prev, { id: nextId(), ...msg }])
@@ -176,7 +177,7 @@ export default function BirChatPanel({ onDraftCreated }) {
         intentStatus: res.understood ? 'open' : null,
         candidates: res.candidates ?? [],
       })
-      if ('draft_id' in res) setFilling(res.question ? { draftId: res.draft_id, field: res.question.field } : null)
+      if ('draft_id' in res) setFilling({ draftId: res.draft_id, field: res.question?.field ?? null })
     },
     onError: (err) => push({ role: 'assistant', error: true, text: errorText(err) }),
   })
@@ -331,7 +332,10 @@ export default function BirChatPanel({ onDraftCreated }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={busy}
-          placeholder={busy ? 'Waiting for the assistant…' : filling ? 'Type your answer…' : 'e.g. Generate the August 2026 1601-C'}
+          placeholder={busy ? 'Waiting for the assistant…'
+            : filling?.field ? 'Type your answer, or ask what this box means…'
+            : filling ? 'Ask about a box, e.g. "where did item 21 come from?"'
+            : 'e.g. Generate the August 2026 1601-C'}
           className="input flex-1 resize-none max-h-32 disabled:bg-gray-50"
           aria-label="Message the form assistant"
         />

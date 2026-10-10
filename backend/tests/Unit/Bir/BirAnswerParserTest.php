@@ -36,6 +36,7 @@ class BirAnswerParserTest extends TestCase
             'whole number' => ['integer', '2', 2],
             'option in another case' => ['enum', 'Main', 'main'],
             'text is trimmed' => ['string', '  049  ', '049'],
+            'an address is not mistaken for a question' => ['text', '12 Mabini St., Quezon City', '12 Mabini St., Quezon City'],
         ];
     }
 
@@ -67,6 +68,8 @@ class BirAnswerParserTest extends TestCase
             'number in words' => ['integer', 'two', 'whole number'],
             'not one of the options' => ['enum', 'other', 'main, secondary'],
             'nothing typed' => ['string', '   ', 'type an answer'],
+            'a question instead of text' => ['string', 'saan galing ito?', 'looks like a question'],
+            'a question without a question mark' => ['text', 'what goes here', 'looks like a question'],
         ];
     }
 

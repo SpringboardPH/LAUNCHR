@@ -4,6 +4,7 @@ namespace Tests\Feature\Bir;
 
 use App\Services\BIR\BirIntentService;
 use App\Services\BIR\Llm\FakeLlmClient;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -20,6 +21,8 @@ use Tests\TestCase;
  */
 class BirIntentTest extends TestCase
 {
+    use RefreshDatabase; // the year checks read SystemClock, which reads system_settings
+
     private function service(array ...$replies): BirIntentService
     {
         $fake = new FakeLlmClient;
@@ -103,7 +106,7 @@ class BirIntentTest extends TestCase
             'confidence' => 'low',
             'clarification' => 'Did you mean August or a different month?',
         ]));
-        $result = $service->parse('the one for last month maybe');
+        $result = $service->parse('the 1601-C for last month maybe');
 
         $this->assertSame([], $service->missingFields($result));
         $this->assertTrue($result['needs_clarification']);
@@ -179,5 +182,50 @@ class BirIntentTest extends TestCase
 
         $this->assertSame('Generate the August 2026 1601-C', $sent['message']);
         $this->assertStringNotContainsString('deductions', $sent['system']);
+    }
+
+    public function test_a_refused_year_is_kept_aside_so_the_reply_can_say_why(): void
+    {
+        $result = $this->service($this->reply(['tax_year' => 2030]))->parse('1601-C for August 2030');
+
+        $this->assertNull($result['tax_year'], 'No form is prepared for 2030.');
+        $this->assertSame(2030, $result['rejected_year']);
+    }
+
+    public function test_a_form_the_user_did_not_name_is_not_taken_from_the_model(): void
+    {
+        // The model guesses the 1601-C because it is the only monthly form.
+        $service = $this->service($this->reply(['tax_month' => 9]));
+        $result = $service->parse('September 2026');
+
+        $this->assertNull($result['form_type']);
+        $this->assertContains('which form', $service->missingFields($result));
+    }
+
+    public function test_a_form_named_in_an_earlier_message_is_kept(): void
+    {
+        $result = $this->service($this->reply())->parse('August 2026', ['form_type' => '1601-C']);
+
+        $this->assertSame('1601-C', $result['form_type']);
+        $this->assertSame('2026-08', $result['period']);
+    }
+
+    public function test_a_message_that_only_names_a_period_is_a_form_request_whatever_the_label(): void
+    {
+        $result = $this->service($this->reply(['kind' => 'tax_question']))->parse('September 2026');
+        $this->assertSame('form_request', $result['kind']);
+
+        $result = $this->service($this->reply(['kind' => 'tax_question']))->parse('how much tax was withheld in September 2026?');
+        $this->assertSame('tax_question', $result['kind'], 'A real question keeps its label.');
+    }
+
+    public function test_what_counts_as_only_a_period_or_a_form(): void
+    {
+        foreach (['September 2026', 'Agosto 2026', 'the 2316 for 2025', '08/2026', 'para sa 1601-C ng Agosto 2026', 'last month'] as $message) {
+            $this->assertTrue(BirIntentService::onlyNamesAPeriodOrForm($message), $message);
+        }
+        foreach (['thanks', 'please', 'salary for September 2026', 'magkano tax ko sa 2025'] as $message) {
+            $this->assertFalse(BirIntentService::onlyNamesAPeriodOrForm($message), $message);
+        }
     }
 }

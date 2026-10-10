@@ -24,6 +24,19 @@ final class BirAnswerParser
     /** Words that mean the amount is approximate, so it is asked again. */
     private const VAGUE = ['about', 'around', 'approx', 'approximately', 'roughly', 'mga', 'siguro', 'more or less', '~'];
 
+    /**
+     * First words that make free text a question about the box rather than its answer
+     * ("saan galing ito?"). The parser checks them only for text boxes; any other type can't
+     * mistake a question for an answer, since a question never reads as an amount, date or
+     * yes/no. The chat also uses them (looksLikeQuestion) to tell a question about a box
+     * from a muddled answer.
+     */
+    private const QUESTION_WORDS = [
+        'what', "what's", 'whats', 'where', 'why', 'how', 'who', 'when', 'which', 'explain',
+        'ano', 'anong', 'saan', 'bakit', 'paano', 'sino', 'kailan', 'alin', 'paki', 'pakiexplain',
+        'can', 'could', 'does', 'do', 'is', 'are',
+    ];
+
     /** Accepted date spellings. MM/DD/YYYY, not DD/MM/YYYY, because that is how BIR forms write dates. */
     private const DATE_FORMATS = ['Y-m-d', 'm/d/Y', 'F j, Y', 'F j Y', 'M j, Y', 'M j Y', 'j F Y', 'j M Y'];
 
@@ -46,7 +59,7 @@ final class BirAnswerParser
             'integer' => self::wholeNumber($answer),
             'month' => self::month($answer),
             'date' => self::date($answer),
-            'string', 'text' => self::ok($answer),
+            'string', 'text' => self::text($answer),
             default => self::problem("\"{$field['label']}\" can't be entered in the chat."),
         };
     }
@@ -135,6 +148,24 @@ final class BirAnswerParser
         }
 
         return self::problem('Please enter the date as MM/DD/YYYY, for example 05/31/1990.');
+    }
+
+    /** Ends with "?" or starts with a question word: "saan galing ito?", "what goes here". */
+    public static function looksLikeQuestion(string $message): bool
+    {
+        $message = trim($message);
+
+        return str_ends_with($message, '?') || in_array(strtok(mb_strtolower($message), " \t,"), self::QUESTION_WORDS, true);
+    }
+
+    /** Free text is taken as written, unless it reads as a question about the box. */
+    private static function text(string $answer): array
+    {
+        if (self::looksLikeQuestion($answer)) {
+            return self::problem('That looks like a question rather than the answer. Type the answer itself, or ask me what the box means.');
+        }
+
+        return self::ok($answer);
     }
 
     private static function ok(mixed $value): array

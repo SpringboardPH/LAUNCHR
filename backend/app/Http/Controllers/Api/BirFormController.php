@@ -12,6 +12,7 @@ use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
 use App\Services\BIR\BirDraftValidator;
+use App\Services\BIR\BirPdfService;
 use App\Services\BIR\Mappers\BirFormMapper;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
@@ -445,16 +446,30 @@ class BirFormController extends Controller
         ], 201);
     }
 
-    public function export(int $id)
+    /**
+     * The official BIR PDF with the draft's values (Dev C, BirPdfService). Any status can be
+     * exported so a draft can be printed and checked; until it is approved, every page says
+     * DRAFT — NOT FOR FILING.
+     */
+    public function export(BirPdfService $pdf, int $id)
     {
-        $draft = BirFormDraft::find($id);
+        $draft = BirFormDraft::with('employee')->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        return response()->json([
-            'success' => false,
-            'message' => 'PDF export is not implemented yet (Dev C, Week 6-7)',
-        ], 501);
+        $name = sprintf(
+            'BIR-%s-%s%s-v%d%s.pdf',
+            $draft->form_type,
+            $draft->period,
+            $draft->employee ? '-' . $draft->employee->employee_id : '',
+            $draft->version,
+            in_array($draft->status, BirPdfService::FILEABLE_STATUSES, true) ? '' : '-DRAFT',
+        );
+
+        return response($pdf->render($draft), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $name . '"',
+        ]);
     }
 }

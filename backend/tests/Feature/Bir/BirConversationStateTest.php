@@ -4,6 +4,8 @@ namespace Tests\Feature\Bir;
 
 use App\Models\User;
 use App\Services\BIR\BirConversationState;
+use App\Services\BIR\Llm\FakeLlmClient;
+use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -153,10 +155,16 @@ class BirConversationStateTest extends TestCase
     {
         $user = User::factory()->create(['role' => 'accounting']);
 
+        // The model as it reads each message: the first names only the form, the second only
+        // the period. The form carries over because it was named, not because it was guessed.
+        $this->app->instance(LlmClientInterface::class, (new FakeLlmClient)
+            ->willReturn(['form_type' => '1601-C', 'tax_year' => null, 'tax_month' => null, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null])
+            ->willReturn(['form_type' => '1601-C', 'tax_year' => 2026, 'tax_month' => 8, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]));
+
         $first = $this->actingAs($user)
             ->postJson('/api/bir/chat', ['message' => 'Generate a 1601-C', 'reset' => true]);
 
-        $first->assertOk();
+        $first->assertOk()->assertJsonPath('data.understood', false);
 
         $second = $this->actingAs($user)
             ->postJson('/api/bir/chat', ['message' => 'August 2026']);
