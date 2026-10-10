@@ -66,6 +66,10 @@ class BirIntentService
           expand initials, or guess who they meant.
         - Never invent a year, a month or an employee that the user did not give.
           Leave the field null instead.
+        - Only set form_type when the user names the form (for example "1601-C",
+          "2316", "remittance return", "certificate") or it is listed under
+          "Earlier messages already established". Never work out the form from a
+          month, a year or an employee name. Leave form_type null instead.
         - If the form type or period is unclear, set confidence to "low" and put one
           short question in clarification.
         - Requests may mix English and Filipino. "1601c ng August" is a valid request.
