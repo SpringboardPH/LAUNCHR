@@ -194,6 +194,7 @@ printed-form order.
 | `record_gap` | error | Should come from payroll or company settings, but nothing was there. Fix the record, or enter it on the draft. |
 | `total_mismatch` | error | A total does not equal the sum of its parts on the form as it stands (8 totals per form) |
 | `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words. `PUT` refuses these already (§6); this still catches one held over from older data. |
+| `invalid_format` | error | Text that doesn't follow its field's `format`: a TIN, RDO code, ZIP, phone number, email or MM/DD date. `PUT` refuses these already (§6); this still catches one from older data, or a badly formatted figure from payroll or company settings. |
 | `payroll_mismatch` | warning | Tax withheld (1601-C item 25, 2316 item 25A) differs from the payroll the draft was built from |
 | `empty_period` | warning | The draft was built from a period with no finalized or paid payroll, so every payroll figure is zero |
 
@@ -219,7 +220,9 @@ fixtures:
 Both expose `fields()`, `byKey()` and `payrollDerivedKeys()`; the 2316 schema
 also has `unverifiedKeys()`. Each field carries `key`, `item`, `label`, `type`,
 `source`, `required`, `rule`, `pdf_anchor` and `guidance` (help text), plus
-`options` on enums and `required_when` on conditional fields. Both schemas are
+`options` on enums, `required_when` on conditional fields, and `format` on text
+that must follow a pattern (Dev A's `FieldFormat`: `tin`, `rdo`, `zip`, `phone`,
+`email`, `mmdd`). Both schemas are
 served on `GET /bir/config` (§6).
 
 **Dev D: do not hardcode field keys.** Read them from the draft response and use
@@ -395,6 +398,12 @@ form, and each value must suit the field's type (§4 schemas):
 | date | A real date as `YYYY-MM-DD` |
 | string / text | Text, at most 255 / 1000 characters |
 | manual | Never: signed on the printed form, not entered here |
+
+A text field with a `format` must also follow it, for example a TIN like
+`123-456-789-000`, an RDO code like `043` or `21A`, or a ZIP like `1004`. The
+message says what the value should look like: `"ZIP Code" must be a 4-digit ZIP
+code like 1004.` Blank text (`""`) isn't format-checked; whether a field may be
+blank is the missing-fields rule's job.
 
 `null` is always accepted and clears the field. One bad answer refuses the whole
 request with 422, and nothing in it is saved:

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\BirFormDraft;
 use App\Services\BIR\BirDraftValidator;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Foundation\Http\FormRequest;
@@ -136,6 +137,28 @@ class UpdateBirDraftFieldsRequest extends FormRequest
 
         $label = "\"{$field['label']}\"";
 
+        return $this->typeProblem($field, $value, $label) ?? $this->formatProblem($field, $value, $label);
+    }
+
+    /**
+     * A field with a schema 'format' (TIN, RDO, ZIP, phone, email, MM/DD) must follow it, the
+     * same rule BirDraftValidator checks. A blank answer isn't checked: whether a field may be
+     * blank is the missing-fields rule's job.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function formatProblem(array $field, mixed $value, string $label): ?string
+    {
+        if (!isset($field['format']) || $value === '' || FieldFormat::matches($field['format'], $value)) {
+            return null;
+        }
+
+        return "{$label} must be " . FieldFormat::describe($field['format']) . '.';
+    }
+
+    /** @param  array<string, mixed>  $field */
+    private function typeProblem(array $field, mixed $value, string $label): ?string
+    {
         return match ($field['type']) {
             'decimal' => self::isAmount($value) ? null
                 : "{$label} must be an amount like 1234.50, without commas or a currency sign.",

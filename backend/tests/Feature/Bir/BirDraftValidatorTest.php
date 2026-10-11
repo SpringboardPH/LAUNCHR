@@ -56,6 +56,45 @@ class BirDraftValidatorTest extends TestCase
         );
     }
 
+    public function test_a_stored_value_in_the_wrong_format_is_an_invalid_format_error(): void
+    {
+        // Written straight to the draft: PUT now refuses this, but older drafts and figures
+        // filled from payroll or settings never went through PUT.
+        $id = $this->create1601C();
+        $draft = BirFormDraft::findOrFail($id);
+        $fields = $draft->fields;
+        $fields['company_zip'] = array_merge($fields['company_zip'], ['value' => '12AB', 'origin' => 'settings']);
+        $draft->fields = $fields;
+        $draft->save();
+
+        $error = $this->errorsByField($id)['company_zip'];
+        $label = Form1601CSchema::byKey()['company_zip']['label'];
+
+        $this->assertSame('invalid_format', $error['code']);
+        $this->assertSame('error', $error['severity']);
+        $this->assertSame("\"{$label}\" must be a 4-digit ZIP code like 1004.", $error['message']);
+    }
+
+    public function test_a_value_in_the_right_format_is_not_flagged(): void
+    {
+        $id = $this->create1601C();
+        $this->actingAs($this->accounting())
+            ->putJson("/api/bir/drafts/{$id}", ['fields' => ['company_zip' => '1004', 'company_tin' => '123-456-789-000']])
+            ->assertOk();
+
+        $errors = $this->errorsByField($id);
+        $this->assertArrayNotHasKey('company_zip', $errors);
+        $this->assertArrayNotHasKey('company_tin', $errors);
+    }
+
+    public function test_a_blank_formatted_field_is_reported_as_missing_not_as_a_bad_format(): void
+    {
+        // The test database has no company settings, so company_zip starts blank.
+        $error = $this->errorsByField($this->create1601C())['company_zip'];
+
+        $this->assertSame('record_gap', $error['code']);
+    }
+
     public function test_errors_point_at_draft_fields_in_form_order_and_clear_once_everything_is_answered(): void
     {
         // Payroll for the month, or empty_period stays however much is answered.
@@ -83,7 +122,12 @@ class BirDraftValidatorTest extends TestCase
                     'integer' => 0,
                     'date' => '2026-01-01',
                     'month' => '09/2026',
-                    default => 'X',
+                    // A formatted field (TIN, RDO, ZIP, ...) needs a value in its format, or PUT refuses it.
+                    default => match ($schema[$key]['format'] ?? null) {
+                        'tin' => '123-456-789-000', 'rdo' => '043', 'zip' => '1004',
+                        'phone' => '09171234567', 'email' => 'name@company.com', 'mmdd' => '01/01',
+                        default => 'X',
+                    },
                 };
             }
             $this->actingAs($this->accounting())->putJson("/api/bir/drafts/{$id}", ['fields' => $answers])->assertOk();

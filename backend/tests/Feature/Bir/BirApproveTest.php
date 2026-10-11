@@ -146,7 +146,12 @@ class BirApproveTest extends TestCase
                     'integer' => 0,
                     'date' => '2026-01-01',
                     'month' => '09/2026',
-                    default => 'X',
+                    // A formatted field (TIN, RDO, ZIP, ...) needs a value in its format, or PUT refuses it.
+                    default => match ($schema[$key]['format'] ?? null) {
+                        'tin' => '123-456-789-000', 'rdo' => '043', 'zip' => '1004',
+                        'phone' => '09171234567', 'email' => 'name@company.com', 'mmdd' => '01/01',
+                        default => 'X',
+                    },
                 };
             }
             $this->actingAs($preparer)->putJson("/api/bir/drafts/{$draftId}", ['fields' => $answers])->assertOk();

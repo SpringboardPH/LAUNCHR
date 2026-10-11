@@ -3,6 +3,7 @@
 namespace App\Services\BIR;
 
 use App\Models\BirFormDraft;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 
@@ -12,7 +13,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * Each error is { field, code, severity, message }. field is always a key in the draft's
  * fields. For missing fields, code is BirMissingFields' reason: required,
  * condition or record_gap. An amount that isn't plain decimal text is
- * invalid_amount. A total that doesn't add up is total_mismatch. Tax withheld that the
+ * invalid_amount. Text that doesn't follow its field's format (TIN, RDO, ZIP, phone,
+ * email, MM/DD) is invalid_format. A total that doesn't add up is total_mismatch. Tax withheld that the
  * payroll the draft was built from doesn't support is payroll_mismatch. A draft built
  * from a period with no counted payroll is empty_period.
  *
@@ -98,6 +100,7 @@ class BirDraftValidator
         $errors = [
             ...$errors,
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
+            ...$this->invalidFormatErrors($draft->fields ?? [], $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
             ...$this->payrollMismatchErrors($draft, $schema),
             ...$this->emptyPeriodErrors($draft),
@@ -137,6 +140,35 @@ class BirDraftValidator
                 'field' => $key,
                 'code' => 'invalid_amount',
                 'message' => "\"{$field['label']}\" must be an amount like 1234.50, without commas or a currency sign.",
+            ];
+        }
+
+        return $errors;
+    }
+
+    /**
+     * One error per field with a schema 'format' whose stored text doesn't follow it, the
+     * same rule PUT checks on save (UpdateBirDraftFieldsRequest). This catches values PUT
+     * never saw: ones saved before formats were checked, and figures filled from payroll or
+     * settings. A blank value isn't checked; the missing-fields rule reports those.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function invalidFormatErrors(array $fields, array $schema): array
+    {
+        $errors = [];
+
+        foreach ($schema as $key => $field) {
+            if (!isset($field['format']) || $this->isBlank($fields[$key] ?? null)
+                || FieldFormat::matches($field['format'], $fields[$key]['value'])) {
+                continue;
+            }
+            $errors[] = [
+                'field' => $key,
+                'code' => 'invalid_format',
+                'message' => "\"{$field['label']}\" must be " . FieldFormat::describe($field['format']) . '.',
             ];
         }
 
