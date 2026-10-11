@@ -447,7 +447,6 @@ export const updateCalendarEvent = (id, data, updateScope = 'single') =>
 
 export const deleteCalendarEvent = (id, deleteScope = 'single') =>
   api.delete(`/admin/calendar-events/${id}`, { params: { delete_scope: deleteScope } }).then(r => r.data)
-
 export const importCalendarEvents = (file, { applyHolidayRewrite } = {}) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -608,7 +607,7 @@ export const updateBirDraft = bir(
 
 export const validateBirDraft = bir(
   (id) => api.post(`/bir/drafts/${id}/validate`).then(r => r.data),
-  (id) => birMockApi.validate(id),
+  birMockApi.validate,
 )
 
 export const submitBirDraft = bir(
@@ -635,12 +634,16 @@ export const reviseBirDraft = bir(
   (id) => api.post(`/bir/drafts/${id}/revise`).then(r => r.data),
   birMockApi.revise,
 )
+// Downloads the filled official PDF. The server names the file (Content-Disposition), e.g.
+// BIR-2316-2026-EMP-0001-v1-DRAFT.pdf; until a form is approved every page is stamped DRAFT.
 export const exportBirDraft = bir(
-  (id, filename) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(res => {
+  (id) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(res => {
+    const header = res.headers['content-disposition'] ?? ''
+    const name = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ?? header.match(/filename="?([^";]+)"?/i)?.[1]
     const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = filename || `bir-draft-${id}.pdf`
+    a.download = name ? decodeURIComponent(name) : `bir-draft-${id}.pdf`
     a.click()
     URL.revokeObjectURL(url)
   }),

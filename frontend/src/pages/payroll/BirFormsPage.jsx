@@ -93,6 +93,8 @@ export default function BirFormsPage() {
   // The open draft lives in the URL (?draft=5) so a draft can be linked to and reopened.
   const [params, setParams] = useSearchParams()
   const draftId = Number(params.get('draft')) || null
+  // The box the chat is asking about, highlighted in the preview.
+  const [askingField, setAskingField] = useState(null)
 
   const { data: config } = useQuery({
     queryKey: birKeys.config,
@@ -100,7 +102,10 @@ export default function BirFormsPage() {
     staleTime: Infinity,
     })
 
-  const onDraft = (draft) => setParams({ draft: String(draft.id) })
+  const onDraft = (draft) => {
+    setAskingField(null)
+    setParams({ draft: String(draft.id) })
+  }
 
   return (
     <div>
@@ -116,7 +121,7 @@ export default function BirFormsPage() {
 
       <div className="grid gap-5 lg:grid-cols-5">
         <div className="lg:col-span-2">
-          <BirChatPanel onDraftCreated={onDraft} />
+          <BirChatPanel onDraftCreated={onDraft} onQuestion={setAskingField} />
         </div>
 
         <div className="lg:col-span-3 space-y-5">
@@ -124,7 +129,7 @@ export default function BirFormsPage() {
             <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
               <FileText size={15} className="text-brand-600" /> Form preview
             </h2>
-            <BirFieldPreview draftId={draftId} />
+            <BirFieldPreview draftId={draftId} askingField={askingField} />
           </section>
 
           <section className="card">

@@ -1,16 +1,17 @@
-
 // BIR Form Assistant — mock backend for frontend work before the API is complete.
 //
-// Mirrors docs/bir-api-contract.md: the draft object (§2), field entries (§3),
-// the status flow (§5) and the /bir/chat reply shape, including conversation
-// memory, reset and employee candidates. Only queries.js imports this, and only
-// in dev builds. Week 7 removes it from app code.
+// Mirrors docs/bir-api-contract.md: the draft object (§2), field entries and the
+// rules for editing and clearing them (§3), validation entries with a severity
+// (§3), the status flow (§5), and validate / submit / approve refusing a form with
+// errors (§6). The chat lives in birMockChat.js. Only queries.js imports this, and
+// only in dev builds. Week 7 removes it from app code.
 //
 // Drafts carry every schema field, like real ones: payroll and settings fields
 // filled, the rest pending. Money is a plain decimal string ("55010.00") — the
-// UI formats it for display.
+// UI formats it for display. Unlike the real PUT, totals are not recalculated.
 
 import { birMockSchemas } from './birSchemaFixtures'
+import { mockChat } from './birMockChat'
 
 const STATUS_FLOW = {
   draft: ['pending'],
@@ -30,7 +31,6 @@ const EMPLOYEES = [
   // Paid at minimum wage: nothing taxable, so the 2316's taxable section does not apply.
   { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-000', annual: 168000 },
 ]
-const fullName = (e) => `${e.first_name} ${e.last_name}`
 
 const SETTINGS = {
   '1601-C': {
@@ -45,17 +45,21 @@ const SETTINGS = {
   },
 }
 
+// The mock has payroll for 2026 only (and 2025 for the 2316 fixtures); any other 1601-C
+// period is empty, so its figures are zero and validate warns about it (empty_period).
+const MOCK_PAYROLL_YEAR = '2026'
+
 const money = (n) => n.toFixed(2)
 
 // Payroll figures that add up the way the real aggregation's do. `seed` varies them per period.
-const payroll1601c = (seed = 0) => {
-  const gross = 842300 + seed * 9475
-  const thirteenth = 0, deMinimis = 18000, contributions = 78450 + seed * 520
+const payroll1601c = (seed = 0, empty = false) => {
+  const gross = empty ? 0 : 842300 + seed * 9475
+  const thirteenth = 0, deMinimis = empty ? 0 : 18000, contributions = empty ? 0 : 78450 + seed * 520
   const nontax = thirteenth + deMinimis + contributions
   const taxable = gross - nontax
   const withheld = Math.round(taxable * 0.0821 * 100) / 100
   return {
-    has_taxes_withheld: true, total_compensation: money(gross), mwe_statutory_wage: '0.00',
+    has_taxes_withheld: withheld > 0, total_compensation: money(gross), mwe_statutory_wage: '0.00',
     mwe_premium_pay: '0.00', thirteenth_month_and_benefits: money(thirteenth),
     de_minimis_benefits: money(deMinimis), statutory_contributions_ee: money(contributions),
     total_nontaxable_compensation: money(nontax), total_taxable_compensation: money(taxable),
@@ -86,19 +90,22 @@ const payroll2316 = (employee, annual) => {
   }
 }
 
+const schemaOf = (formType) => birMockSchemas[formType]
+const fieldOf = (formType, key) => schemaOf(formType).find(f => f.key === key)
+const blank = { edited: false, system_value: null, edited_by: null, edited_at: null }
+const pending = () => ({ value: null, origin: 'pending', ...blank })
+
 // Every schema field: filled from `values` with the schema's source as origin, else pending.
 const buildFields = (formType, values) => Object.fromEntries(
-  birMockSchemas[formType].map(({ key, source }) => {
+  schemaOf(formType).map(({ key, source }) => {
     const v = values[key]
     const filled = v !== undefined && v !== null && v !== ''
-    return [key, {
-      value: filled ? v : null, origin: filled ? source : 'pending',
-      edited: false, system_value: null, edited_by: null, edited_at: null,
-    }]
+    return [key, filled ? { value: v, origin: source, ...blank } : pending()]
   }),
 )
 
-const edit = (fields, key, value, by, at) => ({
+// An override of a calculated figure, as the real PUT records it.
+const override = (fields, key, value, by, at) => ({
   ...fields,
   [key]: { value, origin: 'user', edited: true, system_value: fields[key].value, edited_by: by, edited_at: at },
 })
@@ -108,14 +115,19 @@ const base = {
   rejection_reason: null, validation_errors: [],
 }
 
-const draft1601c = (id, period, status, seed, extra = {}) => ({
-  ...base, id, status, form_type: '1601-C', period, employee_id: null, employee_name: null,
-  fields: buildFields('1601-C', { ...SETTINGS['1601-C'], ...payroll1601c(seed) }),
-  ...extra,
-})
+const draft1601c = (id, period, status, seed, extra = {}) => {
+  const empty = !period.startsWith(MOCK_PAYROLL_YEAR)
+  return {
+    ...base, id, status, form_type: '1601-C', period, employee_id: null, employee_name: null, empty_period: empty,
+    fields: buildFields('1601-C', {
+      return_period: `${period.slice(5, 7)}/${period.slice(0, 4)}`, ...SETTINGS['1601-C'], ...payroll1601c(seed, empty),
+    }),
+    ...extra,
+  }
+}
 
 const draft2316 = (id, employee, annual, status, extra = {}) => ({
-  ...base, id, status, form_type: '2316', period: '2025',
+  ...base, id, status, form_type: '2316', period: '2025', empty_period: false,
   employee_id: employee.id, employee_name: `${employee.last_name}, ${employee.first_name}`,
   fields: buildFields('2316', { ...SETTINGS['2316'], ...payroll2316(employee, annual) }),
   ...extra,
@@ -123,26 +135,93 @@ const draft2316 = (id, employee, annual, status, extra = {}) => ({
 
 const seed = () => {
   const d2 = draft1601c(2, '2026-06', 'pending', 1)
-  d2.fields = edit(d2.fields, 'total_taxes_withheld', '61204.15', JANE, '2026-07-08T10:22:00+08:00')
+  d2.fields = override(d2.fields, 'total_taxes_withheld', '61204.15', JANE, '2026-07-08T10:22:00+08:00')
 
   const d5 = draft1601c(5, '2026-05', 'draft', 2, {
     rejection_reason: 'Item 25 total tax withheld does not match the payroll register — please recheck May.',
-    validation_errors: [{ field: 'total_taxes_withheld', message: 'Does not match calculated payroll total.' }],
   })
-  d5.fields = edit(d5.fields, 'total_taxes_withheld', '55010.00', JANE, '2026-06-08T09:47:00+08:00')
+  d5.fields = override(d5.fields, 'total_taxes_withheld', '55010.00', JANE, '2026-06-08T09:47:00+08:00')
 
   const d6 = draft2316(6, EMPLOYEES[1], 612000, 'draft', { version: 2, parent_id: 4 })
-  d6.fields = edit(d6.fields, 'taxes_withheld_present', '39880.00', JANE, '2026-01-26T14:05:00+08:00')
+  d6.fields = override(d6.fields, 'taxes_withheld_present', '39880.00', JANE, '2026-01-26T14:05:00+08:00')
 
-  return [
-    draft1601c(1, '2026-08', 'draft', 3),
-    d2,
+  const all = [
+    draft1601c(1, '2026-08', 'draft', 3), d2,
     draft2316(3, EMPLOYEES[0], 480000, 'approved', { approved_by: MARK }),
     draft2316(4, EMPLOYEES[1], 612000, 'finalized', { approved_by: MARK }),
-    d5,
-    d6,
+    d5, d6,
   ]
+  all.forEach(d => { d.validation_errors = checks(d) })
+  return all
 }
+
+// ─── Validation ───────────────────────────────────────────────
+// The same entry shape as BirDraftValidator: { field, code, severity, message }, in printed
+// order. Conditional (required_when) fields and total checks are left to the real backend.
+
+const quoted = (f) => `"${f.label}"`
+const peso = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const WITHHELD = { '1601-C': 'total_taxes_withheld', 2316: 'taxes_withheld_present' }
+
+// Fields a person still has to supply: required, empty, and not signed on paper.
+const missingFor = (draft) => schemaOf(draft.form_type)
+  .filter(f => f.required && f.source !== 'manual' && draft.fields[f.key]?.origin === 'pending')
+  .map(f => ({ field: f.key, reason: ['payroll', 'settings'].includes(f.source) ? 'record_gap' : 'required' }))
+
+const checks = (draft) => {
+  const byKey = Object.fromEntries(schemaOf(draft.form_type).map(f => [f.key, f]))
+  const entries = missingFor(draft).map(({ field, reason }) => {
+    const f = byKey[field]
+    return {
+      field, code: reason, severity: 'error',
+      message: reason === 'record_gap'
+        ? `${quoted(f)} should come from ${f.source === 'settings' ? 'the company settings' : 'the employee or payroll records'}, but nothing was found there. Fix the record, or enter it here.`
+        : `${quoted(f)} is required.`,
+    }
+  })
+  const withheld = draft.fields[WITHHELD[draft.form_type]]
+  if (withheld?.edited && withheld.system_value != null && Number(withheld.value) !== Number(withheld.system_value)) {
+    entries.push({
+      field: WITHHELD[draft.form_type], code: 'payroll_mismatch', severity: 'warning',
+      message: `${quoted(byKey[WITHHELD[draft.form_type]])} is ${peso(withheld.value)}, but the payroll this draft was built from withheld ${peso(withheld.system_value)}.`,
+    })
+  }
+  if (draft.empty_period) {
+    const anchor = draft.form_type === '1601-C' ? 'return_period' : 'tax_year'
+    entries.push({
+      field: anchor, code: 'empty_period', severity: 'warning',
+      message: `There is no finalized or paid payroll for ${draft.period}, so every payroll figure on this form is zero.`,
+    })
+  }
+  const order = Object.keys(byKey)
+  return entries.sort((a, b) => order.indexOf(a.field) - order.indexOf(b.field))
+}
+const errorCount = (draft) => checks(draft).filter(e => e.severity === 'error').length
+
+// ─── Answer checks (PUT) ──────────────────────────────────────
+// One bad answer refuses the whole request with 422, keyed fields.<key>, as the real PUT does.
+
+const TRUE = ['true', '1', 'yes'], FALSE = ['false', '0', 'no']
+const answerProblem = (f, value) => {
+  if (!f) return 'is not a field on this form.'
+  if (f.type === 'manual') return `${quoted(f)} is signed on the printed form, not entered here.`
+  const text = String(value)
+  switch (f.type) {
+    case 'decimal': return typeof value === 'number' || /^-?\d+(\.\d+)?$/.test(text) ? null
+      : `${quoted(f)} must be an amount like 1234.50, without commas or a currency sign.`
+    case 'boolean': return typeof value === 'boolean' || [...TRUE, ...FALSE].includes(text.toLowerCase()) ? null
+      : `${quoted(f)} must be yes or no.`
+    case 'enum': return (f.options ?? []).includes(text) ? null : `${quoted(f)} must be one of: ${(f.options ?? []).join(', ')}.`
+    case 'integer': return /^\d+$/.test(text) ? null : `${quoted(f)} must be a whole number.`
+    case 'month': return /^(0[1-9]|1[0-2])\/\d{4}$/.test(text) ? null : `${quoted(f)} must be a month like 09/2026.`
+    case 'date': return /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text)) ? null
+      : `${quoted(f)} must be a real date like 2026-09-30.`
+    case 'text': return text.length <= 1000 ? null : `${quoted(f)} must be at most 1000 characters.`
+    default: return text.length <= 255 ? null : `${quoted(f)} must be at most 255 characters.`
+  }
+}
+const stored = (f, value) => (f.type === 'boolean' && typeof value !== 'boolean'
+  ? TRUE.includes(String(value).toLowerCase()) : f.type === 'decimal' ? String(value) : value)
 
 // Session-lived store: mutations stick until the page reloads.
 let drafts = seed()
@@ -152,9 +231,9 @@ const clone = (x) => structuredClone(x)
 const delay = (ms = 450) => new Promise(res => setTimeout(res, ms))
 
 // Rejects the way axios does, so components handle mock and real errors alike.
-const fail = (status, message) => {
+const fail = (status, message, extra = {}) => {
   const err = new Error(message)
-  err.response = { status, data: { success: false, message } }
+  err.response = { status, data: { success: false, message, ...extra } }
   return Promise.reject(err)
 }
 const ok = (data, message) => ({ success: true, data: clone(data), message })
@@ -184,7 +263,6 @@ const getDrafts = async ({ status, form_type, per_page = 15, page = 1 } = {}) =>
     },
   }
 }
-
 const getDraft = async (id) => {
   await delay()
   const d = find(id)
@@ -197,7 +275,8 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
     return fail(422, 'The form type and period are required.')
   }
   let draft
-  if (form_type === '1601-C') { draft = draft1601c(nextId++, period, 'draft', Number(period.slice(5, 7)) % 5)
+  if (form_type === '1601-C') {
+    draft = draft1601c(nextId++, period, 'draft', Number(period.slice(5, 7)) % 5)
   } else {
     const employee = EMPLOYEES.find(e => e.id === Number(employee_id))
     if (!employee) return fail(422, 'A 2316 is per employee — an employee is required.')
@@ -210,21 +289,44 @@ const updateDraft = async (id, fields = {}) => {
   await delay()
   const d = find(id)
   if (!d) return fail(404, 'Draft not found')
-  if (d.status !== 'draft') return fail(400, `Only drafts can be edited; this form is in ${d.status} status`)
+  if (!['draft', 'pending'].includes(d.status)) {
+    return fail(400, `Only draft and pending forms can be edited; this form is in ${d.status} status`)
+  }
+  const errors = {}
+  Object.entries(fields).forEach(([key, value]) => {
+    const problem = value == null ? null : answerProblem(fieldOf(d.form_type, key), value)
+    if (problem) errors[`fields.${key}`] = [problem.startsWith('is not') ? `"${key}" ${problem}` : problem]
+  })
+  if (Object.keys(errors).length) return fail(422, Object.values(errors)[0][0], { errors })
+
   const now = new Date().toISOString()
   Object.entries(fields).forEach(([key, value]) => {
-    const prev = d.fields[key] ?? buildFields(d.form_type, {})[key]
-    if (value == null || value === '') {
-      d.fields[key] = { value: null, origin: 'pending', edited: false, system_value: null, edited_by: null, edited_at: null }
+    const f = fieldOf(d.form_type, key)
+    const prev = d.fields[key] ?? pending()
+    const calculated = ['payroll', 'settings'].includes(f.source)
+    if (value == null) {
+      // Clearing undoes an override, never blanks a calculated figure (contract §3).
+      if (prev.edited) d.fields[key] = prev.system_value != null ? { value: prev.system_value, origin: f.source, ...blank } : pending()
+      else if (!(calculated && prev.origin === f.source)) d.fields[key] = pending()
+    } else if (calculated) {
+      const original = prev.edited ? prev.system_value : (prev.origin === 'pending' ? null : prev.value)
+      d.fields[key] = { value: stored(f, value), origin: 'user', edited: true, system_value: original, edited_by: JANE, edited_at: now }
     } else {
-      const replacesCalculated = prev.edited || ['payroll', 'settings'].includes(prev.origin)
-      d.fields[key] = replacesCalculated
-        ? { value: String(value), origin: 'user', edited: true,
-            system_value: prev.edited ? prev.system_value : prev.value, edited_by: JANE, edited_at: now }
-        : { value: String(value), origin: 'user', edited: false, system_value: null, edited_by: null, edited_at: null }
+      // An answer only a person gives replaces nothing: no history.
+      d.fields[key] = { value: stored(f, value), origin: 'user', ...blank }
     }
   })
   return ok(d, 'Draft updated (mock)')
+}
+const validate = async (id) => {
+  await delay(300)
+  const d = find(id)
+  if (!d) return fail(404, 'Draft not found')
+  if (d.status === 'finalized') return fail(400, "Finalized forms are locked and can't be revalidated")
+  d.validation_errors = checks(d)
+  const errors = d.validation_errors.filter(e => e.severity === 'error').length
+  const warnings = d.validation_errors.length - errors
+  return ok(d, `Draft validated: ${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}`)
 }
 
 const transition = async (id, to, reason = null) => {
@@ -237,6 +339,15 @@ const transition = async (id, to, reason = null) => {
   if (d.status === 'pending' && to === 'draft' && !reason?.trim()) {
     return fail(422, 'A reason is required to return a form.')
   }
+  // submit and approve check the form first: any error refuses the move with 422.
+  if (to === 'pending' || to === 'approved') {
+    d.validation_errors = checks(d)
+    const errors = d.validation_errors.filter(e => e.severity === 'error').length
+    if (errors) {
+      const verb = to === 'pending' ? 'submitting' : 'approving'
+      return fail(422, `Draft has ${errors} error${errors === 1 ? '' : 's'}; fix them before ${verb}`, { data: clone(d) })
+    }
+  }
   d.status = to
   d.rejection_reason = to === 'draft' ? reason : null
   if (to === 'approved') d.approved_by = MARK
@@ -247,11 +358,12 @@ const revise = async (id) => {
   await delay()
   const d = find(id)
   if (!d) return fail(404, 'Draft not found')
-    if (d.status !== 'finalized') {
+  if (d.status !== 'finalized') {
     return fail(400, `Only finalized forms can be revised; this one is in ${d.status} status`)
   }
+  const sameForm = drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
   const revision = {
-    ...clone(d), id: nextId++, status: 'draft', version: d.version + 1, parent_id: d.id,
+    ...clone(d), id: nextId++, status: 'draft', version: Math.max(...sameForm.map(x => x.version)) + 1, parent_id: d.id,
     approved_by: null, rejection_reason: null, prepared_by: JANE,
   }
   drafts.push(revision)
@@ -260,115 +372,7 @@ const revise = async (id) => {
 
 const exportDraft = async () => {
   await delay()
-  return fail(501, 'PDF export is not implemented yet (Dev C, Week 6-7)')
-}
-
-// ─── Chat ─────────────────────────────────────────────────────
-// A rule-based stand-in for BirChatController. Like the real one it remembers
-// what earlier messages established until a request is complete (or `reset`),
-// and returns { understood, intent, candidates, reply }.
-
-const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july',
-  'august', 'september', 'october', 'november', 'december']
-
-let memory = {}
-
-const parse = (message) => {
-  const text = message.toLowerCase()
-  const today = new Date()
-  const out = {}
-
-  if (/1601\s*-?\s*c?\b|monthly remittance/.test(text)) out.form_type = '1601-C'
-  else if (/2316|certificate|annual/.test(text)) out.form_type = '2316'
-
-  MONTHS.forEach((name, i) => {
-    if (new RegExp(`\\b${name}\\b|\\b${name.slice(0, 3)}\\b`).test(text)) out.tax_month = i + 1
-  })
-  const year = Number(text.match(/\b(20\d{2})\b/)?.[1])
-  if (year) out.tax_year = year
-
-  if (/last month/.test(text)) {
-    const d = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-    out.tax_month = d.getMonth() + 1
-    out.tax_year = d.getFullYear()
-  } else if (/this month/.test(text)) {
-    out.tax_month = today.getMonth() + 1
-    out.tax_year = today.getFullYear()
-  } else if (/last year/.test(text)) out.tax_year = today.getFullYear() - 1
-  else if (/this year/.test(text)) out.tax_year = today.getFullYear()
-
-  const code = message.match(/\bEMP\d+\b/i)?.[0]
-  const named = message.match(/\bfor\s+([A-Za-zÑñ.'-]+(?:\s+[A-Za-zÑñ.'-]+){0,3}?)(?=\s+(?:for|in|covering|year|20\d{2})\b|[,.?!]|$)/i)?.[1]
-  const employee = code ?? named
-  if (employee) out.employee_query = employee.trim()
-  return out
-}
-
-
-const resolveEmployee = (query) => {
-  const q = query.toLowerCase()
-  const byCode = EMPLOYEES.filter(e => e.employee_id.toLowerCase() === q)
-  if (byCode.length) return byCode
-  return EMPLOYEES.filter(e => q.split(/\s+/).every(t => fullName(e).toLowerCase().includes(t)))
-}
-
-const periodOf = (m) => {
-  if (!m.form_type || !m.tax_year) return null
-  if (m.form_type === '1601-C') return m.tax_month ? `${m.tax_year}-${String(m.tax_month).padStart(2, '0')}` : null
-  return String(m.tax_year)
-}
-
-const chat = async (message, { reset = false } = {}) => {
-  await delay(1100)
-  if (!message?.trim()) return fail(422, 'The message field is required.')
-  if (/\boffline\b|\boutage\b/i.test(message)) {
-    // Lets the UI's "assistant unavailable" state be exercised on demand.
-    return fail(503, 'The assistant is unavailable right now. You can still pick a form and period manually.')
-  }
-  if (reset) memory = {}
-
-  const parsed = parse(message)
-  if (parsed.employee_query) parsed.employee_id = null
-  memory = { ...memory, ...parsed }
-  if (memory.form_type === '2316') memory.tax_month = null
-  if (memory.form_type === '1601-C') { memory.employee_query = null; memory.employee_id = null }
-  const intent = () => ({
-    form_type: memory.form_type ?? null, tax_year: memory.tax_year ?? null,
-    tax_month: memory.tax_month ?? null, employee_query: memory.employee_query ?? null,
-    employee_id: memory.employee_id ?? null, period: periodOf(memory),
-  })
-  const reply = (understood, text, candidates = []) => ({ understood, intent: intent(), candidates, reply: text })
-
-  const missing = []
-  if (!memory.form_type) missing.push('which form')
-  if (!memory.tax_year) missing.push('the year')
-  if (memory.form_type === '1601-C' && !memory.tax_month) missing.push('the month')
-  if (memory.form_type === '2316' && !memory.employee_query) missing.push('which employee')
-  if (missing.length) {
-    const last = missing.pop()
-    return reply(false, `Could you tell me ${missing.length ? `${missing.join(', ')} and ${last}` : last}?`)
-  }
-
-  if (memory.form_type === '1601-C') {
-    const done = reply(true, `Understood: a 1601-C covering ${periodOf(memory)}.`)
-    memory = {}
-    return done
-  }
-
-  const hits = resolveEmployee(memory.employee_query)
-  if (!hits.length) {
-    return reply(false, `I could not find anyone matching "${memory.employee_query}". Could you check the spelling, or give their employee ID?`)
-  }
-  if (hits.length > 1) {
-    const candidates = hits.map(e => ({ id: e.id, employee_id: e.employee_id, name: fullName(e) }))
-    const names = candidates.map(c => `${c.name} (${c.employee_id})`).join(', ')
-    return reply(false, `More than one person matches that: ${names}. Which one did you mean?`, candidates)
-  }
-  const e = hits[0]
-  memory.employee_id = e.id
-  const done = reply(true, `Understood: a 2316 for ${fullName(e)} (${e.employee_id}), covering ${periodOf(memory)}.`)
-  memory = {}
-  return done
+  return fail(501, 'PDF export is not available in mock mode. Set VITE_BIR_MOCK=false to download the official PDF.')
 }
 
 const getEmployees = async () => {
@@ -376,6 +380,10 @@ const getEmployees = async () => {
   return { data: clone(EMPLOYEES), pagination: { total: EMPLOYEES.length } }
 }
 
+const chat = mockChat({
+  find, schemas: birMockSchemas, missingFor, errorCount, employees: EMPLOYEES, delay, fail,
+})
+
 export const birMockApi = {
-  getConfig, getDrafts, getDraft, createDraft, updateDraft, transition, revise, exportDraft, chat, getEmployees,
+  getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees,
 }

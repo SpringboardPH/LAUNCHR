@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info } from 'lucide-react'
+import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info, HelpCircle, MessageCircle } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
-import { birKeys, getBirConfig, getBirDraft } from '../../api/queries'
+import { birKeys, getBirConfig, getBirDraft, validateBirDraft } from '../../api/queries'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
 import { describePeriod, formName } from './BirChatPanel'
 
@@ -85,7 +85,11 @@ function SkeletonRows() {
   )
 }
 
-function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable }) {
+const forwardRow = (el, key, refs) => { if (el) refs.current[key] = el; else delete refs.current[key] }
+
+function FieldRow({ field, entry, issues = [], asked, rowRef, compare, filed, onFiled, notApplicable }) {
+  const [help, setHelp] = useState(false)
+  const hasError = issues.some(i => i.severity !== 'warning')
   const kind = kindOf(entry)
   const style = KINDS[kind]
   const shown = formatValue(entry.value, field.type)
@@ -95,7 +99,10 @@ function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable 
 
   return (
     <li
-      className={clsx('relative pl-4 pr-3 py-2', notApplicable ? 'bg-gray-50 opacity-50' : style.row, error && 'ring-1 ring-inset ring-red-200')}
+      ref={rowRef}
+      className={clsx('relative pl-4 pr-3 py-2 scroll-mt-2',
+        notApplicable ? 'bg-gray-50 opacity-50' : style.row,
+        asked ? 'ring-2 ring-inset ring-brand-400 bg-brand-50/60' : hasError && 'ring-1 ring-inset ring-red-200')}
       title={notApplicable ? 'Does not apply to a non-taxable employee' : undefined}
     >
       <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', style.bar)} />
@@ -104,14 +111,30 @@ function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable 
         <div className="min-w-0 flex-1">
           <p className="text-xs text-gray-500 leading-snug">
             {field.label}{field.required && kind === 'pending' && <span className="text-red-500"> *</span>}
+            {field.guidance && (
+              <button
+                onClick={() => setHelp(h => !h)}
+                className="ml-1 align-middle text-gray-400 hover:text-brand-600"
+                title="What does this mean?"
+                aria-label={`What does ${field.label} mean?`}
+                aria-expanded={help}
+              >
+                <HelpCircle size={12} />
+              </button>
+            )}
           </p>
+          {help && field.guidance && (
+            <p className="mt-1 mb-1 rounded-md bg-white/80 border border-gray-200 px-2 py-1.5 text-[11px] leading-relaxed text-gray-600">
+              {field.guidance}
+            </p>
+          )}
           {shown !== null ? (
             <p className={clsx('text-sm font-medium text-gray-900 break-words', field.type === 'decimal' && 'tabular-nums')}>{shown}</p>
           ) : (
             <p className="text-sm italic text-gray-400">{kind === 'manual' ? 'Signed by hand after printing' : 'Not filled yet'}</p>
           )}
-                    {/* The server records the replaced figure and who changed it from Week 6; until
-              then an edit arrives with neither, so show only what is actually known. */}
+          {/* An override carries the figure it replaced and who changed it; an older edit may
+              have neither, so show only what is actually known. */}
           {entry.edited && (
             <p className="mt-0.5 text-[11px] text-amber-800">
               {entry.system_value == null && !entry.edited_by
@@ -125,7 +148,12 @@ function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable 
                   </>}
             </p>
           )}
-          {error && <p className="mt-0.5 text-[11px] text-red-600">{error}</p>}
+          {issues.map((issue, i) => (
+            <p key={i} className={clsx('mt-0.5 flex gap-1 text-[11px]', issue.severity === 'warning' ? 'text-amber-700' : 'text-red-600')}>
+              {issue.severity === 'warning' && <AlertTriangle size={11} className="mt-0.5 shrink-0" />}
+              <span>{issue.message}</span>
+            </p>
+          ))}
           {compared && (
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <label className="text-[11px] text-gray-500">
@@ -146,6 +174,11 @@ function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable 
             </div>
           )}
         </div>
+        {asked && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-medium text-white">
+            <MessageCircle size={10} /> Being asked
+          </span>
+        )}
         <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium', notApplicable ? 'bg-gray-200 text-gray-600' : style.tag)}>
           {notApplicable ? 'Not applicable' : style.label}
         </span>
@@ -159,8 +192,9 @@ function FieldRow({ field, entry, error, compare, filed, onFiled, notApplicable 
  * figure came from. Week 4 adds a comparison against a form that was already
  * filed, for the go/no-go check.
  */
-export default function BirFieldPreview({ draftId }) {
+export default function BirFieldPreview({ draftId, askingField = null }) {
   const [filter, setFilter] = useState('all')
+  const rowRefs = useRef({})
   const [compare, setCompare] = useState(false)
   const [filedByDraft, setFiledByDraft] = useState({})
   const [importNote, setImportNote] = useState(null)
@@ -169,7 +203,17 @@ export default function BirFieldPreview({ draftId }) {
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig, staleTime: Infinity })
   const { data: draft, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: birKeys.detail(draftId),
-    queryFn: () => getBirDraft(draftId),
+    // validation_errors is only as fresh as the last validate, so the preview re-checks a draft it
+    // opens (a no-op on the server when nothing changed). A finalized form is locked: shown as is.
+    queryFn: async () => {
+      const draft = await getBirDraft(draftId)
+      if (draft.status === 'finalized') return draft
+      try {
+        return (await validateBirDraft(draftId)).data
+      } catch {
+        return draft
+      }
+    },
     enabled: !!draftId,
   })
 
@@ -189,14 +233,21 @@ export default function BirFieldPreview({ draftId }) {
     return [...listed, ...extra].map(field => ({ field, entry: fields[field.key] }))
   }, [draft, schema])
 
+  // Bring the box the chat is asking about into view, whatever filter is on.
+  useEffect(() => {
+    if (!askingField) return
+    setFilter('all')
+    const t = setTimeout(() => rowRefs.current[askingField]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100)
+    return () => clearTimeout(t)
+  }, [askingField, draft?.id])
+
   if (!draftId) {
     return <EmptyState icon={FileText} title="No draft yet" description="Ask the assistant for a form, or pick one below. Its boxes will fill in here." />
   }
   if (isLoading) return <SkeletonRows />
   if (isError || !draft) {
     const status = error?.response?.status
-    return (
-      <div className="p-6 text-center">
+    return (<div className="p-6 text-center">
         <AlertTriangle size={22} className="mx-auto mb-2 text-red-400" />
         <p className="text-sm text-red-600">
           {status === 404 ? `Draft #${draftId} no longer exists.` : error?.response?.data?.message || `Could not load draft #${draftId}.`}
@@ -208,7 +259,10 @@ export default function BirFieldPreview({ draftId }) {
     )
   }
 
-  const errors = Object.fromEntries((draft.validation_errors ?? []).map(e => [e.field, e.message]))
+  // validation_errors is the last validate result; entries are read by key, never by position.
+  const issues = (draft.validation_errors ?? []).reduce((acc, e) => ({ ...acc, [e.field]: [...(acc[e.field] ?? []), e] }), {})
+  const errorTotal = (draft.validation_errors ?? []).filter(e => e.severity !== 'warning').length
+  const warningTotal = (draft.validation_errors ?? []).length - errorTotal
   const nonTaxable = nonTaxableReason(draft)
   const counts = rows.reduce((acc, { entry }) => ({ ...acc, [kindOf(entry)]: (acc[kindOf(entry)] ?? 0) + 1 }), {})
   const fillable = rows.filter(({ field }) => field.type !== 'manual')
@@ -257,7 +311,13 @@ export default function BirFieldPreview({ draftId }) {
         <div>
           <div className="flex justify-between text-[11px] text-gray-500">
             <span>{filledCount} of {fillable.length} boxes filled</span>
-            {requiredMissing > 0 && <span className="text-amber-700">{requiredMissing} required still empty</span>}
+            {(draft.validation_errors ?? []).length > 0 ? (
+              <span>
+                {errorTotal > 0 && <span className="text-red-600">{errorTotal} error{errorTotal === 1 ? '' : 's'} to fix before submitting</span>}
+                {errorTotal > 0 && warningTotal > 0 && ' · '}
+                {warningTotal > 0 && <span className="text-amber-700">{warningTotal} warning{warningTotal === 1 ? '' : 's'} to review</span>}
+              </span>
+            ) : requiredMissing > 0 && <span className="text-amber-700">{requiredMissing} required still empty</span>}
           </div>
           <div className="mt-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
             <div className="h-full bg-brand-500 transition-all" style={{ width: `${fillable.length ? (filledCount / fillable.length) * 100 : 0}%` }} />
@@ -324,7 +384,9 @@ export default function BirFieldPreview({ draftId }) {
             key={field.key}
             field={field}
             entry={entry}
-            error={errors[field.key]}
+            issues={issues[field.key]}
+            asked={field.key === askingField}
+            rowRef={(el) => forwardRow(el, field.key, rowRefs)}
             compare={compare}
             filed={filed[field.key]}
             onFiled={setFiled}

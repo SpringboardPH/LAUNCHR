@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw } from 'lucide-react'
+import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
 
@@ -94,6 +94,19 @@ function Candidates({ candidates, disabled, onPick }) {
   )
 }
 
+// The help text for the box a question asks about, behind a "What does this mean?" link.
+function Guidance({ text }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-1.5">
+      <button onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline">
+        <HelpCircle size={12} /> {open ? 'Hide help' : 'What does this mean?'}
+      </button>
+      {open && <p className="mt-1 text-xs text-gray-600 whitespace-normal">{text}</p>}
+    </div>
+  )
+}
+
 function Message({ msg, onConfirm, onDecline, onPick, busy }) {
   const isUser = msg.role === 'user'
   return (
@@ -111,6 +124,7 @@ function Message({ msg, onConfirm, onDecline, onPick, busy }) {
         msg.error && 'bg-amber-50 text-amber-900 border border-amber-200 rounded-tl-sm'
         )}>
         {msg.text}
+        {msg.guidance && <Guidance text={msg.guidance} />}
         {msg.candidates?.length > 0 && (
           <Candidates candidates={msg.candidates} disabled={busy || msg.picked} onPick={(c) => onPick(msg, c)} />
         )}
@@ -133,8 +147,7 @@ function TypingIndicator() {
       <div className="w-7 h-7 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
         <Bot size={14} />
       </div>
-      <div className="rounded-2xl rounded-tl-sm bg-gray-100 px-4 py-3 flex items-center gap-1">
-        {[0, 150, 300].map(d => (
+      <div className="rounded-2xl rounded-tl-sm bg-gray-100 px-4 py-3 flex items-center gap-1">{[0, 150, 300].map(d => (
           <span key={d} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
         ))}
       </div>
@@ -146,7 +159,7 @@ function TypingIndicator() {
  * Conversation with the BIR assistant. Chat history is UI state for this visit
  * only; drafts it creates are server state and are reported via onDraftCreated.
  */
-export default function BirChatPanel({ onDraftCreated }) {
+export default function BirChatPanel({ onDraftCreated, onQuestion }) {
   const qc = useQueryClient()
   const [messages, setMessages] = useState([GREETING])
   const [input, setInput] = useState('')
@@ -176,8 +189,12 @@ export default function BirChatPanel({ onDraftCreated }) {
         intent: res.understood ? res.intent : null,
         intentStatus: res.understood ? 'open' : null,
         candidates: res.candidates ?? [],
+        guidance: res.question?.guidance ?? null,
       })
-      if ('draft_id' in res) setFilling({ draftId: res.draft_id, field: res.question?.field ?? null })
+      if ('draft_id' in res) {
+        setFilling({ draftId: res.draft_id, field: res.question?.field ?? null })
+        onQuestion?.(res.question?.field ?? null) // the preview highlights the box being asked about
+      }
     },
     onError: (err) => push({ role: 'assistant', error: true, text: errorText(err) }),
   })
@@ -209,7 +226,13 @@ export default function BirChatPanel({ onDraftCreated }) {
         period: intent.period,
         ...(intent.employee_id && { employee_id: intent.employee_id }),
       })
-      return validateBirDraft(created.data.id)
+      // The draft exists now. If validate fails, carry on with it rather than reporting an
+      // error, which would invite a retry that creates a second draft.
+      try {
+        return await validateBirDraft(created.data.id)
+      } catch {
+        return created
+      }
     },
     onSuccess: (res, { msgId }) => {
       const draft = res.data
@@ -271,11 +294,11 @@ export default function BirChatPanel({ onDraftCreated }) {
     patch(msg.id, { intentStatus: 'declined' })
     push({ role: 'assistant', text: 'No problem — which form and period did you mean?' })
   }
-
-  const reset = () => {
+ const reset = () => {
     setMessages([GREETING])
     setInput('')
     setFilling(null)
+    onQuestion?.(null)
     freshRef.current = true
   }
 
