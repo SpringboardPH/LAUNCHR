@@ -123,19 +123,19 @@ class Form2316Schema
                 'key' => 'period_from', 'item' => '2', 'label' => 'For the Period From (MM/DD)',
                 'type' => 'string', 'source' => 'payroll', 'required' => false,
                 'rule' => 'MM/DD: the hire date when hired during the year, else 01/01; required only when the employee did not work the full year at this employer',
-                'pdf_anchor' => '2316.2.from',
+                'pdf_anchor' => '2316.2.from', 'format' => 'mmdd',
                 'required_when' => ['context' => 'hired_in_year'],
             ],
             [
                 'key' => 'period_to', 'item' => '2', 'label' => 'For the Period To (MM/DD)',
                 'type' => 'string', 'source' => 'payroll', 'required' => false,
-                'rule' => 'MM/DD: the last cutoff counted when the employee has left (inactive), else 12/31; required with period_from', 'pdf_anchor' => '2316.2.to',
+                'rule' => 'MM/DD: the last cutoff counted when the employee has left (inactive), else 12/31; required with period_from', 'pdf_anchor' => '2316.2.to', 'format' => 'mmdd',
                 'required_when' => ['field' => 'period_from', 'present' => true],
             ],
             [
                 'key' => 'employee_tin', 'item' => '3', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'payroll', 'required' => true,
-                'rule' => 'from employees.tin_number, format ###-###-###-###', 'pdf_anchor' => '2316.3',
+                'rule' => 'from employees.tin_number, format ###-###-###-###', 'pdf_anchor' => '2316.3', 'format' => 'tin',
             ],
             [
                 'key' => 'employee_last_name', 'item' => '4', 'label' => "Employee's Name — Last Name",
@@ -155,7 +155,7 @@ class Form2316Schema
             [
                 'key' => 'employee_rdo_code', 'item' => '5', 'label' => 'RDO Code',
                 'type' => 'string', 'source' => 'user', 'required' => true,
-                'rule' => 'GAP: no rdo_code column on employees; differs from company_rdo_code', 'pdf_anchor' => '2316.5',
+                'rule' => 'GAP: no rdo_code column on employees; differs from company_rdo_code; 3 characters like the company\'s', 'pdf_anchor' => '2316.5', 'format' => 'rdo',
             ],
             [
                 'key' => 'basic_salary_annual', 'item' => null,
@@ -172,7 +172,7 @@ class Form2316Schema
             [
                 'key' => 'employee_registered_zip', 'item' => '6A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => '4 digits', 'pdf_anchor' => '2316.6A',
+                'rule' => '4 digits', 'pdf_anchor' => '2316.6A', 'format' => 'zip',
             ],
             [
                 'key' => 'employee_home_address', 'item' => '6B', 'label' => 'Local Home Address',
@@ -182,7 +182,7 @@ class Form2316Schema
             [
                 'key' => 'employee_home_zip', 'item' => '6C', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => '4 digits', 'pdf_anchor' => '2316.6C',
+                'rule' => '4 digits', 'pdf_anchor' => '2316.6C', 'format' => 'zip',
             ],
             [
                 'key' => 'employee_foreign_address', 'item' => '6D', 'label' => 'Foreign Address',
@@ -197,7 +197,7 @@ class Form2316Schema
             [
                 'key' => 'employee_contact_number', 'item' => '8', 'label' => 'Contact Number',
                 'type' => 'string', 'source' => 'payroll', 'required' => false,
-                'rule' => 'from employees.phone', 'pdf_anchor' => '2316.8',
+                'rule' => 'from employees.phone', 'pdf_anchor' => '2316.8', 'format' => 'phone',
             ],
             [
                 'key' => 'mwe_daily_rate', 'item' => '9', 'label' => 'Statutory Minimum Wage rate per day',
@@ -223,7 +223,7 @@ class Form2316Schema
             [
                 'key' => 'present_employer_tin', 'item' => '12', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => 'company_tin', 'pdf_anchor' => '2316.12',
+                'rule' => 'company_tin', 'pdf_anchor' => '2316.12', 'format' => 'tin',
             ],
             [
                 'key' => 'present_employer_name', 'item' => '13', 'label' => "Employer's Name",
@@ -238,7 +238,7 @@ class Form2316Schema
             [
                 'key' => 'present_employer_zip', 'item' => '14A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => 'company_zip', 'pdf_anchor' => '2316.14A',
+                'rule' => 'company_zip', 'pdf_anchor' => '2316.14A', 'format' => 'zip',
             ],
             [
                 'key' => 'employer_type', 'item' => '15', 'label' => 'Type of Employer',
@@ -262,7 +262,7 @@ class Form2316Schema
             [
                 'key' => 'previous_employer_tin', 'item' => '16', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => 'required when the employee was hired mid-year and had a prior employer', 'pdf_anchor' => '2316.16',
+                'rule' => 'required when the employee was hired mid-year and had a prior employer', 'pdf_anchor' => '2316.16', 'format' => 'tin',
                 'required_when' => ['field' => 'has_previous_employer', 'equals' => true],
             ],
             [
@@ -279,7 +279,7 @@ class Form2316Schema
             [
                 'key' => 'previous_employer_zip', 'item' => '18A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'user', 'required' => false,
-                'rule' => '4 digits', 'pdf_anchor' => '2316.18A',
+                'rule' => '4 digits', 'pdf_anchor' => '2316.18A', 'format' => 'zip',
             ],
             [
                 'key' => 'gross_compensation_present', 'item' => '19',
