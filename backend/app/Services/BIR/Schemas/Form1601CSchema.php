@@ -9,7 +9,8 @@ namespace App\Services\BIR\Schemas;
  *
  * Field shape: key, item (as printed), label, type, source, required, rule,
  * pdf_anchor, options (enum only), required_when (conditional fields only),
- * guidance (help text, from GUIDANCE).
+ * format (text that must follow a FieldFormat, e.g. 'tin'), guidance (help
+ * text, from GUIDANCE).
  *
  * required_when is the machine-readable form of a "required when ..." rule,
  * read by BirMissingFields. It replaces 'required' for that field, so a field
@@ -108,12 +109,12 @@ class Form1601CSchema
             [
                 'key' => 'company_tin', 'item' => '6', 'label' => 'Taxpayer Identification Number (TIN)',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => 'format ###-###-###-###', 'pdf_anchor' => '1601C.6',
+                'rule' => 'format ###-###-###-###', 'pdf_anchor' => '1601C.6', 'format' => 'tin',
             ],
             [
                 'key' => 'rdo_code', 'item' => '7', 'label' => 'RDO Code',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => '3-digit code', 'pdf_anchor' => '1601C.7',
+                'rule' => '3 characters: 3 digits, or 2 digits and a letter (21A)', 'pdf_anchor' => '1601C.7', 'format' => 'rdo',
             ],
             [
                 'key' => 'company_name', 'item' => '8',
@@ -129,12 +130,12 @@ class Form1601CSchema
             [
                 'key' => 'company_zip', 'item' => '9A', 'label' => 'ZIP Code',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => '4 digits', 'pdf_anchor' => '1601C.9A',
+                'rule' => '4 digits', 'pdf_anchor' => '1601C.9A', 'format' => 'zip',
             ],
             [
                 'key' => 'company_contact_number', 'item' => '10', 'label' => 'Contact Number',
                 'type' => 'string', 'source' => 'settings', 'required' => false,
-                'rule' => 'PH phone format', 'pdf_anchor' => '1601C.10',
+                'rule' => 'PH phone format', 'pdf_anchor' => '1601C.10', 'format' => 'phone',
             ],
             [
                 'key' => 'agent_category', 'item' => '11', 'label' => 'Category of Withholding Agent',
@@ -145,7 +146,7 @@ class Form1601CSchema
             [
                 'key' => 'company_email', 'item' => '12', 'label' => 'Email Address',
                 'type' => 'string', 'source' => 'settings', 'required' => false,
-                'rule' => 'valid email', 'pdf_anchor' => '1601C.12',
+                'rule' => 'valid email', 'pdf_anchor' => '1601C.12', 'format' => 'email',
             ],
             [
                 'key' => 'has_tax_relief', 'item' => '13',
