@@ -33,7 +33,6 @@ Every response uses the envelope already used across LAUNCHR:
 | 403 | Caller's role cannot reach `/bir` (employees), or the caller prepared the form they are trying to approve |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
-| 501 | Not built yet (export) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
@@ -287,7 +286,7 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/reject` | pending → draft |
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft |
-| GET | `/bir/drafts/{id}/export` | PDF. 501 until Dev C builds it. |
+| GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) |
 | POST | `/bir/chat` | Dev C. Controller method is `message`. |
 
 ### GET /bir/config
@@ -473,6 +472,22 @@ Only on a finalized draft, else 400. Returns 201 with a copy in `draft` status,
 same form (form type, period and employee) so two drafts never share a number, `approved_by` and
 `rejection_reason` cleared, `prepared_by` set to the current user. The original
 is untouched.
+
+### GET /bir/drafts/{id}/export
+
+Returns the official BIR form as a PDF (`Content-Type: application/pdf`), filled
+in with the draft's values: two pages for a 1601-C, one for a 2316. Built by Dev C
+(`BirPdfService`) on the blank forms in `backend/resources/bir-templates/`.
+
+Any status can be exported, so a draft can be printed and checked. Until the form
+is `approved` or `finalized`, every page carries "DRAFT #id (status) — NOT FOR
+FILING" across the top and the filename ends in `-DRAFT`. The filename is in
+`Content-Disposition`, for example
+`attachment; filename="BIR-2316-2026-EMP-0001-v1-DRAFT.pdf"`: form type, period,
+the employee code on a 2316, and the version.
+
+404 if the draft is missing; employees get 403 like the rest of `/bir`. The PDF
+shows the draft's stored values, so a later payroll change does not alter it.
 
 ---
 
