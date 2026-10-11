@@ -38,7 +38,7 @@ class BirChatDraftTest extends TestCase
         foreach ([
             'company_tin' => '987-654-321-000',
             'company_name' => 'Springboard Inc.',
-            'company_address' => '1 Ayala Avenue, Makati',
+            'company_address' => '1 Ayala Avenue, Brgy. San Lorenzo, Makati City',
             'company_zip' => '1226',
             'employer_type' => 'main',
         ] as $key => $value) {
@@ -54,7 +54,7 @@ class BirChatDraftTest extends TestCase
         $this->answerAndSave($id, 'employee_rdo_code', '049');
 
         $this->ask($id)->assertJsonPath('data.question.field', 'employee_registered_address');
-        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Quezon City');
+        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City');
 
         $this->ask($id)->assertJsonPath('data.question.field', 'employee_birthdate');
         $this->answerAndSave($id, 'employee_birthdate', 'May 31, 1990');
@@ -66,7 +66,7 @@ class BirChatDraftTest extends TestCase
 
         $fields = BirFormDraft::findOrFail($id)->fields;
         $this->assertSame('049', $fields['employee_rdo_code']['value']);
-        $this->assertSame('12 Mabini St., Quezon City', $fields['employee_registered_address']['value']);
+        $this->assertSame('12 Mabini St., Brgy. San Roque, Quezon City', $fields['employee_registered_address']['value']);
         $this->assertSame('1990-05-31', $fields['employee_birthdate']['value']);
         foreach (['employee_rdo_code', 'employee_registered_address', 'employee_birthdate'] as $key) {
             $this->assertSame('user', $fields[$key]['origin'], "{$key} is marked as supplied by a person.");
@@ -80,7 +80,7 @@ class BirChatDraftTest extends TestCase
     {
         $id = $this->draft2316('2025-03-01');
         $this->answerAndSave($id, 'employee_rdo_code', '049');
-        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Quezon City');
+        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City');
 
         $this->chat($id, 'employee_birthdate', '31/05/1990')
             ->assertJsonPath('data.answer', null)
@@ -94,7 +94,7 @@ class BirChatDraftTest extends TestCase
     {
         $id = $this->draft2316('2026-07-01');
         $this->answerAndSave($id, 'employee_rdo_code', '049');
-        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Quezon City');
+        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City');
         $this->answerAndSave($id, 'employee_birthdate', '05/31/1990');
         $this->answerAndSave($id, 'has_previous_employer', 'oo');
         $this->answerAndSave($id, 'previous_employer_tin', '111-222-333-000');
@@ -115,7 +115,7 @@ class BirChatDraftTest extends TestCase
     {
         $id = $this->draft2316('2026-07-01');
         $this->answerAndSave($id, 'employee_rdo_code', '049');
-        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Quezon City');
+        $this->answerAndSave($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City');
         $this->answerAndSave($id, 'employee_birthdate', '05/31/1990');
 
         $this->ask($id)
@@ -156,7 +156,7 @@ class BirChatDraftTest extends TestCase
 
         $this->ask($id)
             ->assertJsonPath('data.done', true)
-            ->assertJsonPath('data.reply', "This form is finalized, so it can't be changed here.");
+            ->assertJsonPath('data.reply', "This form is finalized, so it can't be changed here. You can still ask what a box means or where its figure came from.");
     }
 
     public function test_an_unknown_draft_is_a_404(): void

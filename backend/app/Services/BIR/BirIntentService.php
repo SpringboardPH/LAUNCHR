@@ -28,7 +28,9 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * Fixes from chat testing: PHP no longer takes the model's word on two things it can
  * check itself. A form the user never named is dropped (B5), and a message that only
  * names a period or a form is a form request whatever the label (B5). A year that is
- * refused is reported back, so the user hears why it was asked again (B3).
+ * refused is reported back, so the user hears why it was asked again (B3). A year or a
+ * month the user never gave is dropped too, so "2316 for Maria Santos" asks for the year
+ * instead of taking this one.
  */
 class BirIntentService
 {
@@ -52,6 +54,9 @@ class BirIntentService
         'december', 'dec', 'enero', 'pebrero', 'marso', 'abril', 'mayo', 'hunyo', 'hulyo', 'agosto',
         'setyembre', 'oktubre', 'nobyembre', 'disyembre',
     ];
+
+    /** "last month", "this year", "ngayong taon"…: a period given relative to today. */
+    private const RELATIVE_PERIOD = '/\b(this|last|next|current|previous) (year|month)\b|\b(ngayong|nakaraang|karaang|isang|susunod na) (taon|buwan)\b/i';
 
     /** Small words that can sit around a period or a form name without making it a question. */
     private const FILLER = [
@@ -274,6 +279,15 @@ class BirIntentService
 
         $year = is_int($raw['tax_year'] ?? null) ? $raw['tax_year'] : null;
         $month = is_int($raw['tax_month'] ?? null) ? $raw['tax_month'] : null;
+
+        // Same rule for the period: kept only if this message gives it (or one relative to
+        // today), or an earlier message did. A model filling in the current year is a guess.
+        if ($year !== null && $year !== ($known['tax_year'] ?? null) && !self::mentionsYear($message)) {
+            $year = null;
+        }
+        if ($month !== null && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message)) {
+            $month = null;
+        }
         $employee = is_string($raw['employee_query'] ?? null) && trim($raw['employee_query']) !== ''
             ? trim($raw['employee_query'])
             : null;
@@ -317,6 +331,23 @@ class BirIntentService
                 ? trim($raw['clarification'])
                 : null,
         ];
+    }
+
+    /** A four-digit year, MM/YYYY, YYYY-MM, or a period relative to today. */
+    private static function mentionsYear(string $message): bool
+    {
+        return preg_match('/\b(19|20)\d{2}\b/', $message) === 1 || preg_match(self::RELATIVE_PERIOD, $message) === 1;
+    }
+
+    /** A month's name (English or Filipino), MM/YYYY, YYYY-MM, or a month relative to today. */
+    private static function mentionsMonth(string $message): bool
+    {
+        $words = preg_split('/[^a-z]+/', mb_strtolower($message), -1, PREG_SPLIT_NO_EMPTY);
+        $months = array_diff(self::PERIOD_WORDS, ['month', 'year', 'buwan', 'taon']);
+
+        return array_intersect($words, $months) !== []
+            || preg_match('/\b\d{1,2}\/\d{4}\b|\b\d{4}-\d{1,2}\b/', $message) === 1
+            || preg_match('/\b(this|last|next|current|previous) month\b|\b(ngayong|nakaraang|karaang|isang|susunod na) buwan\b/i', $message) === 1;
     }
 
     /**

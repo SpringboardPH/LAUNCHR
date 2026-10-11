@@ -12,6 +12,7 @@ use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirEmployeeResolver;
 use App\Services\BIR\BirExplanationService;
 use App\Services\BIR\BirIntentService;
+use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -32,6 +33,12 @@ use RuntimeException;
  * records and the schema's help text. The model labels; it never writes a reply.
  * Fixes from chat testing: a refused year is explained (B3), and the model's label only
  * replaces the re-ask with an explanation when the message reads as a question (D4).
+ *
+ * Fixes from user-side testing: the model never words a reply (its "unsure" question is
+ * replaced by a line asking the user to check the summary); "what is item 12 on the 2316?"
+ * is answered on either form, with or without a draft; "change item 12 to …" changes a box
+ * on the open draft and is never saved as the answer to another question. These three are
+ * read in PHP before the model is asked, so they work with it switched off.
  *
  * Each step is a service call — nothing is computed here.
  */
@@ -64,8 +71,20 @@ class BirChatController extends Controller
             $state->forget();
         }
 
+        $message = $validated['message'];
+
+        // Changing a box needs a form open in the chat; with none, say how to open one.
+        if (BirAnswerParser::looksLikeChange($message)) {
+            return $this->reply($state->get(), false, BirExplanationService::OPEN_A_FORM);
+        }
+
+        // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
+        if (($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
+            return $this->reply($state->get(), false, $this->aboutItem($message, $item, $state->get()['form_type'] ?? null));
+        }
+
         try {
-            $parsed = $this->intent->parse($validated['message'], $state->get());
+            $parsed = $this->intent->parse($message, $state->get());
         } catch (RuntimeException $e) {
             // The assistant being down must never take the feature down with it.
             return response()->json([
@@ -91,31 +110,31 @@ class BirChatController extends Controller
                 . $this->question($this->intent->missingFields(['tax_year' => null] + $merged)));
         }
 
-        // What's missing is asked in PHP's words. The model's own question is used only when
-        // nothing is missing but it was unsure, so it can't promise what the system can't do.
+        // What's missing is asked in PHP's words. The model never words a reply: when it was
+        // unsure but nothing is missing, the summary asks the user to check it instead, and
+        // nothing is created until they click Create draft.
         if ($missing !== []) {
             return $this->reply($merged, false, $this->question($missing));
         }
-        if ($parsed['needs_clarification']) {
-            return $this->reply($merged, false, $parsed['clarification'] ?? $this->question([]));
-        }
+        $check = $parsed['needs_clarification'] ? ' Please check this is right before creating the draft.' : '';
 
         // Only 2316 names an employee; 1601-C is company-wide.
         if (($merged['form_type'] ?? null) === Form2316Schema::FORM_TYPE) {
-            return $this->withEmployee($merged, $state);
+            return $this->withEmployee($merged, $state, $check);
         }
 
         $state->forget();
 
         return $this->reply($merged, true, sprintf(
-            'Understood: a %s covering %s.',
+            'Understood: a %s covering %s.%s',
             $merged['form_type'],
             $merged['period'],
+            $check,
         ));
     }
 
     /** Resolve the typed name against the employees table. */
-    private function withEmployee(array $merged, BirConversationState $state)
+    private function withEmployee(array $merged, BirConversationState $state, string $check = '')
     {
         $match = $this->employees->resolve((string) $merged['employee_query']);
 
@@ -144,13 +163,15 @@ class BirChatController extends Controller
         // Re-merge so the resolved id is both returned and remembered.
         $merged = $state->merge(['employee_id' => $employee->id]);
         $state->forget();
+        // The name on file, for the summary card ("maria santos" was typed; this is who was found).
+        $merged['employee_name'] = trim($employee->first_name . ' ' . $employee->last_name) . " ({$employee->employee_id})";
 
         return $this->reply($merged, true, sprintf(
-            'Understood: a %s for %s (%s), covering %s.',
+            'Understood: a %s for %s, covering %s.%s',
             $merged['form_type'],
-            trim($employee->first_name . ' ' . $employee->last_name),
-            $employee->employee_id,
+            $merged['employee_name'],
             $merged['period'],
+            $check,
         ));
     }
 
@@ -167,9 +188,32 @@ class BirChatController extends Controller
         }
 
         // A locked form asks nothing and saves nothing, but can still be explained.
-        $turn = in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)
+        $editable = in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true);
+        $locked = "This form is {$draft->status}, so it can't be changed here. You can still ask what a box means or where its figure came from.";
+
+        // "change item 12 to …": read in PHP, whatever question is open. Never an answer.
+        if ($message !== null && BirAnswerParser::looksLikeChange($message)) {
+            if (!$editable) {
+                return $this->draftReply($draft, ['question' => null, 'answer' => null], $locked);
+            }
+            $open = $this->conversation->turn($draft, null, null)['question'];
+            $change = $this->conversation->change($draft, $message);
+
+            return $change['answer'] !== null
+                ? $this->draftReply($draft, ['question' => null, 'answer' => $change['answer']], $change['reply'])
+                : $this->draftReply($draft, ['question' => $open, 'answer' => null], self::thenAsk($change['reply'], $open));
+        }
+
+        // "What is item 12?" / "where did item 25A come from?": the item number picks the box.
+        if ($message !== null && ($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
+            $open = $editable ? $this->conversation->turn($draft, null, null)['question'] : null;
+
+            return $this->draftReply($draft, ['question' => $open, 'answer' => null], self::thenAsk($this->aboutItem($message, $item, $draft->form_type, $draft), $open));
+        }
+
+        $turn = $editable
             ? $this->conversation->turn($draft, $field, $message)
-            : ['question' => null, 'answer' => null, 'reply' => "This form is {$draft->status}, so it can't be changed here.", 'unread' => $message !== null];
+            : ['question' => null, 'answer' => null, 'reply' => $locked, 'unread' => $message !== null];
 
         if ($turn['unread']) {
             $turn['reply'] = $this->sorted($draft, $turn, (string) $message) ?? $turn['reply'];
@@ -269,6 +313,53 @@ class BirChatController extends Controller
             ],
             'message' => $understood ? 'Request understood' : 'Needs clarification',
         ]);
+    }
+
+    /**
+     * The help text of an item, on the form the message names, else the draft's, else the
+     * one this conversation is about. On the open draft, "where…?" gets the box's source;
+     * any other form only its meaning, since only a draft has figures.
+     */
+    private function aboutItem(string $message, string $item, ?string $formType, ?BirFormDraft $draft = null): string
+    {
+        $named = match (true) {
+            str_contains($message, '1601') => Form1601CSchema::FORM_TYPE,
+            str_contains($message, '2316') => Form2316Schema::FORM_TYPE,
+            default => $formType,
+        };
+        if ($named === null) {
+            return BirExplanationService::WHICH_FORM;
+        }
+
+        $asksSource = preg_match('/\b(where|saan|galing|come from|came from|why|bakit|source)\b/i', $message) === 1;
+        if ($draft !== null && $named === $draft->form_type && $asksSource) {
+            $parts = $this->conversation->fieldsForItem($named, $item);
+            if ($parts !== []) {
+                return implode("\n\n", array_map(fn (array $f) => $this->explanations->source($draft, $f['key']), $parts));
+            }
+        }
+
+        $meaning = $this->explanations->meaningOfItem($named, $item);
+        if ($meaning === null) {
+            return "The {$named} has no item {$item}.";
+        }
+
+        return $asksSource && ($draft === null || $named !== $draft->form_type)
+            ? "{$meaning}\n\n" . BirExplanationService::SOURCE_NEEDS_DRAFT
+            : $meaning;
+    }
+
+    /** A message that asks about something: a question mark, or a question word anywhere in it. */
+    private static function asksAbout(string $message): bool
+    {
+        return BirAnswerParser::looksLikeQuestion($message)
+            || preg_match('/\b(what|whats|ano|anong|explain|mean|means|meaning|ibig sabihin|paliwanag|where|saan|galing|why|bakit|paano|how)\b/i', $message) === 1;
+    }
+
+    /** A reply, then the question still open, so the user is never left without one. */
+    private static function thenAsk(string $reply, ?array $open): string
+    {
+        return $open !== null ? "{$reply}\n\n{$open['text']}" : $reply;
     }
 
     /** Why a year was refused. Years from FIRST_YEAR up to next year are accepted. */

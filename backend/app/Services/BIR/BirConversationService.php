@@ -3,6 +3,7 @@
 namespace App\Services\BIR;
 
 use App\Models\BirFormDraft;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use InvalidArgumentException;
@@ -14,6 +15,10 @@ use InvalidArgumentException;
  * This class knows about drafts and the database. The decision about what is
  * missing lives in BirMissingFields, which knows about neither, so it can be
  * tested on plain arrays and keeps working with the language model switched off.
+ *
+ * Changing a box by its item number ("change item 12 to …") is read here too, in PHP: the
+ * item number picks the box and the new value must be in the message, so the model can
+ * neither pick the wrong box nor make up a value.
  */
 class BirConversationService
 {
@@ -37,7 +42,7 @@ class BirConversationService
      * is missing. Always the first of missingFields() on the draft as saved, so an answer
      * that makes new fields required shows up in the very next question.
      *
-     * @return array{field: string, item: ?string, label: string, type: string, options: ?array, reason: string, guidance: ?string, text: string}|null
+     * @return array{field: string, item: ?string, label: string, type: string, options: ?array, format: ?string, reason: string, guidance: ?string, text: string}|null
      */
     public function nextQuestion(BirFormDraft $draft): ?array
     {
@@ -55,6 +60,7 @@ class BirConversationService
             'label' => $field['label'],
             'type' => $field['type'],
             'options' => $field['options'] ?? null,
+            'format' => $field['format'] ?? null,
             'reason' => $missing['reason'],
             'guidance' => $field['guidance'] ?? null,
             'text' => $this->questionText($missing, $field, $schema),
@@ -93,7 +99,7 @@ class BirConversationService
             return [
                 'question' => null,
                 'answer' => ['field' => $key, 'value' => $parsed['value']],
-                'reply' => "Got it: {$next['label']}: " . self::display($parsed['value'], $next['type']) . '.',
+                'reply' => self::sentence("Got it: {$next['label']}: " . self::display($parsed['value'], $next['type'])),
                 'unread' => false,
             ];
         }
@@ -123,6 +129,148 @@ class BirConversationService
     public function field(string $formType, string $key): array
     {
         return array_column($this->schemaFor($formType), null, 'key')[$key];
+    }
+
+    /**
+     * Every part of an item, in form order: item 4 of the 2316 is the last, first and middle
+     * name. Empty if the form has no such item.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fieldsForItem(string $formType, string $item): array
+    {
+        return array_values(array_filter(
+            $this->schemaFor($formType),
+            fn (array $field) => $field['item'] !== null && strtoupper($field['item']) === strtoupper($item),
+        ));
+    }
+
+    /**
+     * A request to change one box, read in PHP: "change item 12 to 987-654-321-000",
+     * "palitan ang item 4 middle name ng Cruz", "gawing 049 ang item 5".
+     *
+     * The item number picks the box (a label word picks the part when an item has several);
+     * the new value is the text after "to" / "ng" and is read like any answer, format
+     * included. Nothing is saved here: answer goes back to the caller, which saves it through
+     * PUT like the preview's Change button, so it is checked and recorded with the user's name.
+     *
+     * @return array{answer: ?array{field: string, value: mixed}, reply: string}
+     */
+    public function change(BirFormDraft $draft, string $message): array
+    {
+        $form = $draft->form_type;
+        $item = BirAnswerParser::itemMentioned($message);
+        if ($item === null) {
+            return ['answer' => null, 'reply' => $this->whichItem($form, $message)];
+        }
+
+        $parts = array_values(array_filter($this->fieldsForItem($form, $item), fn (array $f) => $f['source'] !== 'manual'));
+        if ($parts === []) {
+            return ['answer' => null, 'reply' => "The {$form} has no item {$item} that can be changed here."];
+        }
+        $field = count($parts) === 1 ? $parts[0] : self::partNamed($parts, $message);
+        if ($field === null) {
+            $names = implode(', ', array_map(fn (array $f) => $f['label'], $parts));
+            return ['answer' => null, 'reply' => "Item {$item} has more than one part: {$names}. Which one? For example: \"change item {$item} " . mb_strtolower(self::shortLabel($parts[count($parts) - 1])) . ' to …".'];
+        }
+
+        $name = self::boxName($field);
+        $value = self::newValue($message);
+        if ($value === null) {
+            return ['answer' => null, 'reply' => "What should {$name} be? For example: \"change item {$item} to …\"."];
+        }
+
+        $parsed = BirAnswerParser::parse($value, $field);
+        if (!$parsed['ok']) {
+            return ['answer' => null, 'reply' => "{$parsed['problem']} Nothing was changed."];
+        }
+
+        $entry = ($draft->fields ?? [])[$field['key']] ?? [];
+        $had = ($entry['origin'] ?? 'pending') !== 'pending' && ($entry['value'] ?? null) !== null && ($entry['value'] ?? '') !== '';
+        $shown = self::display($parsed['value'], $field['type']);
+        $reply = $had
+            ? "Changed {$name} from " . self::display($entry['value'], $field['type']) . " to {$shown}."
+            : self::sentence("Changed {$name} to {$shown}");
+        if (in_array($field['source'], ['payroll', 'settings'], true) && $had && empty($entry['edited'])) {
+            $reply .= ' This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.';
+        }
+
+        return ['answer' => ['field' => $field['key'], 'value' => $parsed['value']], 'reply' => $reply];
+    }
+
+    /** No item number given: say which items the message's words could mean, then how to ask. */
+    private function whichItem(string $form, string $message): string
+    {
+        $before = preg_split('/\s+(?:to|ng)\s+/i', $message, 2)[0];
+        $words = array_diff(preg_split('/[^a-z0-9]+/', mb_strtolower($before), -1, PREG_SPLIT_NO_EMPTY), self::STOP_WORDS);
+        $items = [];
+        foreach ($this->schemaFor($form) as $field) {
+            $label = preg_split('/[^a-z0-9]+/', mb_strtolower($field['label']), -1, PREG_SPLIT_NO_EMPTY);
+            if ($field['item'] !== null && $field['source'] !== 'manual' && array_intersect($words, $label) !== []) {
+                $items[$field['item']] = "item {$field['item']}";
+            }
+        }
+
+        $hint = count($items) >= 1 && count($items) <= 5
+            ? ' On the ' . $form . ', that could be ' . self::orList(array_values($items)) . '.'
+            : '';
+
+        return "Which box do you want to change? Give its item number.{$hint} For example: \"change item 12 to …\".";
+    }
+
+    /** Words that name no box: the command itself and small words around it. */
+    private const STOP_WORDS = [
+        'change', 'update', 'set', 'edit', 'correct', 'replace', 'fix', 'palitan', 'pakipalitan', 'ibahin',
+        'baguhin', 'pakibago', 'gawing', 'the', 'my', 'its', 'of', 'in', 'on', 'item', 'box', 'ang', 'sa', 'na',
+        'to', 'ng', 'form', 'please', 'pls', 'po', 'value', 'name',
+    ];
+
+    /** Of an item's parts, the one whose label words the message uses ("middle name"); null if not exactly one. */
+    private static function partNamed(array $parts, string $message): ?array
+    {
+        $words = array_diff(preg_split('/[^a-z0-9]+/', mb_strtolower($message), -1, PREG_SPLIT_NO_EMPTY), self::STOP_WORDS);
+        $scores = array_map(function (array $field) use ($words) {
+            $label = preg_split('/[^a-z0-9]+/', mb_strtolower(self::shortLabel($field)), -1, PREG_SPLIT_NO_EMPTY);
+            return count(array_intersect($words, $label));
+        }, $parts);
+        $best = max($scores);
+
+        return $best > 0 && count(array_keys($scores, $best)) === 1 ? $parts[array_search($best, $scores, true)] : null;
+    }
+
+    /** "Employee's Name — Middle Name" → "Middle Name": the part that tells an item's parts apart. */
+    private static function shortLabel(array $field): string
+    {
+        $pieces = preg_split('/\s+—\s+/u', $field['label']);
+
+        return end($pieces);
+    }
+
+    /** The new value: after "to", "ng", ":" or "=", or between "gawing" and "ang item". Null if none. */
+    private static function newValue(string $message): ?string
+    {
+        $value = match (true) {
+            (bool) preg_match('/^\s*gawing\s+(.+?)\s+ang\s+(?:item|box|#)/iu', $message, $m) => $m[1],
+            (bool) preg_match('/(?:item|box|#)\s*\d{1,2}[a-z]?\b.*?(?:\s(?:to|ng|into)\s|\s*[:=]\s*)(.+)$/iu', $message, $m) => $m[1],
+            default => null,
+        };
+        $value = $value === null ? null : trim($value, " \t\"'“”‘’");
+
+        return $value === '' ? null : $value;
+    }
+
+    /** "a, b or c". */
+    private static function orList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return $items === [] ? $last : implode(', ', $items) . ' or ' . $last;
+    }
+
+    /** A sentence ends with one full stop, even when the value already ends with one ("Inc."). */
+    private static function sentence(string $text): string
+    {
+        return str_ends_with($text, '.') ? $text : "{$text}.";
     }
 
     /** How a box is named to the user: "Item 22, Taxable income…", in quotes. */
@@ -162,7 +310,18 @@ class BirConversationService
             default => ' is needed for this form.',
         };
 
-        $ask = match ($field['type']) {
+        $ask = match (true) {
+            isset($field['format']) => 'What is it? Write it as ' . FieldFormat::describe($field['format']) . '.',
+            default => self::askFor($field),
+        };
+
+        return "{$name}{$why} {$ask}";
+    }
+
+    /** How to answer a box, by its type. */
+    private static function askFor(array $field): string
+    {
+        return match ($field['type']) {
             'boolean' => 'Yes or no?',
             'decimal' => 'What is the amount in pesos? Enter 0 if there was none.',
             'date' => 'What is the date (MM/DD/YYYY)?',
@@ -171,8 +330,6 @@ class BirConversationService
             'enum' => 'Which one: ' . implode(' or ', $field['options'] ?? []) . '?',
             default => 'What is it?',
         };
-
-        return "{$name}{$why} {$ask}";
     }
 
     /**

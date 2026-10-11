@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR;
 
+use App\Services\BIR\Schemas\FieldFormat;
 use DateTimeImmutable;
 
 /**
@@ -14,6 +15,10 @@ use DateTimeImmutable;
  *
  * Pure: no database, no model, no Laravel. PUT still checks the result, so this only
  * has to translate common ways of writing a value, not be the last line of defence.
+ *
+ * A field with a schema 'format' (TIN, RDO, ZIP, address…) is checked against Dev A's
+ * FieldFormat here too, so a wrong one is asked again in the chat's own words instead of
+ * coming back from PUT as an error. A TIN typed without dashes is written with them.
  */
 final class BirAnswerParser
 {
@@ -37,6 +42,15 @@ final class BirAnswerParser
         'can', 'could', 'does', 'do', 'is', 'are',
     ];
 
+    /**
+     * First words of a request to change a box ("change item 12 to …", "palitan ang item 12
+     * ng …"). Never read as an answer, whatever box is open: the chat handles it as a change.
+     */
+    private const CHANGE_WORDS = [
+        'change', 'update', 'set', 'edit', 'correct', 'replace', 'fix',
+        'palitan', 'pakipalitan', 'ibahin', 'baguhin', 'pakibago', 'gawing', 'i-update', 'iupdate',
+    ];
+
     /** Accepted date spellings. MM/DD/YYYY, not DD/MM/YYYY, because that is how BIR forms write dates. */
     private const DATE_FORMATS = ['Y-m-d', 'm/d/Y', 'F j, Y', 'F j Y', 'M j, Y', 'M j Y', 'j F Y', 'j M Y'];
 
@@ -52,7 +66,7 @@ final class BirAnswerParser
             return self::problem('Please type an answer.');
         }
 
-        return match ($field['type']) {
+        $result = match ($field['type']) {
             'decimal' => self::amount($answer),
             'boolean' => self::yesNo($answer),
             'enum' => self::option($answer, $field['options'] ?? []),
@@ -62,6 +76,44 @@ final class BirAnswerParser
             'string', 'text' => self::text($answer),
             default => self::problem("\"{$field['label']}\" can't be entered in the chat."),
         };
+
+        return $result['ok'] && isset($field['format']) ? self::formatted($result['value'], $field) : $result;
+    }
+
+    /** "change item 12 to …": a request to change a box, never an answer. */
+    public static function looksLikeChange(string $message): bool
+    {
+        return in_array(strtok(mb_strtolower(trim($message)), " \t,:"), self::CHANGE_WORDS, true);
+    }
+
+    /**
+     * The box a message names by item number: "item 25A", "box 12", "#12". Null if none.
+     * Upper case, as the schemas write item numbers.
+     */
+    public static function itemMentioned(string $message): ?string
+    {
+        return preg_match('/(?:\bitem|\bbox|#)\s*(\d{1,2}[a-z]?)\b/i', $message, $m) ? strtoupper($m[1]) : null;
+    }
+
+    /**
+     * Text checked against the field's format (Dev A's FieldFormat), in the same words PUT
+     * would use. Common spellings are tidied first: a TIN's dashes, an RDO code's case.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private static function formatted(mixed $value, array $field): array
+    {
+        $format = $field['format'];
+        if ($format === 'tin' && is_string($value) && preg_match('/^\d{12,14}$/', $digits = preg_replace('/[\s-]/', '', $value))) {
+            $value = implode('-', [substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 3), substr($digits, 9)]);
+        }
+        if ($format === 'rdo' && is_string($value)) {
+            $value = strtoupper($value);
+        }
+
+        return FieldFormat::matches($format, $value)
+            ? self::ok($value)
+            : self::problem("\"{$field['label']}\" must be " . FieldFormat::describe($format) . '.');
     }
 
     /** "₱150,000" → "150000.00". Never rounds: more than two decimals is asked again. */
@@ -158,9 +210,15 @@ final class BirAnswerParser
         return str_ends_with($message, '?') || in_array(strtok(mb_strtolower($message), " \t,"), self::QUESTION_WORDS, true);
     }
 
-    /** Free text is taken as written, unless it reads as a question about the box. */
+    /**
+     * Free text is taken as written, unless it reads as a question about the box, a request
+     * to change a box, or names another box ("item 12 should be …"). Those are never saved.
+     */
     private static function text(string $answer): array
     {
+        if (self::looksLikeChange($answer) || preg_match('/\b(item|box)\s*\d/i', $answer)) {
+            return self::problem('That looks like a request about another box rather than the answer. To change a box, say "change item 12 to …"; otherwise type the answer itself.');
+        }
         if (self::looksLikeQuestion($answer)) {
             return self::problem('That looks like a question rather than the answer. Type the answer itself, or ask me what the box means.');
         }

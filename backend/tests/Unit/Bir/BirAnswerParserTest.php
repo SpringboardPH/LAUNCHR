@@ -70,6 +70,9 @@ class BirAnswerParserTest extends TestCase
             'nothing typed' => ['string', '   ', 'type an answer'],
             'a question instead of text' => ['string', 'saan galing ito?', 'looks like a question'],
             'a question without a question mark' => ['text', 'what goes here', 'looks like a question'],
+            'a change command is not an answer' => ['text', 'change TIN to 987-654-321-676', 'change a box, say "change item 12'],
+            'a change command in Filipino' => ['string', 'palitan ang item 12 ng 987-654-321-676', 'request about another box'],
+            'naming another box is not an answer' => ['text', 'item 12 should be 987-654-321-000', 'request about another box'],
         ];
     }
 
@@ -81,6 +84,47 @@ class BirAnswerParserTest extends TestCase
         $this->assertFalse($result['ok']);
         $this->assertNull($result['value']);
         $this->assertStringContainsString($hint, $result['problem']);
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function formatted(): array
+    {
+        return [
+            'TIN as written' => ['tin', '987-654-321-000', '987-654-321-000'],
+            'TIN typed without dashes' => ['tin', '987654321000', '987-654-321-000'],
+            'TIN with a 5-digit branch, spaced' => ['tin', '987 654 321 00000', '987-654-321-00000'],
+            'RDO code in lower case' => ['rdo', '21a', '21A'],
+            'ZIP code' => ['zip', '1226', '1226'],
+        ];
+    }
+
+    #[DataProvider('formatted')]
+    public function test_a_formatted_box_is_read_in_its_format(string $format, string $answer, string $value): void
+    {
+        $result = BirAnswerParser::parse($answer, $this->field('string') + ['format' => $format]);
+
+        $this->assertTrue($result['ok'], (string) $result['problem']);
+        $this->assertSame($value, $result['value']);
+    }
+
+    public function test_a_wrongly_formatted_answer_is_asked_again_in_the_words_put_would_use(): void
+    {
+        $this->assertSame('"Example" must be a 3-character RDO code like 043 or 21A.', BirAnswerParser::parse('AAAA', $this->field('string') + ['format' => 'rdo'])['problem']);
+        $this->assertSame('"Example" must be a TIN like 123-456-789-000 (a 3 to 5 digit branch code).', BirAnswerParser::parse('oo', $this->field('string') + ['format' => 'tin'])['problem']);
+        $this->assertSame('"Example" must be a 4-digit ZIP code like 1004.', BirAnswerParser::parse('12345', $this->field('string') + ['format' => 'zip'])['problem']);
+    }
+
+    public function test_change_commands_and_item_numbers_are_recognised(): void
+    {
+        foreach (['change item 12 to 1', 'Update #5: 049', 'palitan ang item 4 ng Cruz', 'gawing 049 ang item 5', 'set box 7 = 05/31/1990'] as $message) {
+            $this->assertTrue(BirAnswerParser::looksLikeChange($message), $message);
+        }
+        $this->assertFalse(BirAnswerParser::looksLikeChange('12 Mabini St., Brgy. San Roque, Quezon City'));
+
+        $this->assertSame('25A', BirAnswerParser::itemMentioned('where did item 25a come from?'));
+        $this->assertSame('12', BirAnswerParser::itemMentioned('in form 2316 what is #12 the TIN'));
+        $this->assertSame('7', BirAnswerParser::itemMentioned('set box 7 = 05/31/1990'));
+        $this->assertNull(BirAnswerParser::itemMentioned('the 2316 for 2025'));
     }
 
     public function test_a_field_signed_by_hand_is_never_taken_from_the_chat(): void

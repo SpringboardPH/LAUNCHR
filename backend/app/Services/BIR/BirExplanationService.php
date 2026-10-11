@@ -31,6 +31,15 @@ class BirExplanationService
     /** A question about a box that didn't say which box. */
     public const WHICH_BOX = 'Which box do you mean? Give its item number, for example "item 22".';
 
+    /** A question about an item that didn't say which form, with no form in the conversation. */
+    public const WHICH_FORM = 'Which form do you mean: the 1601-C or the 2316? For example: "what is item 12 on the 2316?"';
+
+    /** A request to change a box with no form open in the chat. */
+    public const OPEN_A_FORM = 'To change a box, the form has to be open here first. Ask for it to start a new one, or open a saved one with "Open with the assistant".';
+
+    /** "Where did item 25A come from?" with no draft: only a draft has figures. */
+    public const SOURCE_NEEDS_DRAFT = 'Where its figure comes from depends on the draft. Open a draft of that form and ask again.';
+
     /** Payroll rows are listed one by one up to this many; more are summarised. */
     private const LISTED_ROWS = 6;
 
@@ -39,7 +48,23 @@ class BirExplanationService
     /** "What does this box mean?" — the schema's help text, word for word. */
     public function meaning(BirFormDraft $draft, string $key): string
     {
-        $field = $this->conversation->field($draft->form_type, $key);
+        return self::helpText($this->conversation->field($draft->form_type, $key));
+    }
+
+    /**
+     * "What is item 12 on the 2316?" — the help text of every part of that item, with or
+     * without a draft. Meaning only: figures belong to a draft. Null if there is no such item.
+     */
+    public function meaningOfItem(string $formType, string $item): ?string
+    {
+        $parts = $this->conversation->fieldsForItem($formType, $item);
+
+        return $parts === [] ? null : implode("\n\n", array_map(self::helpText(...), $parts));
+    }
+
+    /** @param array<string, mixed> $field */
+    private static function helpText(array $field): string
+    {
         $name = BirConversationService::boxName($field);
 
         return ($field['guidance'] ?? null) !== null

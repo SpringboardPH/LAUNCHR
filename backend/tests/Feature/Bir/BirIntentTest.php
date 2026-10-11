@@ -228,4 +228,29 @@ class BirIntentTest extends TestCase
             $this->assertFalse(BirIntentService::onlyNamesAPeriodOrForm($message), $message);
         }
     }
+
+    public function test_a_year_or_month_the_user_did_not_give_is_not_assumed(): void
+    {
+        // The model filled in this year and a month on its own.
+        $service = $this->service($this->reply(['form_type' => '2316', 'tax_month' => null, 'employee_query' => 'maria santos']));
+        $result = $service->parse('2316 for maria santos');
+        $this->assertNull($result['tax_year']);
+        $this->assertContains('the year', $service->missingFields($result));
+
+        $result = $this->service($this->reply())->parse('the 1601-C for 2026');
+        $this->assertNull($result['tax_month'], 'No month was given.');
+        $this->assertSame(2026, $result['tax_year']);
+    }
+
+    public function test_a_period_given_in_words_or_earlier_is_kept(): void
+    {
+        foreach (['2316 for maria santos for this year', 'the 1601-C ngayong taon'] as $message) {
+            $this->assertSame(2026, $this->service($this->reply(['tax_month' => null]))->parse($message)['tax_year'], $message);
+        }
+        $this->assertSame(8, $this->service($this->reply())->parse('1601-C para sa Agosto 2026')['tax_month']);
+        $this->assertSame(8, $this->service($this->reply())->parse('the 1601-C for 08/2026')['tax_month']);
+
+        $result = $this->service($this->reply(['tax_month' => 7]))->parse('july', ['form_type' => '1601-C', 'tax_year' => 2026]);
+        $this->assertSame([2026, 7], [$result['tax_year'], $result['tax_month']], 'The year came from an earlier message.');
+    }
 }

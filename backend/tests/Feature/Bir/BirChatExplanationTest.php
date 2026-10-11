@@ -41,7 +41,7 @@ class BirChatExplanationTest extends TestCase
         foreach ([
             'company_tin' => '987-654-321-000',
             'company_name' => 'Springboard Inc.',
-            'company_address' => '1 Ayala Avenue, Makati',
+            'company_address' => '1 Ayala Avenue, Brgy. San Lorenzo, Makati City',
             'company_zip' => '1226',
             'employer_type' => 'main',
         ] as $key => $value) {
@@ -62,7 +62,7 @@ class BirChatExplanationTest extends TestCase
             ->json('data.reply');
 
         $this->assertStringStartsWith("\"Item 5, RDO Code\": {$guidance}", $reply);
-        $this->assertStringEndsWith('"Item 5, RDO Code" is needed for this form. What is it?', $reply, 'The open question is asked again.');
+        $this->assertStringEndsWith('"Item 5, RDO Code" is needed for this form. What is it? Write it as a 3-character RDO code like 043 or 21A.', $reply, 'The open question is asked again.');
     }
 
     public function test_where_a_payroll_figure_came_from_names_the_records_saved_with_the_draft(): void
@@ -132,7 +132,7 @@ class BirChatExplanationTest extends TestCase
         $this->chat($id, 'employee_rdo_code', 'how much is Maria Santos earning?')
             ->assertJsonPath('data.answer', null)
             ->assertJsonPath('data.question.field', 'employee_rdo_code')
-            ->assertJsonPath('data.reply', BirExplanationService::DECLINE . "\n\n" . '"Item 5, RDO Code" is needed for this form. What is it?');
+            ->assertJsonPath('data.reply', BirExplanationService::DECLINE . "\n\n" . '"Item 5, RDO Code" is needed for this form. What is it? Write it as a 3-character RDO code like 043 or 21A.');
     }
 
     public function test_a_tax_question_before_any_draft_is_declined_and_not_remembered(): void
@@ -177,7 +177,7 @@ class BirChatExplanationTest extends TestCase
     {
         $id = $this->draft2316();
         $this->answer($id, 'employee_rdo_code', '049');
-        $this->answer($id, 'employee_registered_address', '12 Mabini St.');
+        $this->answer($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City');
 
         $this->model->willFail();
         $this->chat($id, 'employee_birthdate', 'what?')
@@ -236,7 +236,7 @@ class BirChatExplanationTest extends TestCase
         // A mid-year hire with a previous employer, so item 22 (an amount) is the open question.
         $id = $this->draft2316('2026-03-02');
         $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => [
-            'employee_rdo_code' => '049', 'employee_registered_address' => '12 Mabini St.', 'employee_birthdate' => '1990-05-31',
+            'employee_rdo_code' => '049', 'employee_registered_address' => '12 Mabini St., Brgy. San Roque, Quezon City', 'employee_birthdate' => '1990-05-31',
             'has_previous_employer' => true, 'previous_employer_tin' => '111-222-333-000', 'previous_employer_name' => 'ABC Corp',
         ]])->assertOk();
 
