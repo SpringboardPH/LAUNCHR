@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
+import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees } from '../../api/queries'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December']
 
-const SUGGESTIONS = [
+// The 2316 example names someone who is really on file, so it works on any database.
+const suggestionsFor = (employee) => [
   'Generate the August 2026 1601-C',
-  'I need a 2316 for Ana Reyes for 2025',
+  employee
+    ? `I need a 2316 for ${employee.first_name} ${employee.last_name} for ${new Date().getFullYear()}`
+    : `I need a 2316 for ${new Date().getFullYear()}`,
   'Prepare the 1601-C for last month',
 ]
 
@@ -161,6 +164,7 @@ function TypingIndicator() {
  */
 export default function BirChatPanel({ onDraftCreated, onQuestion }) {
   const qc = useQueryClient()
+  const { data: employees } = useQuery({ queryKey: birKeys.employees, queryFn: getBirEmployees, staleTime: 5 * 60_000 })
   const [messages, setMessages] = useState([GREETING])
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
@@ -294,7 +298,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
     patch(msg.id, { intentStatus: 'declined' })
     push({ role: 'assistant', text: 'No problem — which form and period did you mean?' })
   }
- const reset = () => {
+  const reset = () => {
     setMessages([GREETING])
     setInput('')
     setFilling(null)
@@ -330,7 +334,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
         {busy && <TypingIndicator />}
         {showSuggestions && (
           <div className="flex flex-wrap gap-2 pl-9">
-            {SUGGESTIONS.map(s => (
+            {suggestionsFor(employees?.data?.[0]).map(s => (
               <button
                 key={s}
                 onClick={() => send(s)}
