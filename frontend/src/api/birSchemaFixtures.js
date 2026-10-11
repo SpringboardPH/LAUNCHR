@@ -131,11 +131,24 @@ const rows = {
   ],
 }
 
+// The schema's 'format' (Dev A's FieldFormat): text in these fields must follow it.
+const formats = {
+  '1601-C': {
+    company_tin: 'tin', rdo_code: 'rdo', company_zip: 'zip', company_contact_number: 'phone', company_email: 'email',
+  },
+  '2316': {
+    period_from: 'mmdd', period_to: 'mmdd', employee_tin: 'tin', employee_rdo_code: 'rdo',
+    employee_registered_zip: 'zip', employee_home_zip: 'zip', employee_contact_number: 'phone',
+    present_employer_tin: 'tin', present_employer_zip: 'zip', previous_employer_tin: 'tin', previous_employer_zip: 'zip',
+  },
+}
+
 export const birMockSchemas = Object.fromEntries(
   Object.entries(rows).map(([form, list]) => [
     form,
     list.map(([key, item, label, type, source, required, guidance, options]) => ({
       key, item, label, type, source, required, guidance, ...(options && { options }),
+      ...(formats[form][key] && { format: formats[form][key] }),
     })),
   ]),
 )

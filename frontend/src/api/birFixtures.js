@@ -25,7 +25,8 @@ const MARK = { id: 2, name: 'Mark Santos' }
 
 const EMPLOYEES = [
   { id: 11, employee_id: 'EMP011', first_name: 'Ana', last_name: 'Reyes', tin: '111-222-333-000' },
-  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-000' },
+  // A phone recorded without enough digits: his 2316 reports it as invalid_format.
+  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-000', phone: '0917-55' },
   { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-000' },
   { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-000' },
   // Paid at minimum wage: nothing taxable, so the 2316's taxable section does not apply.
@@ -80,6 +81,7 @@ const payroll2316 = (employee, annual) => {
   return {
     ...(exempt && { nontax_mwe_basic: money(annual - thirteenth - contributions - 12000) }),
     employee_tin: employee.tin, employee_last_name: employee.last_name,
+    ...(employee.phone && { employee_contact_number: employee.phone }),
     employee_first_name: employee.first_name, basic_salary_annual: money(annual - thirteenth),
     gross_compensation_present: money(annual), less_nontaxable_present: money(nontax),
     taxable_income_present: money(taxable), gross_taxable_income: money(taxable), tax_due: money(tax),
@@ -168,6 +170,25 @@ const missingFor = (draft) => schemaOf(draft.form_type)
   .filter(f => f.required && f.source !== 'manual' && draft.fields[f.key]?.origin === 'pending')
   .map(f => ({ field: f.key, reason: ['payroll', 'settings'].includes(f.source) ? 'record_gap' : 'required' }))
 
+// Dev A's FieldFormat: what each format accepts, and how a message describes it.
+const FORMATS = {
+  tin: ['a TIN like 123-456-789-000 (a 3 to 5 digit branch code)', (v) => /^\d{3}-\d{3}-\d{3}-\d{3,5}$/.test(v)],
+  rdo: ['a 3-character RDO code like 043 or 21A', (v) => /^(\d{3}|\d{2}[A-Z])$/.test(v)],
+  zip: ['a 4-digit ZIP code like 1004', (v) => /^\d{4}$/.test(v)],
+  phone: ['a phone number like 09171234567 or (02) 8123-4567', (v) => /^\+?\d{7,13}$/.test(v.replace(/[\s().-]/g, ''))],
+  email: ['an email address like name@company.com', (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)],
+  mmdd: ['a date as MM/DD, like 07/01', (v) => {
+    const m = v.match(/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])$/)
+    return !!m && Number(m[2]) <= new Date(2024, Number(m[1]), 0).getDate() // a leap year allows 02/29
+  }],
+}
+// Blank text is not format-checked; whether it may be blank is the field's `required`.
+const formatProblem = (f, value) => {
+  if (!f.format || value === '' || value == null) return null
+  const [describe, matches] = FORMATS[f.format]
+  return typeof value === 'string' && matches(value) ? null : `${quoted(f)} must be ${describe}.`
+}
+
 const checks = (draft) => {
   const byKey = Object.fromEntries(schemaOf(draft.form_type).map(f => [f.key, f]))
   const entries = missingFor(draft).map(({ field, reason }) => {
@@ -178,6 +199,11 @@ const checks = (draft) => {
         ? `${quoted(f)} should come from ${f.source === 'settings' ? 'the company settings' : 'the employee or payroll records'}, but nothing was found there. Fix the record, or enter it here.`
         : `${quoted(f)} is required.`,
     }
+  })
+  // Stored text PUT never checked (older drafts, figures from payroll or settings).
+  schemaOf(draft.form_type).forEach(f => {
+    const message = draft.fields[f.key] && formatProblem(f, draft.fields[f.key].value)
+    if (message) entries.push({ field: f.key, code: 'invalid_format', severity: 'error', message })
   })
   const withheld = draft.fields[WITHHELD[draft.form_type]]
   if (withheld?.edited && withheld.system_value != null && Number(withheld.value) !== Number(withheld.system_value)) {
@@ -217,7 +243,7 @@ const answerProblem = (f, value) => {
     case 'date': return /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(text)) ? null
       : `${quoted(f)} must be a real date like 2026-09-30.`
     case 'text': return text.length <= 1000 ? null : `${quoted(f)} must be at most 1000 characters.`
-    default: return text.length <= 255 ? null : `${quoted(f)} must be at most 255 characters.`
+    default: return text.length > 255 ? `${quoted(f)} must be at most 255 characters.` : formatProblem(f, value)
   }
 }
 const stored = (f, value) => (f.type === 'boolean' && typeof value !== 'boolean'

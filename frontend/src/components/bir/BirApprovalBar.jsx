@@ -25,9 +25,13 @@ const STATUS_NOTE = {
   finalized: 'Filed. This is the record of what was filed and can never be changed. To correct it, start a new version.',
 }
 
+// Only accounting reviews: approves or returns a submitted form (contract §5).
+const REVIEWER_ROLES = ['accounting']
+
 /**
  * The form's next steps, driven by `status_flow` from /bir/config rather than a hardcoded list.
- * A preparer never sees Approve on their own form (the server refuses it with 403 too).
+ * Approve and Return show only to accounting, and never on a form the user prepared
+ * (the server refuses both).
  */
 export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowEdits }) {
   const qc = useQueryClient()
@@ -40,6 +44,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig, staleTime: Infinity })
   const next = (config?.status_flow ?? FALLBACK_FLOW)[draft.status] ?? []
   const isPreparer = user?.id != null && draft.prepared_by?.id === user.id
+  const canReview = REVIEWER_ROLES.includes(user?.role) && !isPreparer
 
   const run = useMutation({
     mutationFn: ({ action }) => ({
@@ -100,12 +105,12 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
             <Send size={12} /> {doing === 'submit' ? 'Submitting…' : 'Submit for review'}
           </button>
         )}
-        {next.includes('approved') && !isPreparer && (
+        {next.includes('approved') && canReview && (
           <button onClick={() => run.mutate({ action: 'approve' })} disabled={busy} className="btn-primary py-1.5 text-xs">
             <CheckCircle2 size={12} /> {doing === 'approve' ? 'Approving…' : 'Approve'}
           </button>
         )}
-        {draft.status === 'pending' && next.includes('draft') && !returning && (
+        {draft.status === 'pending' && next.includes('draft') && canReview && !returning && (
           <button onClick={() => setReturning(true)} disabled={busy} className="btn-secondary py-1.5 text-xs">
             <Undo2 size={12} /> Return to preparer
           </button>
@@ -134,7 +139,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
 
       {/* Every box changed by hand, so the reviewer sees them all before approving. */}
       {edits.length > 0 && (
-        <details open={draft.status === 'pending' && !isPreparer} className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+        <details open={draft.status === 'pending' && canReview} className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
           <summary className="cursor-pointer text-xs font-medium text-amber-900">
             <PenLine size={12} className="inline mr-1 -mt-0.5" />
             {edits.length} box{edits.length === 1 ? '' : 'es'} changed by hand
@@ -157,8 +162,10 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
         </details>
       )}
 
-      {draft.status === 'pending' && isPreparer && (
-        <p className="text-[11px] text-gray-500">You prepared this form, so someone else must approve it.</p>
+      {draft.status === 'pending' && !canReview && (
+        <p className="text-[11px] text-gray-500">
+          {isPreparer ? 'You prepared this form, so someone else must approve it.' : 'Accounting reviews and approves submitted forms.'}
+        </p>
       )}
 
       {returning && (
