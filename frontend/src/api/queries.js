@@ -668,6 +668,11 @@ export const sendBirChatMessage = bir(
 
 // Employees a 2316 can be prepared for. Not filtered by status: someone who left
 // mid-year still gets a 2316.
+// Mock mode only: who the mock treats as the caller (preparer, editor, approver). No-op otherwise.
+export const setBirMockUser = (user) => {
+  if (BIR_USE_MOCKS) birMockApi.actAs(user)
+}
+
 export const getBirEmployees = bir(
   () => api.get('/employees', { params: { per_page: 1000 } }).then(r => ({ data: r.data.data, pagination: r.data.pagination })),
   birMockApi.getEmployees,

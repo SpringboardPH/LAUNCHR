@@ -239,6 +239,13 @@ const fail = (status, message, extra = {}) => {
 const ok = (data, message) => ({ success: true, data: clone(data), message })
 const find = (id) => drafts.find(d => d.id === Number(id))
 
+// The logged-in user, as the real API takes them from the session (set by setBirMockUser).
+// Seeded drafts stay Jane's, so the signed-in user can review and approve them.
+let caller = null
+const actAs = (user) => { caller = user?.id != null ? { id: user.id, name: user.name } : null }
+const preparer = () => caller ?? JANE
+const approver = () => caller ?? MARK
+
 const getConfig = async () => {
   await delay(150)
   return {
@@ -282,6 +289,7 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
     if (!employee) return fail(422, 'A 2316 is per employee — an employee is required.')
     draft = { ...draft2316(nextId++, employee, employee.annual ?? 540000, 'draft'), period }
   }
+  draft.prepared_by = preparer()
   drafts.push(draft)
   return ok(draft, 'Draft created (mock)')
 }
@@ -310,7 +318,7 @@ const updateDraft = async (id, fields = {}) => {
       else if (!(calculated && prev.origin === f.source)) d.fields[key] = pending()
     } else if (calculated) {
       const original = prev.edited ? prev.system_value : (prev.origin === 'pending' ? null : prev.value)
-      d.fields[key] = { value: stored(f, value), origin: 'user', edited: true, system_value: original, edited_by: JANE, edited_at: now }
+      d.fields[key] = { value: stored(f, value), origin: 'user', edited: true, system_value: original, edited_by: preparer(), edited_at: now }
     } else {
       // An answer only a person gives replaces nothing: no history.
       d.fields[key] = { value: stored(f, value), origin: 'user', ...blank }
@@ -336,6 +344,9 @@ const transition = async (id, to, reason = null) => {
   if (!(STATUS_FLOW[d.status] ?? []).includes(to)) {
     return fail(400, `Cannot move a form in ${d.status} status to ${to}`)
   }
+  if (to === 'approved' && d.prepared_by?.id === preparer().id) {
+    return fail(403, 'You prepared this form, so someone else must approve it')
+  }
   if (d.status === 'pending' && to === 'draft' && !reason?.trim()) {
     return fail(422, 'A reason is required to return a form.')
   }
@@ -350,7 +361,7 @@ const transition = async (id, to, reason = null) => {
   }
   d.status = to
   d.rejection_reason = to === 'draft' ? reason : null
-  if (to === 'approved') d.approved_by = MARK
+  if (to === 'approved') d.approved_by = approver()
   return ok(d, `Draft moved to ${to} (mock)`)
 }
 
@@ -364,7 +375,7 @@ const revise = async (id) => {
   const sameForm = drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
   const revision = {
     ...clone(d), id: nextId++, status: 'draft', version: Math.max(...sameForm.map(x => x.version)) + 1, parent_id: d.id,
-    approved_by: null, rejection_reason: null, prepared_by: JANE,
+    approved_by: null, rejection_reason: null, prepared_by: preparer(),
   }
   drafts.push(revision)
   return ok(revision, 'Revision created (mock)')
@@ -385,5 +396,5 @@ const chat = mockChat({
 })
 
 export const birMockApi = {
-  getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees,
+  getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees, actAs,
 }

@@ -1,40 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info, HelpCircle, MessageCircle } from 'lucide-react'
-import { format, parseISO } from 'date-fns'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info } from 'lucide-react'
 import clsx from 'clsx'
-import { birKeys, getBirConfig, getBirDraft, validateBirDraft } from '../../api/queries'
+import { birKeys, getBirConfig, getBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
 import { describePeriod, formName } from './BirChatPanel'
+import FieldRow, { KINDS, kindOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
+import BirApprovalBar from './BirApprovalBar'
 
-// How each kind of value looks. `edited` is a user value that replaced a calculated one.
-const KINDS = {
-  payroll:  { label: 'From payroll',      tag: 'bg-blue-50 text-blue-700',     bar: 'bg-blue-400' },
-  settings: { label: 'Company settings',  tag: 'bg-purple-50 text-purple-700', bar: 'bg-purple-400' },
-  user:     { label: 'Typed by user',     tag: 'bg-green-50 text-green-700',   bar: 'bg-green-400' },
-  edited:   { label: 'Manually changed',  tag: 'bg-amber-100 text-amber-800',  bar: 'bg-amber-500', row: 'bg-amber-50/60' },
-  pending:  { label: 'Awaiting input',    tag: 'bg-gray-100 text-gray-500',    bar: 'bg-gray-200' },
-  manual:   { label: 'Signed on paper',   tag: 'bg-gray-100 text-gray-500',    bar: 'bg-gray-200' },
-}
-const kindOf = (entry) => (entry.edited ? 'edited' : (KINDS[entry.origin] ? entry.origin : 'pending'))
+// Boxes can be changed while a form is a draft or waiting for review; after approval it is locked.
+const EDITABLE = ['draft', 'pending']
 
 const humanize = (key) => key.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
-const peso = (n) => `₱${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const isNumeric = (v) => v !== null && v !== '' && !Number.isNaN(Number(v))
-
-const formatValue = (value, type) => {
-  if (value === null || value === undefined || value === '') return null
-  if (type === 'boolean' || typeof value === 'boolean') return value === true || value === 'true' || value === '1' ? 'Yes' : 'No'
-  if (type === 'decimal' && isNumeric(value)) return peso(value)
-  return String(value)
-}
-
-const formatWhen = (iso) => {
-  try { return format(parseISO(iso), 'MMM d, yyyy h:mm a') } catch { return iso }
-}
-
-// Fields compared against a filed form — the same rule as `php artisan bir:compare`.
-const isCompared = (field) => field.source === 'payroll' && field.type === 'decimal' && field.item != null
 
 // 2316 Part IV-B Section B — taxable compensation, items 39 to 52 (including 44A/B, 51A/B).
 const isTaxableSection = (field) => {
@@ -52,7 +29,6 @@ const nonTaxableReason = (draft) => {
   const mwe = value('is_mwe') === true || value('is_mwe') === 'true'
   return mwe ? 'is a minimum wage earner' : 'has no taxable compensation (a minimum wage earner, or ₱250,000 or less for the year)'
 }
-const TOLERANCE = 0.005
 
 // Minimal CSV reader for the bir:compare template (quoted labels contain commas).
 const parseCsv = (text) => {
@@ -87,112 +63,16 @@ function SkeletonRows() {
 
 const forwardRow = (el, key, refs) => { if (el) refs.current[key] = el; else delete refs.current[key] }
 
-function FieldRow({ field, entry, issues = [], asked, rowRef, compare, filed, onFiled, notApplicable }) {
-  const [help, setHelp] = useState(false)
-  const hasError = issues.some(i => i.severity !== 'warning')
-  const kind = kindOf(entry)
-  const style = KINDS[kind]
-  const shown = formatValue(entry.value, field.type)
-  const compared = compare && isCompared(field)
-  const diff = compared && isNumeric(filed) && isNumeric(entry.value) ? Number(entry.value) - Number(filed) : null
-  const matches = diff !== null && Math.abs(diff) < TOLERANCE
-
-  return (
-    <li
-      ref={rowRef}
-      className={clsx('relative pl-4 pr-3 py-2 scroll-mt-2',
-        notApplicable ? 'bg-gray-50 opacity-50' : style.row,
-        asked ? 'ring-2 ring-inset ring-brand-400 bg-brand-50/60' : hasError && 'ring-1 ring-inset ring-red-200')}
-      title={notApplicable ? 'Does not apply to a non-taxable employee' : undefined}
-    >
-      <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', style.bar)} />
-      <div className="flex items-start gap-3">
-        <span className="w-8 shrink-0 pt-0.5 text-[11px] font-medium text-gray-400 tabular-nums">{field.item ?? ''}</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-gray-500 leading-snug">
-            {field.label}{field.required && kind === 'pending' && <span className="text-red-500"> *</span>}
-            {field.guidance && (
-              <button
-                onClick={() => setHelp(h => !h)}
-                className="ml-1 align-middle text-gray-400 hover:text-brand-600"
-                title="What does this mean?"
-                aria-label={`What does ${field.label} mean?`}
-                aria-expanded={help}
-              >
-                <HelpCircle size={12} />
-              </button>
-            )}
-          </p>
-          {help && field.guidance && (
-            <p className="mt-1 mb-1 rounded-md bg-white/80 border border-gray-200 px-2 py-1.5 text-[11px] leading-relaxed text-gray-600">
-              {field.guidance}
-            </p>
-          )}
-          {shown !== null ? (
-            <p className={clsx('text-sm font-medium text-gray-900 break-words', field.type === 'decimal' && 'tabular-nums')}>{shown}</p>
-          ) : (
-            <p className="text-sm italic text-gray-400">{kind === 'manual' ? 'Signed by hand after printing' : 'Not filled yet'}</p>
-          )}
-          {/* An override carries the figure it replaced and who changed it; an older edit may
-              have neither, so show only what is actually known. */}
-          {entry.edited && (
-            <p className="mt-0.5 text-[11px] text-amber-800">
-              {entry.system_value == null && !entry.edited_by
-                ? 'Changed by hand. The calculated figure and who changed it are not on record for this edit.'
-                : <>
-                    {entry.system_value != null && (
-                      <>Calculated: <span className="line-through tabular-nums">{formatValue(entry.system_value, field.type)}</span></>
-                    )}
-                    {entry.system_value != null && entry.edited_by && ' · '}
-                    {entry.edited_by && `Changed by ${entry.edited_by.name}${entry.edited_at ? `, ${formatWhen(entry.edited_at)}` : ''}`}
-                  </>}
-            </p>
-          )}
-          {issues.map((issue, i) => (
-            <p key={i} className={clsx('mt-0.5 flex gap-1 text-[11px]', issue.severity === 'warning' ? 'text-amber-700' : 'text-red-600')}>
-              {issue.severity === 'warning' && <AlertTriangle size={11} className="mt-0.5 shrink-0" />}
-              <span>{issue.message}</span>
-            </p>
-          ))}
-          {compared && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <label className="text-[11px] text-gray-500">
-                Filed
-                <input
-                  inputMode="decimal"
-                  value={filed ?? ''}
-                  onChange={(e) => onFiled(field.key, e.target.value)}
-                  placeholder="0.00"
-                  className="input ml-1.5 inline-block w-32 py-1 text-xs tabular-nums"
-                />
-              </label>
-              {diff !== null && (
-                <span className={clsx('text-[11px] font-medium', matches ? 'text-green-700' : 'text-red-600')}>
-                  {matches ? 'Matches' : `Differs by ${peso(Math.abs(diff))} (${diff > 0 ? 'ours higher' : 'ours lower'})`}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        {asked && (
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-medium text-white">
-            <MessageCircle size={10} /> Being asked
-          </span>
-        )}
-        <span className={clsx('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium', notApplicable ? 'bg-gray-200 text-gray-600' : style.tag)}>
-          {notApplicable ? 'Not applicable' : style.label}
-        </span>
-      </div>
-    </li>
-  )
-}
-
 /**
  * The draft as the form will read: every box in printed order, with where each
  * figure came from. Week 4 adds a comparison against a form that was already
- * filed, for the go/no-go check.
+ * filed, for the go/no-go check; Week 6 makes the boxes editable and adds the
+ * submit / approve / file steps.
  */
-export default function BirFieldPreview({ draftId, askingField = null }) {
+export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(null)
+  const [saveError, setSaveError] = useState(null)
   const [filter, setFilter] = useState('all')
   const rowRefs = useRef({})
   const [compare, setCompare] = useState(false)
@@ -216,6 +96,33 @@ export default function BirFieldPreview({ draftId, askingField = null }) {
     },
     enabled: !!draftId,
   })
+
+  // One answer per PUT; the server checks it (422 keyed fields.<key>) and recalculates totals.
+  // validate then refreshes validation_errors, which PUT does not touch.
+  const save = useMutation({
+    mutationFn: async ({ key, value }) => {
+      const updated = (await updateBirDraft(draftId, { [key]: value })).data
+      try {
+        return (await validateBirDraft(draftId)).data
+      } catch {
+        return updated
+      }
+    },
+    onMutate: () => setSaveError(null),
+    onSuccess: (updated) => {
+      qc.setQueryData(birKeys.detail(draftId), updated)
+      qc.invalidateQueries({ queryKey: birKeys.lists })
+      setEditing(null)
+    },
+    onError: (err, { key }) => {
+      const body = err?.response?.data
+      setSaveError({ key, text: body?.errors?.[`fields.${key}`]?.[0] || body?.message || 'Could not save this box.' })
+      // 400: the form was approved or moved on elsewhere, so reload it (it is now read-only).
+      if (err?.response?.status === 400) qc.invalidateQueries({ queryKey: birKeys.detail(draftId) })
+    },
+  })
+
+  useEffect(() => { setEditing(null); setSaveError(null) }, [draftId])
 
   const filed = filedByDraft[draftId] ?? {}
   const setFiled = (key, value) => setFiledByDraft(prev => ({ ...prev, [draftId]: { ...(prev[draftId] ?? {}), [key]: value } }))
@@ -264,6 +171,8 @@ export default function BirFieldPreview({ draftId, askingField = null }) {
   const errorTotal = (draft.validation_errors ?? []).filter(e => e.severity !== 'warning').length
   const warningTotal = (draft.validation_errors ?? []).length - errorTotal
   const nonTaxable = nonTaxableReason(draft)
+  const editable = EDITABLE.includes(draft.status)
+  const startEdit = (key) => { setEditing(key); setSaveError(null) }
   const counts = rows.reduce((acc, { entry }) => ({ ...acc, [kindOf(entry)]: (acc[kindOf(entry)] ?? 0) + 1 }), {})
   const fillable = rows.filter(({ field }) => field.type !== 'manual')
   const filledCount = fillable.filter(({ entry }) => entry.value !== null && entry.value !== '').length
@@ -313,7 +222,7 @@ export default function BirFieldPreview({ draftId, askingField = null }) {
             <span>{filledCount} of {fillable.length} boxes filled</span>
             {(draft.validation_errors ?? []).length > 0 ? (
               <span>
-                {errorTotal > 0 && <span className="text-red-600">{errorTotal} error{errorTotal === 1 ? '' : 's'} to fix before submitting</span>}
+                {errorTotal > 0 && <span className="text-red-600">{errorTotal} error{errorTotal === 1 ? '' : 's'} to fix before {draft.status === 'pending' ? 'approving' : 'submitting'}</span>}
                 {errorTotal > 0 && warningTotal > 0 && ' · '}
                 {warningTotal > 0 && <span className="text-amber-700">{warningTotal} warning{warningTotal === 1 ? '' : 's'} to review</span>}
               </span>
@@ -378,6 +287,9 @@ export default function BirFieldPreview({ draftId, askingField = null }) {
         {compare && importNote && <p className="text-[11px] text-gray-500">{importNote}</p>}
       </div>
 
+      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft}
+        edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
+
       <ul className="divide-y divide-gray-100 max-h-[calc(100vh-420px)] min-h-[200px] overflow-y-auto">
         {visible.map(({ field, entry }) => (
           <FieldRow
@@ -391,6 +303,12 @@ export default function BirFieldPreview({ draftId, askingField = null }) {
             filed={filed[field.key]}
             onFiled={setFiled}
             notApplicable={!!nonTaxable && isTaxableSection(field)}
+            editing={editing === field.key}
+            onEdit={() => startEdit(field.key)}
+            onCancel={() => { setEditing(null); setSaveError(null) }}
+            onSave={editable ? (key, value) => save.mutate({ key, value }) : undefined}
+            saving={save.isPending && save.variables?.key === field.key}
+            saveError={saveError?.key === field.key ? saveError.text : null}
           />
         ))}
         {!visible.length && <li className="px-4 py-8 text-center text-xs text-gray-400">No boxes in this group.</li>}

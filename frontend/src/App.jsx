@@ -22,6 +22,7 @@ import PayrollDetailPage from './pages/payroll/PayrollDetailPage'
 import ThirteenthMonthPage from './pages/payroll/ThirteenthMonthPage'
 import LoansPage from './pages/payroll/LoansPage'
 import BirFormsPage from './pages/payroll/BirFormsPage'
+import BirDraftDetailPage from './pages/payroll/BirDraftDetailPage'
 import EmployeeDashboardPage from './pages/employee/EmployeeDashboardPage'
 import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import RequestFormPage from './pages/employee/RequestFormPage'
@@ -149,6 +150,7 @@ export default function App() {
             <Route path="loans" element={<LoansPage />} />
             <Route path="thirteenth-month" element={<ThirteenthMonthPage />} />
             <Route path="bir-forms" element={<BirFormsPage />} />
+            <Route path="bir-forms/:id" element={<BirDraftDetailPage />} />
             <Route path="dtr" element={<DtrManagePage />} />
             <Route path="employee-schedules" element={<EmployeeScheduleAssignmentPage />} />
             <Route path="schedule-templates" element={<AdminScheduleTemplatesPage />} />

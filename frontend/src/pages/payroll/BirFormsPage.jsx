@@ -1,11 +1,13 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, FlaskConical, ListChecks } from 'lucide-react'
-import { birKeys, getBirConfig, getBirEmployees, createBirDraft, BIR_USE_MOCKS } from '../../api/queries'
+import { FileText, FlaskConical, ListChecks, FolderOpen, Maximize2 } from 'lucide-react'
+import { birKeys, getBirConfig, getBirEmployees, createBirDraft, setBirMockUser, BIR_USE_MOCKS } from '../../api/queries'
+import { useAuth } from '../../store/AuthContext'
 import { PageHeader } from '../../components/ui/index.jsx'
 import BirChatPanel, { formName } from '../../components/bir/BirChatPanel'
 import BirFieldPreview from '../../components/bir/BirFieldPreview'
+import BirDraftList from '../../components/bir/BirDraftList'
 
 const CY = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -95,12 +97,16 @@ export default function BirFormsPage() {
   const draftId = Number(params.get('draft')) || null
   // The box the chat is asking about, highlighted in the preview.
   const [askingField, setAskingField] = useState(null)
+  const { user } = useAuth()
+
+  // Mock mode only: drafts you create are prepared by you, so the self-approval rule can be tried.
+  useEffect(() => { setBirMockUser(user) }, [user])
 
   const { data: config } = useQuery({
     queryKey: birKeys.config,
     queryFn: getBirConfig,
     staleTime: Infinity,
-    })
+  })
 
   const onDraft = (draft) => {
     setAskingField(null)
@@ -128,8 +134,20 @@ export default function BirFormsPage() {
           <section className="card overflow-hidden">
             <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
               <FileText size={15} className="text-brand-600" /> Form preview
+              {draftId && (
+                <Link to={`/hr/bir-forms/${draftId}`} className="ml-auto inline-flex items-center gap-1 text-xs font-normal text-gray-500 hover:text-brand-600">
+                  <Maximize2 size={12} /> Full view
+                </Link>
+              )}
             </h2>
-            <BirFieldPreview draftId={draftId} askingField={askingField} />
+            <BirFieldPreview draftId={draftId} askingField={askingField} onOpenDraft={onDraft} />
+          </section>
+
+          <section className="card overflow-hidden">
+            <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <FolderOpen size={15} className="text-brand-600" /> Saved forms
+            </h2>
+            <BirDraftList formTypes={config?.form_types ?? ['1601-C', '2316']} activeId={draftId} onOpen={onDraft} />
           </section>
 
           <section className="card">
