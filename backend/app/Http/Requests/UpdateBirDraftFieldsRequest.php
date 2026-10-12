@@ -53,13 +53,24 @@ class UpdateBirDraftFieldsRequest extends FormRequest
     }
 
     /**
-     * A missing draft or one that can't be edited gets update()'s 404 or 400, not a 422
-     * about its fields, so the checks are skipped for those.
+     * True when the form is pending and the caller's role may not edit pending forms
+     * (BirFormDraft::PENDING_EDITOR_ROLES). update() answers that with 403.
+     */
+    public function refusedByRole(): bool
+    {
+        return $this->draft()?->status === 'pending'
+            && !in_array($this->user()->role, BirFormDraft::PENDING_EDITOR_ROLES, true);
+    }
+
+    /**
+     * A missing draft, one that can't be edited, or a pending form the caller's role may not
+     * edit gets update()'s 404, 400 or 403, not a 422 about its fields, so the checks are
+     * skipped for those.
      */
     public function validateResolved()
     {
         $draft = $this->draft();
-        if ($draft === null || !in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
+        if ($draft === null || !in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true) || $this->refusedByRole()) {
             return;
         }
 

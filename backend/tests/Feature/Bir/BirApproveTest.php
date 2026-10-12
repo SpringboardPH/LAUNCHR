@@ -106,6 +106,58 @@ class BirApproveTest extends TestCase
         $this->assertSame([], $draft->validation_errors, 'Not validated, so nothing stored.');
     }
 
+    public function test_admin_and_hr_cannot_approve_reject_or_finalize(): void
+    {
+        $this->september2026Payroll();
+        $id = $this->submittedClean1601C();
+        // A fresh HR user, not the HR preparer, so a 403 can only mean the role rule.
+        $refused = [User::factory()->create(['role' => 'admin']), User::factory()->create(['role' => 'hr'])];
+        $roleRefusal = ['success' => false, 'message' => 'Unauthorized. Only accounting users can do this.'];
+
+        foreach ($refused as $user) {
+            $this->actingAs($user)->postJson("/api/bir/drafts/{$id}/approve")->assertForbidden()->assertJson($roleRefusal);
+            $this->actingAs($user)->postJson("/api/bir/drafts/{$id}/reject", ['reason' => 'Recheck'])->assertForbidden()->assertJson($roleRefusal);
+        }
+        $draft = BirFormDraft::findOrFail($id);
+        $this->assertSame('pending', $draft->status);
+        $this->assertNull($draft->approved_by);
+
+        $this->approve($id)->assertOk();
+
+        foreach ($refused as $user) {
+            $this->actingAs($user)->postJson("/api/bir/drafts/{$id}/finalize")->assertForbidden()->assertJson($roleRefusal);
+        }
+        $this->assertSame('approved', BirFormDraft::findOrFail($id)->status);
+
+        $this->actingAs($this->approver())->postJson("/api/bir/drafts/{$id}/finalize")->assertOk();
+        $this->assertSame('finalized', BirFormDraft::findOrFail($id)->status);
+    }
+
+    public function test_accounting_can_return_a_pending_form(): void
+    {
+        $this->september2026Payroll();
+        $id = $this->submittedClean1601C();
+
+        $this->actingAs($this->approver())
+            ->postJson("/api/bir/drafts/{$id}/reject", ['reason' => 'Item 25 does not match the register'])
+            ->assertOk();
+
+        $draft = BirFormDraft::findOrFail($id);
+        $this->assertSame('draft', $draft->status);
+        $this->assertSame('Item 25 does not match the register', $draft->rejection_reason);
+    }
+
+    public function test_hr_can_still_edit_and_submit_a_draft(): void
+    {
+        $this->september2026Payroll();
+        // Creates, answers every error with PUT and submits, all as HR (each step asserts 2xx).
+        $id = $this->submittedClean1601C();
+
+        $draft = BirFormDraft::findOrFail($id);
+        $this->assertSame('pending', $draft->status);
+        $this->assertSame($this->preparer()->id, $draft->prepared_by);
+    }
+
     private function approve(int $draftId): TestResponse
     {
         return $this->actingAs($this->approver())->postJson("/api/bir/drafts/{$draftId}/approve");

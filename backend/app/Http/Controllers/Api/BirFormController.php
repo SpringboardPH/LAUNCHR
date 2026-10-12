@@ -157,9 +157,10 @@ class BirFormController extends Controller
 
     /**
      * Saves answers to a draft or pending form (BirFormDraft::EDITABLE_STATUSES); pending lets
-     * the approver correct a submitted form before approving it. UpdateBirDraftFieldsRequest
-     * has already refused unknown keys and values that don't suit their field (422); it skips
-     * those checks for a missing or locked form, so the 404 and 400 below still apply.
+     * the approver (accounting only) correct a submitted form before approving it.
+     * UpdateBirDraftFieldsRequest has already refused unknown keys and values that don't suit
+     * their field (422); it skips those checks for a missing or locked form, or a pending one
+     * the caller's role may not edit, so the 404, 400 and 403 below still come first.
      */
     public function update(UpdateBirDraftFieldsRequest $request, int $id)
     {
@@ -173,6 +174,13 @@ class BirFormController extends Controller
                 'success' => false,
                 'message' => "Only draft and pending forms can be edited; this form is in {$draft->status} status",
             ], 400);
+        }
+
+        if ($request->refusedByRole()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only accounting can edit a form that has been submitted for review',
+            ], 403);
         }
 
         $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();

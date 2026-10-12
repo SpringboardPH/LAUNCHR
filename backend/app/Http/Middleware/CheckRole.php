@@ -17,9 +17,15 @@ class CheckRole
         }
 
         if (!in_array($request->user()->role, $roles)) {
+            // Routes that admin may use keep the old message; one closed to admin
+            // (e.g. BIR approve, accounting-only) says who may use it instead.
+            $message = in_array('admin', $roles)
+                ? 'Unauthorized. Admin access required.'
+                : 'Unauthorized. Only ' . implode(' or ', $roles) . ' users can do this.';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized. Admin access required.',
+                'message' => $message,
             ], 403);
         }
 

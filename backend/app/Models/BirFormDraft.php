@@ -21,6 +21,12 @@ class BirFormDraft extends Model
      */
     public const EDITABLE_STATUSES = ['draft', 'pending'];
 
+    /**
+     * Roles that may edit a pending form; anyone else gets 403 (contract §5). A draft can be
+     * edited by every role that reaches /bir. Read by UpdateBirDraftFieldsRequest::refusedByRole().
+     */
+    public const PENDING_EDITOR_ROLES = ['accounting'];
+
     protected $fillable = [
         'form_type',
         'period',

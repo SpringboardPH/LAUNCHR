@@ -119,11 +119,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/push-to-payroll', [ThirteenthMonthController::class, 'pushToPayroll']);
     });
 
-    // BIR Form Assistant — full route contract added Week 1 (Dev B) so this
-    // file isn't touched again except access-check tightening in Week 7.
-    // BirFormController is stubbed now; BirChatController is created by
-    // Dev C in Week 3 — referencing it here ahead of time is safe since
-    // Laravel only resolves the class when a request actually matches.
+    // BIR Form Assistant (contract: docs/bir-api-contract.md). Employees are
+    // refused everywhere. Approve, reject and finalize are accounting-only
+    // (Week 7, confirmed by the supervisor); editing a pending form is also
+    // accounting-only, checked in UpdateBirDraftFieldsRequest/update().
     Route::prefix('bir')->middleware('role:admin,hr,accounting')->group(function () {
         Route::get('/config', [BirFormController::class, 'config']);
         Route::get('/drafts', [BirFormController::class, 'index']);
@@ -131,9 +130,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/drafts/{id}', [BirFormController::class, 'show']);
         Route::put('/drafts/{id}', [BirFormController::class, 'update']);
         Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
-        Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
-        Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
-        Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
+        Route::middleware('role:accounting')->group(function () {
+            Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
+            Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
+            Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
+        });
         Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
         Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);
         Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);

@@ -55,6 +55,45 @@ class BirPendingEditTest extends TestCase
         }
     }
 
+    public function test_admin_and_hr_cannot_edit_a_pending_form(): void
+    {
+        $id = $this->createWithStatus('pending');
+        $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
+        $roleRefusal = ['success' => false, 'message' => 'Only accounting can edit a form that has been submitted for review'];
+
+        foreach (['admin', 'hr'] as $role) {
+            $user = User::factory()->create(['role' => $role]);
+
+            $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])
+                ->assertForbidden()->assertJson($roleRefusal);
+            // A bad value is still 403, not 422: the role is checked before the answers.
+            $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1,000.00']])
+                ->assertForbidden()->assertJson($roleRefusal);
+        }
+
+        $this->assertSame($before, BirFormDraft::findOrFail($id)->fields['surcharge'], 'Pending form was changed.');
+    }
+
+    public function test_admin_and_hr_can_still_edit_a_draft(): void
+    {
+        $id = $this->createWithStatus('draft');
+
+        foreach (['admin', 'hr'] as $role) {
+            $this->actingAs(User::factory()->create(['role' => $role]))
+                ->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])
+                ->assertOk();
+        }
+    }
+
+    public function test_a_locked_form_is_400_before_the_role_check(): void
+    {
+        $id = $this->createWithStatus('approved');
+
+        $this->actingAs(User::factory()->create(['role' => 'hr']))
+            ->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])
+            ->assertStatus(400);
+    }
+
     /** A real 1601-C made through the API, then moved straight to a status for the test. */
     private function createWithStatus(string $status): int
     {

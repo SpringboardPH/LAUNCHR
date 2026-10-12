@@ -1,6 +1,6 @@
 # BIR Form Assistant — API contract
 
-**Owner:** Dev B · **Week 1, updated Week 5** · Branch `BIRsystems-ollama`
+**Owner:** Dev B · **Week 1, updated Week 7** · Branch `BIRsystems-ollama`
 
 What Dev C and Dev D build against. Everything here describes the stub as it
 actually behaves today — verified against the running app, not aspirational.
@@ -14,7 +14,9 @@ If something here has to change after sign-off, raise it on Friday under
 ## 1. Conventions
 
 All routes are under `/api/bir`, behind `auth:sanctum` and
-`role:admin,hr,accounting`. Employees cannot reach any of them.
+`role:admin,hr,accounting`. Employees cannot reach any of them. `approve`,
+`reject` and `finalize` also need `role:accounting`, and only accounting may
+`PUT` to a pending form (§5).
 
 Every response uses the envelope already used across LAUNCHR:
 
@@ -30,12 +32,18 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (approved or finalized) |
-| 403 | Caller's role cannot reach `/bir` (employees), or the caller prepared the form they are trying to approve |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form), or the caller prepared the form they are trying to approve |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
+
+A role refusal by the route comes before anything else: an employee anywhere,
+or admin or HR on `approve`, `reject` or `finalize`, gets 403 "Unauthorized.
+Only accounting users can do this." (employees: "Unauthorized. Admin access
+required.", the app-wide message) even for a draft that doesn't exist. On
+`PUT` the order is 404, then 400 (locked), then 403 (role), then 422 (fields).
 
 A 422 from `submit` or `approve` is "fix the form", not "bad request": it carries the draft in
 `data`, with `validation_errors` filled in. Tell it apart from a 400, which means
@@ -257,12 +265,14 @@ entry (§6). Fields can be edited in `draft` and `pending` only; an approved or
 finalized form is locked. A finalized form is never edited or moved;
 corrections start a new version and leave the original as filed.
 
-**Who may approve:** accounting only, confirmed by the supervisor. Admin and HR
-users cannot approve. The system also will not let a preparer approve their own
-form: `approve` is refused with 403 when the caller is the draft's
-`prepared_by`. The self-approval rule is enforced. The accounting-only rule is
-not yet: the `bir` routes still allow admin, HR and accounting to approve, and
-role tightening is scheduled for Week 7.
+**Who may approve:** accounting only, confirmed by the supervisor and enforced
+since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
+as filed) are accounting-only, and so is editing a pending form; admin and HR
+get 403. Admin, HR and accounting can all list, view, create, edit a draft,
+submit, validate, revise, export and chat. Employees get 403 on every `/bir`
+route. On top of the role rule, a preparer can't approve their own form:
+`approve` is refused with 403 when the caller is the draft's `prepared_by`, so
+approving takes a second accounting user.
 
 **Workflow, as decided:** a preparer fills in the form and submits it.
 Accounting reviews the submitted form, may edit it, and approves it in the same
@@ -276,21 +286,23 @@ edit that breaks the form blocks approval until it is fixed.
 
 ## 6. Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/bir/config` | Feature flag, form types, status flow, both form schemas |
-| GET | `/bir/drafts` | Paginated list, filterable by `status` and `form_type` |
-| POST | `/bir/drafts` | Create |
-| GET | `/bir/drafts/{id}` | One draft |
-| PUT | `/bir/drafts/{id}` | Edit field values |
-| POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` |
-| POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation |
-| POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation |
-| POST | `/bir/drafts/{id}/reject` | pending → draft |
-| POST | `/bir/drafts/{id}/finalize` | approved → finalized |
-| POST | `/bir/drafts/{id}/revise` | New version from a finalized draft |
-| GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) |
-| POST | `/bir/chat` | Dev C. Controller method is `message`. |
+| Method | Path | Purpose | Who |
+|---|---|---|---|
+| GET | `/bir/config` | Feature flag, form types, status flow, both form schemas | admin, hr, accounting |
+| GET | `/bir/drafts` | Paginated list, filterable by `status` and `form_type` | admin, hr, accounting |
+| POST | `/bir/drafts` | Create | admin, hr, accounting |
+| GET | `/bir/drafts/{id}` | One draft | admin, hr, accounting |
+| PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending form |
+| POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` | admin, hr, accounting |
+| POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation | admin, hr, accounting |
+| POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only, not the preparer |
+| POST | `/bir/drafts/{id}/reject` | pending → draft | accounting only |
+| POST | `/bir/drafts/{id}/finalize` | approved → finalized | accounting only |
+| POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
+| GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
+| POST | `/bir/chat` | Dev C. Controller method is `message`. | admin, hr, accounting |
+
+Employees get 403 on all of them.
 
 ### GET /bir/config
 
@@ -374,7 +386,10 @@ Dev D never sends those.
 Editing is allowed in `draft` and `pending` status, so the approver can correct
 a submitted form before approving it (§5). A pending form stays `pending`. An
 approved or finalized form returns 400 "Only draft and pending forms can be
-edited; this form is in approved status".
+edited; this form is in approved status". A pending form can be edited by
+accounting only: admin and HR get 403 "Only accounting can edit a form that has
+been submitted for review", whatever the body (checked before the answers, so
+never a 422). Anyone who reaches `/bir` can edit a `draft`.
 
 After merging the answers, `PUT` recalculates the form's totals (Dev A's
 `BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
@@ -419,8 +434,8 @@ request with 422, and nothing in it is saved:
 
 Each key in `errors` is `fields.<field key>`, so the message can be shown on the
 row and Dev C's prompts can re-ask that question. The same checks apply to a
-pending form. A missing draft is still 404 and a locked form still 400, whatever
-the body.
+pending form. A missing draft is still 404, a locked form still 400, and a
+pending form edited by admin or HR still 403, whatever the body.
 
 `PUT` checks single answers only. Whether the draft as a whole is complete and
 adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
@@ -456,11 +471,12 @@ shows why.
 
 ### POST /bir/drafts/{id}/approve
 
-No request body. Works like `submit`: the approver may have edited the form
-since it was submitted, so it is checked again.
+No request body. Accounting only. Works like `submit`: the approver may have
+edited the form since it was submitted, so it is checked again.
 
 | Code | When |
 |---|---|
+| 403 | The caller is not accounting: "Unauthorized. Only accounting users can do this." Checked first, by the route. |
 | 400 | The form is not in `pending` status. Nothing is validated or changed. |
 | 403 | The caller prepared this form: "You prepared this form, so someone else must approve it". Checked before validating, so nothing is validated or changed. |
 | 422 | At least one `severity: error` entry. Same shape as `submit`'s 422, with "Draft has 1 error; fix it before approving". The form stays `pending` and `approved_by` stays null. |
@@ -472,7 +488,15 @@ since it was submitted, so it is checked again.
 { "reason": "Item 25 does not match the payroll register for May." }
 ```
 
-Required, max 1000 characters. 422 if missing.
+Required, max 1000 characters. 422 if missing. Accounting only: anyone else
+gets 403 "Unauthorized. Only accounting users can do this." 400 unless the form
+is `pending`; 200 moves it back to `draft` with `rejection_reason` set.
+
+### POST /bir/drafts/{id}/finalize
+
+No request body. Marks an approved form as filed. Accounting only: anyone else
+gets 403 "Unauthorized. Only accounting users can do this." 400 unless the form
+is `approved`; 200 moves it to `finalized`, after which it is locked (§5).
 
 ### POST /bir/drafts/{id}/revise
 
