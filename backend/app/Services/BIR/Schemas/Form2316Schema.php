@@ -167,7 +167,7 @@ class Form2316Schema
             [
                 'key' => 'employee_registered_address', 'item' => '6', 'label' => 'Registered Address',
                 'type' => 'text', 'source' => 'user', 'required' => true,
-                'rule' => 'GAP: employees has no address column today', 'pdf_anchor' => '2316.6',
+                'rule' => 'GAP: employees has no address column today; street, barangay, city or municipality, separated by commas', 'pdf_anchor' => '2316.6', 'format' => 'address',
             ],
             [
                 'key' => 'employee_registered_zip', 'item' => '6A', 'label' => 'ZIP Code',
@@ -177,7 +177,7 @@ class Form2316Schema
             [
                 'key' => 'employee_home_address', 'item' => '6B', 'label' => 'Local Home Address',
                 'type' => 'text', 'source' => 'user', 'required' => false,
-                'rule' => 'optional, only if different from registered address', 'pdf_anchor' => '2316.6B',
+                'rule' => 'optional, only if different from registered address', 'pdf_anchor' => '2316.6B', 'format' => 'address',
             ],
             [
                 'key' => 'employee_home_zip', 'item' => '6C', 'label' => 'ZIP Code',
@@ -233,7 +233,7 @@ class Form2316Schema
             [
                 'key' => 'present_employer_address', 'item' => '14', 'label' => 'Registered Address',
                 'type' => 'text', 'source' => 'settings', 'required' => true,
-                'rule' => 'company_address', 'pdf_anchor' => '2316.14',
+                'rule' => 'company_address', 'pdf_anchor' => '2316.14', 'format' => 'address',
             ],
             [
                 'key' => 'present_employer_zip', 'item' => '14A', 'label' => 'ZIP Code',
@@ -274,7 +274,7 @@ class Form2316Schema
             [
                 'key' => 'previous_employer_address', 'item' => '18', 'label' => 'Registered Address',
                 'type' => 'text', 'source' => 'user', 'required' => false,
-                'rule' => 'optional even when previous_employer_tin is present', 'pdf_anchor' => '2316.18',
+                'rule' => 'optional even when previous_employer_tin is present', 'pdf_anchor' => '2316.18', 'format' => 'address',
             ],
             [
                 'key' => 'previous_employer_zip', 'item' => '18A', 'label' => 'ZIP Code',

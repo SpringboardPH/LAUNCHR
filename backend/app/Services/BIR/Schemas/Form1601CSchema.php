@@ -125,7 +125,7 @@ class Form1601CSchema
             [
                 'key' => 'company_address', 'item' => '9', 'label' => 'Registered Address',
                 'type' => 'text', 'source' => 'settings', 'required' => true,
-                'rule' => 'non-empty', 'pdf_anchor' => '1601C.9',
+                'rule' => 'street, barangay, city or municipality, separated by commas', 'pdf_anchor' => '1601C.9', 'format' => 'address',
             ],
             [
                 'key' => 'company_zip', 'item' => '9A', 'label' => 'ZIP Code',

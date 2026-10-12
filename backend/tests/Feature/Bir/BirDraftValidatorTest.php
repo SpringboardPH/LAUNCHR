@@ -126,6 +126,7 @@ class BirDraftValidatorTest extends TestCase
                     default => match ($schema[$key]['format'] ?? null) {
                         'tin' => '123-456-789-000', 'rdo' => '043', 'zip' => '1004',
                         'phone' => '09171234567', 'email' => 'name@company.com', 'mmdd' => '01/01',
+                        'address' => '12 Mabini St., Brgy. San Roque, Quezon City',
                         default => 'X',
                     },
                 };

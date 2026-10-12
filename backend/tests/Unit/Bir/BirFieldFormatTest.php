@@ -31,14 +31,15 @@ class BirFieldFormatTest extends TestCase
         $formats = fn (array $fields) => array_column(array_filter($fields, fn (array $f) => isset($f['format'])), 'format', 'key');
 
         $this->assertSame([
-            'company_tin' => 'tin', 'rdo_code' => 'rdo', 'company_zip' => 'zip',
+            'company_tin' => 'tin', 'rdo_code' => 'rdo', 'company_address' => 'address', 'company_zip' => 'zip',
             'company_contact_number' => 'phone', 'company_email' => 'email',
         ], $formats(Form1601CSchema::fields()));
         $this->assertSame([
             'period_from' => 'mmdd', 'period_to' => 'mmdd', 'employee_tin' => 'tin', 'employee_rdo_code' => 'rdo',
-            'employee_registered_zip' => 'zip', 'employee_home_zip' => 'zip', 'employee_contact_number' => 'phone',
-            'present_employer_tin' => 'tin', 'present_employer_zip' => 'zip',
-            'previous_employer_tin' => 'tin', 'previous_employer_zip' => 'zip',
+            'employee_registered_address' => 'address', 'employee_registered_zip' => 'zip',
+            'employee_home_address' => 'address', 'employee_home_zip' => 'zip', 'employee_contact_number' => 'phone',
+            'present_employer_tin' => 'tin', 'present_employer_address' => 'address', 'present_employer_zip' => 'zip',
+            'previous_employer_tin' => 'tin', 'previous_employer_address' => 'address', 'previous_employer_zip' => 'zip',
         ], $formats(Form2316Schema::fields()));
     }
 
@@ -67,6 +68,14 @@ class BirFieldFormatTest extends TestCase
             'mmdd, no such day' => ['mmdd', '02/30', false],
             'mmdd, month 13' => ['mmdd', '13/01', false],
             'mmdd, no slash' => ['mmdd', '0701', false],
+            'address' => ['address', '12 Mabini St., Brgy. San Roque, Quezon City', true],
+            'address, no house number' => ['address', 'Sitio Malinis, Brgy. Lawa, Calamba City', true],
+            'address, more parts and an ñ' => ['address', 'Unit 5B, 123 Ayala Ave., Brgy. San Lorenzo, Parañaque City', true],
+            'address, words only' => ['address', 'blah blah blah', false],
+            'address, no commas' => ['address', '12 Mabini St. Brgy. San Roque Quezon City', false],
+            'address, two parts' => ['address', 'Mabini St., Quezon City', false],
+            'address, a part with no letters' => ['address', '12, Brgy. San Roque, Quezon City', false],
+            'address, an empty part' => ['address', 'Mabini St., , Quezon City', false],
         ];
     }
 

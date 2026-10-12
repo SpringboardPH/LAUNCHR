@@ -22,6 +22,7 @@ final class FieldFormat
         'phone' => 'a phone number like 09171234567 or (02) 8123-4567',
         'email' => 'an email address like name@company.com',
         'mmdd' => 'a date as MM/DD, like 07/01',
+        'address' => 'an address with commas between its parts: house/unit/building no. and street, barangay, city or municipality, like 12 Mabini St., Brgy. San Roque, Quezon City',
     ];
 
     private const PATTERNS = [
@@ -48,8 +49,22 @@ final class FieldFormat
             'phone' => preg_match('/^\+?\d{7,13}$/', preg_replace('/[\s().-]/', '', $value)) === 1,
             'mmdd' => preg_match(self::PATTERNS['mmdd'], $value) === 1
                 && checkdate((int) substr($value, 0, 2), (int) substr($value, 3, 2), 2024), // a leap year allows 02/29
+            'address' => self::isAddress($value),
             default => preg_match(self::PATTERNS[$format], $value) === 1,
         };
+    }
+
+    /**
+     * At least three parts separated by commas (street, barangay, city or municipality),
+     * each with letters in it. No house number is required: "Sitio Malinis, Brgy. Lawa,
+     * Calamba City" is an address; "blah blah blah" is not.
+     */
+    private static function isAddress(string $value): bool
+    {
+        $parts = array_map('trim', explode(',', $value));
+
+        return count($parts) >= 3
+            && array_filter($parts, fn (string $part) => preg_match('/\p{L}/u', $part) !== 1) === [];
     }
 
     /** What the value should look like, for a message: "a 4-digit ZIP code like 1004". */
