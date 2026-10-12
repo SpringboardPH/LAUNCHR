@@ -5,6 +5,7 @@ namespace App\Services\BIR;
 use App\Models\Employee;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Database\Eloquent\Builder;
@@ -401,14 +402,10 @@ class BirAggregationService
         return array_sum(array_map(fn ($label) => (float) ($deductions[$label] ?? 0), $labels));
     }
 
-    /** ###-###-###-branch; the branch code defaults to 000. Anything under 9 digits is returned as stored. */
+    /** ###-###-###-#####, all 14 digits (FieldFormat::tin). Anything else is returned as stored. */
     public static function formatTin(?string $tin): string
     {
-        $digits = preg_replace('/\D/', '', (string) $tin);
-        if (strlen($digits) < 9) {
-            return trim((string) $tin);
-        }
-        return implode('-', [substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 3), str_pad(substr($digits, 9), 3, '0')]);
+        return FieldFormat::tin((string) $tin);
     }
 
     /** Filters to the schema's payroll-derived keys; throws outside production if any are missing. */

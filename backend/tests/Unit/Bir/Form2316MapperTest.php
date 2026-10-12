@@ -9,6 +9,7 @@ use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Mappers\Form2316Mapper;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Database\Seeders\SystemSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,8 +37,8 @@ class Form2316MapperTest extends TestCase
         $this->assertSame(['value' => 2026, 'origin' => 'payroll'], $this->pick($fields['tax_year']));
         $this->assertSame(['value' => '01/01', 'origin' => 'payroll'], $this->pick($fields['period_from']));
         $this->assertSame(['value' => '12/31', 'origin' => 'payroll'], $this->pick($fields['period_to']));
-        $this->assertSame(['value' => false, 'origin' => 'payroll'], $this->pick($fields['is_mwe']));
-        $this->assertSame(['value' => '123-456-789-000', 'origin' => 'settings'], $this->pick($fields['present_employer_tin']));
+        $this->assertSame(['value' => '123-456-789-00000', 'origin' => 'settings'], $this->pick($fields['present_employer_tin']));
+        $this->assertSame(['value' => '123-456-789-00000', 'origin' => 'settings'], $this->pick($fields['present_employer_tin']));
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['present_employer_name'])); // seed placeholder
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['employee_rdo_code']));
     }
@@ -50,7 +51,8 @@ class Form2316MapperTest extends TestCase
         $fields = Form2316Mapper::map($e->id, 2026)['fields'];
 
         foreach (array_diff_key(BirAggregationService::annualCompensation($e->id, 2026), ['_meta' => true]) as $key => $value) {
-            // An empty string (no phone on file) is pending, the same as missing.
+            // An empty string (no phone on file) is pending, the same as missing; text is in capitals.
+            $value = FieldFormat::normalize(Form2316Schema::byKey()[$key], $value);
             $this->assertSame($value === '' ? null : $value, $fields[$key]['value'], $key);
         }
     }

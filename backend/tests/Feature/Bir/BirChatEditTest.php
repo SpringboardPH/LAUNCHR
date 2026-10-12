@@ -112,15 +112,15 @@ class BirChatEditTest extends TestCase
         $id = $this->draft2316();
 
         $reply = $this->chat($id, 'employee_rdo_code', 'change item 12 to 987-654-321-676')
-            ->assertJsonPath('data.answer', ['field' => 'present_employer_tin', 'value' => '987-654-321-676'])
+            ->assertJsonPath('data.answer', ['field' => 'present_employer_tin', 'value' => '987-654-321-00676'])
             ->json('data.reply');
-        $this->assertSame('Changed "Item 12, TIN" from 987-654-321-000 to 987-654-321-676. This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.', $reply);
+        $this->assertSame('Changed "Item 12, TIN" from 987-654-321-00000 to 987-654-321-00676. This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.', $reply);
 
         // The caller saves it through PUT, which records who changed it and what it replaced.
-        $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => ['present_employer_tin' => '987-654-321-676']])->assertOk();
+        $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => ['present_employer_tin' => '987-654-321-00676']])->assertOk();
         $entry = BirFormDraft::findOrFail($id)->fields['present_employer_tin'];
         $this->assertTrue($entry['edited']);
-        $this->assertSame('987-654-321-000', $entry['system_value']);
+        $this->assertSame('987-654-321-00000', $entry['system_value']);
 
         $this->chat($id, 'employee_rdo_code', 'palitan ang item 5 ng 049')
             ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '049'])
@@ -144,7 +144,7 @@ class BirChatEditTest extends TestCase
 
         $cases = [
             'change item 12' => 'What should "Item 12, TIN" be? For example: "change item 12 to …".',
-            'change item 12 to oo' => '"TIN" must be a TIN like 123-456-789-000 (a 3 to 5 digit branch code). Nothing was changed.',
+            'change item 12 to oo' => '"TIN" must be a 14-digit TIN like 123-456-789-00000 (9 digits and a 5-digit branch code). Nothing was changed.',
             'change item 4 to Cruz' => 'Item 4 has more than one part: Employee\'s Name — Last Name, Employee\'s Name — First Name, Employee\'s Name — Middle Name. Which one? For example: "change item 4 middle name to …".',
             'change item 99 to 5' => 'The 2316 has no item 99 that can be changed here.',
             'change item 55 to Juan' => 'The 2316 has no item 55 that can be changed here.',
@@ -223,7 +223,7 @@ class BirChatEditTest extends TestCase
 
         $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => ['employee_rdo_code' => '049']])->assertOk();
         $this->chat($id, 'employee_registered_address', '12 Mabini St., Brgy. San Roque, Quezon City.')
-            ->assertJsonPath('data.reply', 'Got it: Registered Address: 12 Mabini St., Brgy. San Roque, Quezon City.');
+            ->assertJsonPath('data.reply', 'Got it: Registered Address: 12 MABINI ST., BRGY. SAN ROQUE, QUEZON CITY.');
     }
 
     /** @param array<string, mixed> $overrides */

@@ -77,7 +77,7 @@ class BirChatExplanationTest extends TestCase
 
         $this->assertStringContainsString('₱' . number_format((float) $stored, 2), $reply);
         $this->assertStringContainsString('2 finalized payroll records for Bir Tester', $reply);
-        $this->assertStringContainsString('Sep 1 to Sep 15, 2026', $reply);
+        $this->assertStringContainsString('09/01/2026 to 09/15/2026', $reply);
         foreach ($recordIds as $recordId) {
             $this->assertStringContainsString("record #{$recordId}", $reply);
         }

@@ -4,9 +4,6 @@ import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle } fro
 import clsx from 'clsx'
 import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees } from '../../api/queries'
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-  'August', 'September', 'October', 'November', 'December']
-
 // The 2316 example names someone who is really on file, so it works on any database.
 const suggestionsFor = (employee) => [
   'Generate the August 2026 1601-C',
@@ -36,7 +33,7 @@ export const describePeriod = (formType, period) => {
   if (!period) return '—'
   if (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)) {
     const [y, m] = period.split('-')
-    return `${MONTHS[Number(m) - 1]} ${y}`
+    return `${m}/${y}` // MM/YYYY, as item 1 of the 1601-C writes it
   }
   return `Tax year ${period}`
 }

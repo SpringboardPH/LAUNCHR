@@ -279,12 +279,12 @@ class BirConversationService
         return '"' . ($field['item'] !== null ? "Item {$field['item']}, {$field['label']}" : $field['label']) . '"';
     }
 
-    /** A value as the user should read it. Dates are spelled out so 05/06 can't be misread. */
+    /** A value as the user should read it. Dates as MM/DD/YYYY, the way BIR forms write them. */
     public static function display(mixed $value, string $type): string
     {
         return match ($type) {
             'boolean' => $value ? 'yes' : 'no',
-            'date' => date('F j, Y', strtotime($value)),
+            'date' => date('m/d/Y', strtotime($value)),
             'decimal' => '₱' . number_format((float) $value, 2),
             default => (string) $value,
         };

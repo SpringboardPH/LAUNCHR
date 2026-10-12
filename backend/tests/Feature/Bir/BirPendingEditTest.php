@@ -27,7 +27,7 @@ class BirPendingEditTest extends TestCase
             ->assertOk()
             ->json('data.fields.company_tin');
 
-        $this->assertSame('123-456-789-000', $entry['value']);
+        $this->assertSame('123-456-789-00000', $entry['value']);
         $this->assertSame(['id' => $approver->id, 'name' => $approver->name], $entry['edited_by']);
         $this->assertSame('pending', BirFormDraft::findOrFail($id)->status);
     }

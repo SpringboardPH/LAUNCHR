@@ -94,6 +94,27 @@ class BirUpdateFieldsRequestTest extends TestCase
             ->assertJsonValidationErrors(['fields.employee_birthdate']);
     }
 
+    public function test_text_is_saved_in_capitals_and_a_tin_as_14_digits(): void
+    {
+        $id = $this->create2316();
+
+        $fields = $this->answer($id, [
+            'employee_middle_name' => 'santos',
+            'employee_rdo_code' => '21a',
+            'employee_registered_address' => '12 Mabini St., Brgy. San Roque, Quezon City',
+            'previous_employer_tin' => '111222333000',
+        ])->assertOk()->json('data.fields');
+
+        $this->assertSame('SANTOS', $fields['employee_middle_name']['value']);
+        $this->assertSame('21A', $fields['employee_rdo_code']['value']);
+        $this->assertSame('12 MABINI ST., BRGY. SAN ROQUE, QUEZON CITY', $fields['employee_registered_address']['value']);
+        $this->assertSame('111-222-333-00000', $fields['previous_employer_tin']['value']);
+
+        $this->answer($id, ['previous_employer_tin' => '111-222-333-0000000'])
+            ->assertStatus(422)
+            ->assertJsonPath('errors', ['fields.previous_employer_tin' => ['"TIN" must be a 14-digit TIN like 123-456-789-00000 (9 digits and a 5-digit branch code).']]);
+    }
+
     public function test_a_signature_field_is_refused(): void
     {
         $id = $this->create2316();

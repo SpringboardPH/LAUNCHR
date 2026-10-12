@@ -135,7 +135,7 @@ class Form2316Schema
             [
                 'key' => 'employee_tin', 'item' => '3', 'label' => 'TIN',
                 'type' => 'string', 'source' => 'payroll', 'required' => true,
-                'rule' => 'from employees.tin_number, format ###-###-###-###', 'pdf_anchor' => '2316.3', 'format' => 'tin',
+                'rule' => 'from employees.tin_number, format ###-###-###-#####', 'pdf_anchor' => '2316.3', 'format' => 'tin',
             ],
             [
                 'key' => 'employee_last_name', 'item' => '4', 'label' => "Employee's Name — Last Name",

@@ -16,7 +16,7 @@ final class FieldFormat
 {
     /** name => what a person is told the value should look like. */
     public const FORMATS = [
-        'tin' => 'a TIN like 123-456-789-000 (a 3 to 5 digit branch code)',
+        'tin' => 'a 14-digit TIN like 123-456-789-00000 (9 digits and a 5-digit branch code)',
         'rdo' => 'a 3-character RDO code like 043 or 21A',
         'zip' => 'a 4-digit ZIP code like 1004',
         'phone' => 'a phone number like 09171234567 or (02) 8123-4567',
@@ -26,7 +26,7 @@ final class FieldFormat
     ];
 
     private const PATTERNS = [
-        'tin' => '/^\d{3}-\d{3}-\d{3}-\d{3,5}$/',
+        'tin' => '/^\d{3}-\d{3}-\d{3}-\d{5}$/',
         // Most RDO codes are 3 digits; some districts are 2 digits and a letter (21A, 43B).
         'rdo' => '/^(\d{3}|\d{2}[A-Z])$/',
         'zip' => '/^\d{4}$/',
@@ -65,6 +65,42 @@ final class FieldFormat
 
         return count($parts) >= 3
             && array_filter($parts, fn (string $part) => preg_match('/\p{L}/u', $part) !== 1) === [];
+    }
+
+    /**
+     * A value as it is stored: text in capital letters, the way BIR forms are filled in, and
+     * a TIN as all 14 digits. An email address keeps its case; choices, amounts and dates
+     * aren't text and are returned as given, as is anything tin() can't read.
+     *
+     * @param  array<string, mixed>  $field  one schema field
+     */
+    public static function normalize(array $field, mixed $value): mixed
+    {
+        if (!is_string($value) || !in_array($field['type'], ['string', 'text'], true) || ($field['format'] ?? null) === 'email') {
+            return $value;
+        }
+
+        $value = mb_strtoupper(trim($value));
+
+        return ($field['format'] ?? null) === 'tin' ? self::tin($value) : $value;
+    }
+
+    /**
+     * "123456789000" or "123-456-789-000" → "123-456-789-00000": the 9-digit TIN, then the
+     * branch code padded to 5 digits (head office 000 is 00000). Spaces and dashes are
+     * ignored; anything that isn't 9 to 14 digits is returned as given, for matches() to refuse.
+     */
+    public static function tin(string $value): string
+    {
+        $digits = preg_replace('/[\s-]/', '', $value);
+        if (preg_match('/^\d{9,14}$/', $digits) !== 1) {
+            return trim($value);
+        }
+
+        return implode('-', [
+            substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 3),
+            str_pad(substr($digits, 9), 5, '0', STR_PAD_LEFT),
+        ]);
     }
 
     /** What the value should look like, for a message: "a 4-digit ZIP code like 1004". */

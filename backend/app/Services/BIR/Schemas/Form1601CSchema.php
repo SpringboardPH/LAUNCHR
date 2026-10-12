@@ -109,7 +109,7 @@ class Form1601CSchema
             [
                 'key' => 'company_tin', 'item' => '6', 'label' => 'Taxpayer Identification Number (TIN)',
                 'type' => 'string', 'source' => 'settings', 'required' => true,
-                'rule' => 'format ###-###-###-###', 'pdf_anchor' => '1601C.6', 'format' => 'tin',
+                'rule' => 'format ###-###-###-#####', 'pdf_anchor' => '1601C.6', 'format' => 'tin',
             ],
             [
                 'key' => 'rdo_code', 'item' => '7', 'label' => 'RDO Code',

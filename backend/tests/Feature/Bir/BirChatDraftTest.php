@@ -66,7 +66,7 @@ class BirChatDraftTest extends TestCase
 
         $fields = BirFormDraft::findOrFail($id)->fields;
         $this->assertSame('049', $fields['employee_rdo_code']['value']);
-        $this->assertSame('12 Mabini St., Brgy. San Roque, Quezon City', $fields['employee_registered_address']['value']);
+        $this->assertSame('12 MABINI ST., BRGY. SAN ROQUE, QUEZON CITY', $fields['employee_registered_address']['value']);
         $this->assertSame('1990-05-31', $fields['employee_birthdate']['value']);
         foreach (['employee_rdo_code', 'employee_registered_address', 'employee_birthdate'] as $key) {
             $this->assertSame('user', $fields[$key]['origin'], "{$key} is marked as supplied by a person.");

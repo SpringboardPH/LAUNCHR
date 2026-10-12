@@ -20,7 +20,7 @@ class BirSettingsServiceTest extends TestCase
 
         $this->assertSame([
             'atc_code' => 'WW010',
-            'company_tin' => '123-456-789-000',
+            'company_tin' => '123-456-789-00000',
             'rdo_code' => '043',
             'company_name' => 'Springboard PH Inc.',
             'company_address' => '12 Ayala Ave, Makati City',
@@ -36,7 +36,7 @@ class BirSettingsServiceTest extends TestCase
         $this->setCompany();
 
         $this->assertSame([
-            'present_employer_tin' => '123-456-789-000',
+            'present_employer_tin' => '123-456-789-00000',
             'present_employer_name' => 'Springboard PH Inc.',
             'present_employer_address' => '12 Ayala Ave, Makati City',
             'present_employer_zip' => '1226',

@@ -24,23 +24,23 @@ const JANE = { id: 5, name: 'Jane Dela Cruz' }
 const MARK = { id: 2, name: 'Mark Santos' }
 
 const EMPLOYEES = [
-  { id: 11, employee_id: 'EMP011', first_name: 'Ana', last_name: 'Reyes', tin: '111-222-333-000' },
+  { id: 11, employee_id: 'EMP011', first_name: 'Ana', last_name: 'Reyes', tin: '111-222-333-00000' },
   // A phone recorded without enough digits: his 2316 reports it as invalid_format.
-  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-000', phone: '0917-55' },
-  { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-000' },
-  { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-000' },
+  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-00000', phone: '0917-55' },
+  { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-00000' },
+  { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-00000' },
   // Paid at minimum wage: nothing taxable, so the 2316's taxable section does not apply.
-  { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-000', annual: 168000 },
+  { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-00000', annual: 168000 },
 ]
 
 const SETTINGS = {
   '1601-C': {
-    atc_code: 'WW010', company_tin: '000-123-456-000', rdo_code: '047',
+    atc_code: 'WW010', company_tin: '000-123-456-00000', rdo_code: '047',
     company_name: 'SPRINGBOARD PH INC.', company_address: '12F Tower One, Ayala Ave, Makati City',
     company_zip: '1226', agent_category: 'private',
   },
   '2316': {
-    present_employer_tin: '000-123-456-000', present_employer_name: 'SPRINGBOARD PH INC.',
+    present_employer_tin: '000-123-456-00000', present_employer_name: 'SPRINGBOARD PH INC.',
     present_employer_address: '12F Tower One, Ayala Ave, Makati City', present_employer_zip: '1226',
     employer_type: 'main',
   },
@@ -172,7 +172,7 @@ const missingFor = (draft) => schemaOf(draft.form_type)
 
 // Dev A's FieldFormat: what each format accepts, and how a message describes it.
 const FORMATS = {
-  tin: ['a TIN like 123-456-789-000 (a 3 to 5 digit branch code)', (v) => /^\d{3}-\d{3}-\d{3}-\d{3,5}$/.test(v)],
+  tin: ['a 14-digit TIN like 123-456-789-00000 (9 digits and a 5-digit branch code)', (v) => /^\d{3}-\d{3}-\d{3}-\d{5}$/.test(v)],
   rdo: ['a 3-character RDO code like 043 or 21A', (v) => /^(\d{3}|\d{2}[A-Z])$/.test(v)],
   zip: ['a 4-digit ZIP code like 1004', (v) => /^\d{4}$/.test(v)],
   phone: ['a phone number like 09171234567 or (02) 8123-4567', (v) => /^\+?\d{7,13}$/.test(v.replace(/[\s().-]/g, ''))],

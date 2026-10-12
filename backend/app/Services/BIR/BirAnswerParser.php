@@ -97,19 +97,15 @@ final class BirAnswerParser
 
     /**
      * Text checked against the field's format (Dev A's FieldFormat), in the same words PUT
-     * would use. Common spellings are tidied first: a TIN's dashes, an RDO code's case.
+     * would use. Common spellings are tidied first (FieldFormat::normalize): a TIN's dashes
+     * and branch code, an RDO code's case.
      *
      * @param  array<string, mixed>  $field
      */
     private static function formatted(mixed $value, array $field): array
     {
         $format = $field['format'];
-        if ($format === 'tin' && is_string($value) && preg_match('/^\d{12,14}$/', $digits = preg_replace('/[\s-]/', '', $value))) {
-            $value = implode('-', [substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 3), substr($digits, 9)]);
-        }
-        if ($format === 'rdo' && is_string($value)) {
-            $value = strtoupper($value);
-        }
+        $value = FieldFormat::normalize($field, $value);
 
         return FieldFormat::matches($format, $value)
             ? self::ok($value)

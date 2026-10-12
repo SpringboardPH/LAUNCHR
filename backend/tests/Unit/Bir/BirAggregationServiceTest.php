@@ -289,7 +289,7 @@ class BirAggregationServiceTest extends TestCase
         $this->assertSame('7095.00', $r['tax_due']);                          // 24 = 47,300 x 15%
         $this->assertSame('7093.92', $r['taxes_withheld_present']);           // 25A = 24 x 295.58
         $this->assertSame('7093.92', $r['total_taxes_withheld_final']);       // 28
-        $this->assertSame('123-456-789-000', $r['employee_tin']);
+        $this->assertSame('123-456-789-00000', $r['employee_tin']);
         $this->assertSame('A', $r['employee_last_name']);
         $this->assertSame('taxable', $r['_meta']['category']);
         $this->assertSame(['Tax due 7,095.00 vs. withheld 7,093.92: 1.08 under-withheld. Needs a year-end adjustment.'],

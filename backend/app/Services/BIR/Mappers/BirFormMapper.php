@@ -3,6 +3,7 @@
 namespace App\Services\BIR\Mappers;
 
 use App\Services\BIR\BirDraftValidator;
+use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use InvalidArgumentException;
@@ -52,6 +53,7 @@ abstract class BirFormMapper
     /**
      * Every schema key as a six-key entry. Missing and empty-string values are pending
      * (contract §3, invariant 1); a filled value takes its schema source as its origin.
+     * Text is stored as FieldFormat::normalize() writes it: capitals, a 14-digit TIN.
      *
      * @param  array<int, array<string, mixed>>  $schema
      * @param  array<string, mixed>  $values
@@ -61,7 +63,7 @@ abstract class BirFormMapper
     {
         $fields = [];
         foreach ($schema as $field) {
-            $value = $values[$field['key']] ?? null;
+            $value = FieldFormat::normalize($field, $values[$field['key']] ?? null);
             $filled = $value !== null && $value !== '';
 
             $fields[$field['key']] = [

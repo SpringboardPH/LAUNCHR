@@ -95,7 +95,7 @@ class UpdateBirDraftFieldsRequest extends FormRequest
                 $schema = $this->schema();
                 foreach ((array) $this->input('fields') as $key => $value) {
                     $problem = isset($schema[$key])
-                        ? $this->problem($schema[$key], $value)
+                        ? $this->problem($schema[$key], FieldFormat::normalize($schema[$key], $value))
                         : "\"{$key}\" is not a field on the {$this->draft()->form_type}.";
                     if ($problem !== null) {
                         $validator->errors()->add("fields.{$key}", $problem);
@@ -106,8 +106,9 @@ class UpdateBirDraftFieldsRequest extends FormRequest
     }
 
     /**
-     * The answers to save, keyed by field. Yes/no answers become true/false and whole
-     * numbers become integers, so the stored value is always clean. Call after validation.
+     * The answers to save, keyed by field. Yes/no answers become true/false, whole numbers
+     * become integers and text is in capitals with a 14-digit TIN (FieldFormat::normalize),
+     * so the stored value is always clean. Call after validation.
      *
      * @return array<string, mixed>
      */
@@ -121,7 +122,7 @@ class UpdateBirDraftFieldsRequest extends FormRequest
                 $value === null => null,
                 $schema[$key]['type'] === 'boolean' => self::toBoolean($value),
                 $schema[$key]['type'] === 'integer' => (int) $value,
-                default => $value,
+                default => FieldFormat::normalize($schema[$key], $value),
             };
         }
 

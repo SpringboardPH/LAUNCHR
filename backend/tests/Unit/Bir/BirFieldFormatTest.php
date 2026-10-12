@@ -46,8 +46,8 @@ class BirFieldFormatTest extends TestCase
     public static function examples(): array
     {
         return [
-            'tin, 3-digit branch' => ['tin', '123-456-789-000', true],
-            'tin, 5-digit branch' => ['tin', '123-456-789-00000', true],
+            'tin, 14 digits' => ['tin', '123-456-789-00000', true],
+            'tin, 3-digit branch' => ['tin', '123-456-789-000', false],
             'tin without dashes' => ['tin', '123456789000', false],
             'tin with no branch' => ['tin', '123-456-789', false],
             'rdo, 3 digits' => ['rdo', '043', true],
@@ -88,9 +88,41 @@ class BirFieldFormatTest extends TestCase
     public function test_figures_the_system_fills_in_already_follow_the_format(): void
     {
         $this->assertTrue(FieldFormat::matches('tin', BirAggregationService::formatTin('123456789')));
+        $this->assertTrue(FieldFormat::matches('tin', BirAggregationService::formatTin('123-456-789-000')));
         $this->assertTrue(FieldFormat::matches('tin', BirAggregationService::formatTin('123-456-789-00000')));
         $this->assertTrue(FieldFormat::matches('mmdd', '01/01'));
         $this->assertTrue(FieldFormat::matches('mmdd', '12/31'));
+    }
+
+    /** @return array<string, array{array<string, mixed>, mixed, mixed}> */
+    public static function normalized(): array
+    {
+        $text = ['type' => 'string'];
+
+        return [
+            'name in capitals' => [$text, 'Juan dela Cruz', 'JUAN DELA CRUZ'],
+            'address in capitals, ñ too' => [['type' => 'text', 'format' => 'address'], '12 Mabini St., Brgy. Sto. Niño, Parañaque City', '12 MABINI ST., BRGY. STO. NIÑO, PARAÑAQUE CITY'],
+            'rdo letter' => [$text + ['format' => 'rdo'], '21a', '21A'],
+            'spaces trimmed' => [$text, '  Acme Corp ', 'ACME CORP'],
+            'tin, 3-digit branch' => [$text + ['format' => 'tin'], '123-456-789-000', '123-456-789-00000'],
+            'tin, branch 1' => [$text + ['format' => 'tin'], '123-456-789-001', '123-456-789-00001'],
+            'tin, no dashes' => [$text + ['format' => 'tin'], '123456789000', '123-456-789-00000'],
+            'tin, no branch' => [$text + ['format' => 'tin'], '123 456 789', '123-456-789-00000'],
+            'tin, too short is left for the check' => [$text + ['format' => 'tin'], '1234', '1234'],
+            'tin, too long is left for the check' => [$text + ['format' => 'tin'], '123-456-789-000000', '123-456-789-000000'],
+            'email keeps its case' => [$text + ['format' => 'email'], 'Payroll@Company.com', 'Payroll@Company.com'],
+            'a choice is not text' => [['type' => 'enum', 'options' => ['main', 'secondary']], 'main', 'main'],
+            'a date is not text' => [['type' => 'date'], '1990-05-31', '1990-05-31'],
+            'an amount is not text' => [['type' => 'decimal'], '100.00', '100.00'],
+            'blank stays blank' => [$text, null, null],
+        ];
+    }
+
+    /** @param  array<string, mixed>  $field */
+    #[DataProvider('normalized')]
+    public function test_text_is_stored_in_capitals_and_a_tin_as_14_digits(array $field, mixed $value, mixed $stored): void
+    {
+        $this->assertSame($stored, FieldFormat::normalize($field, $value));
     }
 
     public function test_a_value_that_is_not_text_does_not_match(): void

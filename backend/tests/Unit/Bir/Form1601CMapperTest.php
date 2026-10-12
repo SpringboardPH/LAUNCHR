@@ -33,7 +33,7 @@ class Form1601CMapperTest extends TestCase
         $this->assertSame(['value' => '30000.00', 'origin' => 'payroll'], $this->pick($fields['total_compensation']));
         $this->assertSame(['value' => '08/2026', 'origin' => 'payroll'], $this->pick($fields['return_period']));
         // Company settings: the TIN is set, the RDO code is still a seed placeholder.
-        $this->assertSame(['value' => '123-456-789-000', 'origin' => 'settings'], $this->pick($fields['company_tin']));
+        $this->assertSame(['value' => '123-456-789-00000', 'origin' => 'settings'], $this->pick($fields['company_tin']));
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['rdo_code']));
         // Awaiting user input.
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['is_amended']));

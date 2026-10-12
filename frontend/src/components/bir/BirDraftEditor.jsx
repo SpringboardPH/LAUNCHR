@@ -23,11 +23,14 @@ export const formatValue = (value, type) => {
   if (value === null || value === undefined || value === '') return null
   if (type === 'boolean' || typeof value === 'boolean') return isYes(value) ? 'Yes' : 'No'
   if (type === 'decimal' && isNumeric(value)) return peso(value)
+  // Stored as YYYY-MM-DD; shown MM/DD/YYYY, the way BIR forms write dates.
+  const ymd = type === 'date' && /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value))
+  if (ymd) return `${ymd[2]}/${ymd[3]}/${ymd[1]}`
   return String(value)
 }
 
 export const formatWhen = (iso) => {
-  try { return format(parseISO(iso), 'MMM d, yyyy h:mm a') } catch { return iso }
+  try { return format(parseISO(iso), 'MM/dd/yyyy h:mm a') } catch { return iso }
 }
 
 // Fields compared against a filed form — the same rule as `php artisan bir:compare`.

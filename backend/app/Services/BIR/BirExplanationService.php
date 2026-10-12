@@ -88,7 +88,7 @@ class BirExplanationService
 
         if (!empty($entry['edited'])) {
             $who = $entry['edited_by']['name'] ?? 'someone';
-            $when = !empty($entry['edited_at']) ? ' on ' . date('F j, Y', strtotime($entry['edited_at'])) : '';
+            $when = !empty($entry['edited_at']) ? ' on ' . date('m/d/Y', strtotime($entry['edited_at'])) : '';
             $replaced = ($entry['system_value'] ?? null) !== null
                 ? 'The figure it replaced was ' . BirConversationService::display($entry['system_value'], $field['type']) . '.'
                 : 'Nothing was recorded there before.';
@@ -126,13 +126,13 @@ class BirExplanationService
             return $records . ': ' . $rows->map(fn (array $row) => self::cutoff($row) . " (record #{$row['id']})")->implode('; ') . '.';
         }
 
-        return $records . ', with cutoffs from ' . date('F j, Y', strtotime($rows->first()['cutoff_start']))
-            . ' to ' . date('F j, Y', strtotime($rows->last()['cutoff_end'])) . '.';
+        return $records . ', with cutoffs from ' . date('m/d/Y', strtotime($rows->first()['cutoff_start']))
+            . ' to ' . date('m/d/Y', strtotime($rows->last()['cutoff_end'])) . '.';
     }
 
     /** @param array<string, mixed> $row */
     private static function cutoff(array $row): string
     {
-        return date('M j', strtotime($row['cutoff_start'])) . ' to ' . date('M j, Y', strtotime($row['cutoff_end']));
+        return date('m/d/Y', strtotime($row['cutoff_start'])) . ' to ' . date('m/d/Y', strtotime($row['cutoff_end']));
     }
 }

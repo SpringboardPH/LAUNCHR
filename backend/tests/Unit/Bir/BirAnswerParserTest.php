@@ -90,8 +90,9 @@ class BirAnswerParserTest extends TestCase
     public static function formatted(): array
     {
         return [
-            'TIN as written' => ['tin', '987-654-321-000', '987-654-321-000'],
-            'TIN typed without dashes' => ['tin', '987654321000', '987-654-321-000'],
+            'TIN as written' => ['tin', '987-654-321-00000', '987-654-321-00000'],
+            'TIN with a 3-digit branch' => ['tin', '987-654-321-000', '987-654-321-00000'],
+            'TIN typed without dashes' => ['tin', '987654321000', '987-654-321-00000'],
             'TIN with a 5-digit branch, spaced' => ['tin', '987 654 321 00000', '987-654-321-00000'],
             'RDO code in lower case' => ['rdo', '21a', '21A'],
             'ZIP code' => ['zip', '1226', '1226'],
@@ -110,7 +111,7 @@ class BirAnswerParserTest extends TestCase
     public function test_a_wrongly_formatted_answer_is_asked_again_in_the_words_put_would_use(): void
     {
         $this->assertSame('"Example" must be a 3-character RDO code like 043 or 21A.', BirAnswerParser::parse('AAAA', $this->field('string') + ['format' => 'rdo'])['problem']);
-        $this->assertSame('"Example" must be a TIN like 123-456-789-000 (a 3 to 5 digit branch code).', BirAnswerParser::parse('oo', $this->field('string') + ['format' => 'tin'])['problem']);
+        $this->assertSame('"Example" must be a 14-digit TIN like 123-456-789-00000 (9 digits and a 5-digit branch code).', BirAnswerParser::parse('oo', $this->field('string') + ['format' => 'tin'])['problem']);
         $this->assertSame('"Example" must be a 4-digit ZIP code like 1004.', BirAnswerParser::parse('12345', $this->field('string') + ['format' => 'zip'])['problem']);
     }
 
