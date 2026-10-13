@@ -16,13 +16,26 @@ If something here has to change after sign-off, raise it on Friday under
 All routes are under `/api/bir`, behind `auth:sanctum` and
 `role:admin,hr,accounting`. Employees cannot reach any of them. `approve`,
 `reject` and `finalize` also need `role:accounting`, and only accounting may
-`PUT` to a pending form (§5).
+`PUT` to a pending form (§5). The two switch routes, `PUT /bir/switch` and
+`PUT /bir/switch/password`, are admin-only and allow 5 tries a minute (§6).
 
 **Feature switch:** while the system setting `bir_forms_enabled` is off (or has
-no row), every route except `GET /bir/config` returns 403
+no row), every route except `GET /bir/config`, `PUT /bir/switch` and
+`PUT /bir/switch/password` returns 403
 `{ "success": false, "message": "The BIR Form Assistant is not enabled" }` to
 every role, admin included, and changes nothing. Config stays open so the screen
-can read `enabled` and hide the page (§6).
+can read `enabled` and hide the page; the switch routes stay open, or BIR could
+never be turned on (§6).
+
+`bir_forms_enabled` changes only through `PUT /bir/switch`: an admin, with the
+company password. The company password is one shared password, not anyone's
+login, set by an admin in the app through `PUT /bir/switch/password`. Only its
+bcrypt hash is stored, in the setting `bir_switch_password_hash`, and no endpoint
+ever returns it. The general settings save (`PUT /api/admin/settings/{key}`)
+refuses both keys with 403 "Use the BIR switch, which asks for the company
+password". `GET /api/admin/settings` and `GET /api/admin/settings/{key}` never
+return the hash; the single-key read answers 404 "Setting not found", as for a
+missing key.
 
 Every response uses the envelope already used across LAUNCHR:
 
@@ -38,9 +51,10 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (approved or finalized) |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config) |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
-| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
+| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
+| 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
@@ -53,7 +67,7 @@ required.", the app-wide message) even for a draft that doesn't exist. On
 
 The switch is checked right after the employee check and before everything
 else: with it off, admin, HR and accounting get the switch message on every
-route but config, including admin or HR on `approve`, `reject` or `finalize`
+route but config and the switch routes, including admin or HR on `approve`, `reject` or `finalize`
 and drafts that don't exist. An employee still gets the role message.
 
 A 422 from `submit` or `approve` is "fix the form", not "bad request": it carries the draft in
@@ -313,6 +327,8 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
 | POST | `/bir/chat` | Dev C. Controller method is `message`. | admin, hr, accounting |
+| PUT | `/bir/switch/password` | Set or change the company password for the switch | admin only |
+| PUT | `/bir/switch` | Turn the BIR Form Assistant on or off, with the company password | admin only |
 
 Employees get 403 on all of them.
 
@@ -321,6 +337,7 @@ Employees get 403 on all of them.
 ```json
 {
   "enabled": false,
+  "switch_password_set": false,
   "form_types": ["1601-C", "2316"],
   "status_flow": {
     "draft": ["pending"],
@@ -337,10 +354,16 @@ Employees get 403 on all of them.
 
 `enabled` reads `bir_forms_enabled` from system settings and is false by
 default — the feature switch, enforced since Week 8 (§1). While it is
-false, config is the only `/bir` route that works; every other one returns 403
-"The BIR Form Assistant is not enabled". `status_flow` is served from the same
+false, config and the two switch routes are the only `/bir` routes that work;
+every other one returns 403 "The BIR Form Assistant is not enabled". Only
+`PUT /bir/switch` changes it. `status_flow` is served from the same
 constant the controller enforces, so Dev D can drive button visibility from it
 rather than hardcoding the transitions.
+
+`switch_password_set` is true once an admin has set the company password
+(`PUT /bir/switch/password`). While it is false, `PUT /bir/switch` refuses with
+"No company password is set up", so the screen can ask for a password first.
+Config never returns the password or its hash.
 
 `schemas` is each schema's `fields()` (§4), every field with all its keys
 (shortened above). The screen reads keys, labels, item numbers and help text
@@ -542,6 +565,68 @@ the employee code on a 2316, and the version.
 
 404 if the draft is missing; employees get 403 like the rest of `/bir`. The PDF
 shows the draft's stored values, so a later payroll change does not alter it.
+
+### PUT /bir/switch/password
+
+Sets or changes the company password that guards the switch (§1). Admin only;
+works while BIR is off.
+
+```json
+{ "password": "new password", "password_confirmation": "new password", "current_password": "old password" }
+```
+
+`password` is required, at least 8 characters, and must match
+`password_confirmation`. `current_password` is needed only when a password is
+already set (`switch_password_set` in config); the first time it is left out.
+
+| Code | When |
+|---|---|
+| 403 | The caller is not an admin. Checked first, by the route. |
+| 429 | More than 5 tries in a minute, counted together with `PUT /bir/switch`. Laravel's own body, `{ "message": "Too Many Attempts." }`, with a `Retry-After` header in seconds. |
+| 422 | `password` missing, shorter than 8 characters, or not confirmed: the usual Laravel `{ "message", "errors": { "password": [...] } }`. Nothing changes. |
+| 422 | A password is already set and `current_password` is missing or wrong: `{ "success": false, "message": "The current company password is incorrect" }`. Nothing changes. |
+| 200 | `{ "success": true, "data": { "switch_password_set": true }, "message": "Company password saved" }` |
+
+Only the bcrypt hash is stored. The audit log gets a `BIR_SWITCH_PASSWORD` row,
+"<name> set the company password for the BIR switch" (or "changed"), with no old
+or new values: the password and its hash are never logged.
+
+### PUT /bir/switch
+
+Turns the BIR Form Assistant on or off. Admin only; works while BIR is off. This
+is the only way to change `bir_forms_enabled` (§1).
+
+```json
+{ "enabled": true, "password": "the company password" }
+```
+
+Both required; `enabled` is a boolean.
+
+| Code | When |
+|---|---|
+| 403 | The caller is not an admin. Checked first, by the route. |
+| 429 | More than 5 tries in a minute, counted together with `PUT /bir/switch/password`, as above. |
+| 422 | `enabled` or `password` missing, or `enabled` not a boolean: the usual Laravel `{ "message", "errors" }`. |
+| 422 | No company password has been set: `{ "success": false, "message": "No company password is set up" }`. |
+| 422 | Wrong password: `{ "success": false, "message": "The company password is incorrect" }`. Nothing changes and nothing is logged. |
+| 200 | `{ "success": true, "data": { "enabled": true }, "message": "The BIR Form Assistant is now on" }` ("off" when turned off). |
+
+A 200 is also returned when the switch was already in the requested state. Each
+200 writes a `BIR_SWITCH` audit row, "<name> turned the BIR Form Assistant on"
+(or "off"), with old and new values such as `{ "enabled": false }` and
+`{ "enabled": true }`.
+
+### Forgotten company password
+
+There is no reset in the app. Someone with server access runs
+
+```bash
+php artisan bir:clear-switch-password
+```
+
+It asks "Are you sure?", then deletes the saved hash and turns
+`bir_forms_enabled` off. An admin then sets a new password with
+`PUT /bir/switch/password` (no `current_password` needed) and turns BIR back on.
 
 ---
 
