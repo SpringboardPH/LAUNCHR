@@ -142,9 +142,13 @@ class BirWorkflowTest extends TestCase
         $this->assertCount(1, $snapshot['rows']);
         $this->assertSame('13000.00', $snapshot['rows'][0]['gross_pay']);
 
+        $employees = $snapshot['meta']['employees'];
+        $this->assertCount(1, $employees);
+
         $payroll->gross_pay = 99999;
         $payroll->save();
 
         $this->assertSame('13000.00', BirFormDraft::find($id)->source_snapshot['rows'][0]['gross_pay']);
+        $this->assertSame($employees, BirFormDraft::find($id)->source_snapshot['meta']['employees'], 'The per-employee rows are frozen too.');
     }
 }

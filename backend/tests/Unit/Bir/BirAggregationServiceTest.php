@@ -84,8 +84,78 @@ class BirAggregationServiceTest extends TestCase
             $r['_meta']['employee_counts']
         );
         $this->assertSame([], $r['_meta']['warnings']);
+        $this->assertEmployeesAddUpToTheForm($r);
     }
 
+    public function test_each_employee_s_part_of_the_1601c_adds_up_to_the_form(): void
+    {
+        // Taxable: overtime, an undeclared allowance (not compensation), 13th month over the P90,000 cap.
+        $taxable = $this->employee('T');
+        $this->payroll($taxable, '2026-12-01', '2026-12-15', 60000, ['SSS EE Contribution' => 875, 'Withholding Tax' => 9000],
+            [['label' => 'Allowance', 'amount' => 2000]]);
+        $this->payroll($taxable, '2026-12-16', '2026-12-31', 162000, ['SSS EE Contribution' => 875, 'Withholding Tax' => 9000],
+            [['label' => 'Overtime Pay', 'amount' => 2000], ['label' => '13th Month Pay', 'amount' => 100000]]);
+        // Minimum wage earner: premium pay, and a 13th month over the cap (the excess is taxable).
+        $mwe = $this->employee('M');
+        $this->payroll($mwe, '2026-12-16', '2026-12-31', 108000, ['SSS EE Contribution' => 400],
+            [['label' => 'Special Holiday', 'amount' => 600], ['label' => 'Night Differential', 'amount' => 150],
+                ['label' => '13th Month Pay', 'amount' => 95000]]);
+        // P250,000 and below: late and absent come off the compensation.
+        $exempt = $this->employee('E');
+        $this->payroll($exempt, '2026-12-01', '2026-12-15', 9000, ['SSS EE Contribution' => 450, 'Late' => 250, 'Absent' => 692.31]);
+        $this->setMwe([$mwe->id]);
+
+        $r = BirAggregationService::monthlyWithholding(2026, 12);
+        $rows = collect($r['_meta']['employees'])->keyBy('employee_id');
+
+        $this->assertSame(
+            ['employee_id', 'category', 'payroll_count', 'compensation', 'mwe_basic', 'mwe_premium', 'thirteenth', 'ee', 'taxable', 'exempt_250k', 'tax_withheld'],
+            array_keys($rows->first())
+        );
+        $this->assertSame([
+            'employee_id' => $taxable->id, 'category' => 'taxable', 'payroll_count' => 2,
+            'compensation' => '220000.00', 'mwe_basic' => '0.00', 'mwe_premium' => '0.00', 'thirteenth' => '90000.00',
+            'ee' => '1750.00', 'taxable' => '128250.00', 'exempt_250k' => '0.00', 'tax_withheld' => '18000.00',
+        ], $rows[$taxable->id]);
+        $this->assertSame([
+            'employee_id' => $mwe->id, 'category' => 'mwe', 'payroll_count' => 1,
+            'compensation' => '108000.00', 'mwe_basic' => '11850.00', 'mwe_premium' => '750.00', 'thirteenth' => '90000.00',
+            'ee' => '400.00', 'taxable' => '5000.00', 'exempt_250k' => '0.00', 'tax_withheld' => '0.00',
+        ], $rows[$mwe->id]);
+        $this->assertSame([
+            'employee_id' => $exempt->id, 'category' => 'exempt_250k', 'payroll_count' => 1,
+            'compensation' => '8057.69', 'mwe_basic' => '0.00', 'mwe_premium' => '0.00', 'thirteenth' => '0.00',
+            'ee' => '450.00', 'taxable' => '7607.69', 'exempt_250k' => '7607.69', 'tax_withheld' => '0.00',
+        ], $rows[$exempt->id]);
+
+        $this->assertEmployeesAddUpToTheForm($r);
+    }
+
+    public function test_a_month_with_no_payroll_has_no_employee_rows(): void
+    {
+        $this->assertSame([], BirAggregationService::monthlyWithholding(2026, 8)['_meta']['employees']);
+    }
+
+    /** _meta.employees summed column by column equals the form: items 14, 15, 16, 17, 19, 22, 23 and 25. */
+    private function assertEmployeesAddUpToTheForm(array $r): void
+    {
+        $sum = fn (string $column) => number_format(
+            array_sum(array_map('floatval', array_column($r['_meta']['employees'], $column))), 2, '.', '');
+
+        foreach ([
+            'compensation' => 'total_compensation',                 // 14
+            'mwe_basic' => 'mwe_statutory_wage',                    // 15
+            'mwe_premium' => 'mwe_premium_pay',                     // 16
+            'thirteenth' => 'thirteenth_month_and_benefits',        // 17
+            'ee' => 'statutory_contributions_ee',                   // 19
+            'taxable' => 'total_taxable_compensation',              // 22
+            'exempt_250k' => 'exempt_250k_compensation',            // 23
+            'tax_withheld' => 'total_taxes_withheld',               // 25
+        ] as $column => $field) {
+            $this->assertSame($r[$field], $sum($column), "{$column} adds up to {$field}");
+        }
+        $this->assertSame($r['_meta']['employee_counts']['total'], count($r['_meta']['employees']));
+    }
     public function test_undeclared_allowance_and_attendance_deductions_are_not_compensation(): void
     {
         $this->payroll($this->employee('X'), '2026-08-11', '2026-08-25', 15000,
