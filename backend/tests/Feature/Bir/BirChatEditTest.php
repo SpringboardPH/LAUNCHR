@@ -14,6 +14,7 @@ use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -30,6 +31,7 @@ use Tests\TestCase;
  */
 class BirChatEditTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private User $accounting;
@@ -166,7 +168,7 @@ class BirChatEditTest extends TestCase
 
         $this->chat($id, null, 'change item 5 to 049')
             ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', "Bir Tester's 2316 for 2026 (#{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
+            ->assertJsonPath('data.reply', "Bir Tester's 2316 for 2026 (form #{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
 
         $this->send('change TIN to 987-654-321-676', reset: true)
             ->assertJsonPath('data.reply', BirExplanationService::OPEN_A_FORM);

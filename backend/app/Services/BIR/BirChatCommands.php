@@ -13,9 +13,14 @@ use App\Models\User;
  *   2316 for 2026?", "item 14 of the September 2026 1601-C", or by its name: "what is the
  *   company TIN on Maria Santos's 2316 for 2026?" (BirBoxMatcher; when no box's name fits,
  *   the model may pick one from the form's list of boxes, never anything else).
- * - Change a box on any form without opening it: "edit 2316 item #6 for maria santos,
- *   change it to …". The change goes to the form's latest version; it is applied at once
- *   and remembered, so "undo" puts it back.
+ * - Change a box on any form: the open one, or another by its number ("change item 6 on
+ *   form #12 to …"). Details alone ("Maria Santos's 2316 for 2026") don't pick a form to
+ *   change, since two forms can share them: the forms that fit are listed by number, and a
+ *   reply with the number makes the change. Applied at once; "undo" puts it back
+ *   (BirChatUndo).
+ * - Forms are told apart by their number and details (BirFormFinder): status ("filed",
+ *   "pending", "draft"), version ("version 2", "amendment 1") as well as period and person.
+ *   When several fit, the chat lists them and asks; it never picks one.
  * - Whether a form can still be changed: draft, or waiting for review (accounting only),
  *   can; approved can't; a filed form can only be corrected in a new version, which the
  *   reply offers two ways: the "Start a correction" button, or "yes" to have the chat start
@@ -42,6 +47,8 @@ class BirChatCommands
 
     private const UNDO = '/^\s*(undo|i-?undo|ibalik|bawiin)\b/i';
 
+    private const NEEDS_NUMBER = "To change a form that isn't open here, I need its number.";
+
     /** Words asking for what a box holds rather than what it means. */
     private const VALUE_WORDS = '/\b(value|laman|nakalagay|how much|magkano|amount|figure|show|give|tell me|check|what\'?s in|what is in|ano ang nasa|ano yung nasa)\b/i';
 
@@ -56,16 +63,18 @@ class BirChatCommands
         private readonly BirExplanationService $explanations,
         private readonly BirDraftValidator $validator,
         private readonly BirIntentService $intent,
+        private readonly BirChatUndo $undo,
     ) {}
 
     /** @return ?array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool} */
     public function handle(string $message, ?BirFormDraft $current, BirConversationState $state, User $user, bool $canAct): ?array
     {
-        // "2026" after "Which year?": finish the command that asked.
+        // "2026" after "Which year?", "#9" after a list of forms, "item 3" after a list of
+        // boxes: finish the command that asked.
         $pending = $state->pending();
         $state->setPending(null);
-        if ($pending !== null && $this->completes($message)) {
-            $message = "{$pending} {$message}";
+        if ($pending !== null && ($extra = $this->completion($message, $pending['needs'])) !== null) {
+            $message = "{$pending['message']} {$extra}";
         }
 
         $offer = $state->offer();
@@ -81,13 +90,21 @@ class BirChatCommands
 
         $item = BirAnswerParser::itemMentioned($message);
 
-        return match (true) {
-            (bool) preg_match(self::UNDO, $message) => $this->undo($item, $current, $state, $user),
+        $result = match (true) {
+            (bool) preg_match(self::UNDO, $message) => $this->undo->undo($item, $current, $state, $user),
             (bool) preg_match(self::DONE, $message) => $this->done($current, $canAct),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
             $item !== null => $this->lookup($message, $item, $current, $state),
             default => $this->lookup($message, null, $current, $state),
         };
+
+        // A reply that asks for a number, an item or a year waits for it: the open question
+        // is asked again after, not in the same breath.
+        if ($result !== null && $state->pending() !== null) {
+            $result['stay'] = false;
+        }
+
+        return $result;
     }
 
     /**
@@ -103,19 +120,23 @@ class BirChatCommands
         $state->setOffer(null);
 
         $change = $this->conversation->change($draft, $offer['message'], $offer['value']);
-        $started = 'Started ' . BirFormFinder::correctionName($draft) . " (#{$draft->id}) from " . BirFormFinder::describe($draft)
+        $started = 'Started ' . BirFormFinder::correctionName($draft) . " (form #{$draft->id}) from " . BirFormFinder::describe($draft)
             . '. The filed version stays as it is.';
         $finish = ' Tell me any other changes, and say done when the ' . (BirFormFinder::isAmendment($draft) ? 'amendment' : 'correction') . ' is finished.';
 
         if ($change['answer'] === null) {
             return self::result("{$started} {$change['reply']}{$finish}", $draft);
         }
-        $this->remember($state, $draft, $change['answer']);
+        $this->undo->remember($state, $draft, $change['answer']);
 
         return self::result("{$started} {$change['reply']}{$finish}", $draft, $change['answer']);
     }
 
-    /** "change item 6 on Maria Santos's 2316 for 2026 to …", or just "change item 6 to …" on the open form. */
+    /**
+     * "change item 6 to …" on the open form, or "change item 6 on form #12 to …" on any other.
+     * A form other than the open one is only changed by its number; details alone get the
+     * forms that fit, listed by number, and a reply with the number finishes the change.
+     */
     private function change(string $message, ?BirFormDraft $current, BirConversationState $state, User $user, bool $canAct): array
     {
         // The form is read off the words around the new value, never the value itself: a TIN
@@ -129,24 +150,49 @@ class BirChatCommands
         }
         $ref = $this->finder->reference($around);
 
-        if (!$ref['named'] && $ref['person'] === BirEmployeeResolver::NOT_NAMED) {
+        if ($ref['number'] === null && !$ref['named'] && $ref['person'] === BirEmployeeResolver::NOT_NAMED) {
             if ($current === null) {
                 return self::result(BirExplanationService::OPEN_A_FORM);
             }
-            $target = $this->finder->latest($current);
+            $target = $current;
         } else {
-            $found = $this->target($ref, $current, $message, $state);
-            if (!$found instanceof BirFormDraft) {
-                return $found;
+            $found = $ref['number'] !== null
+                ? $this->target($ref, $current, $message, $state)
+                : $this->finder->resolve($ref, $current, self::NEEDS_NUMBER . ' These fit:');
+            if ($found instanceof BirFormDraft && ($ref['number'] !== null || $found->id === $current?->id)) {
+                $target = $found;
+            } else {
+                return $this->askForNumber($found, $message, $state);
             }
-            $target = $found;
+        }
+
+        if ($target->status === 'finalized' && ($open = $this->finder->openCorrection($target)) !== null) {
+            $state->setPending(['message' => $message, 'needs' => 'form']);
+
+            return self::result('Form #' . $target->id . ' (' . BirFormFinder::describe($target) . ") is filed, so it can't be changed. Its correction, form #{$open->id} "
+                . "(version {$open->version}, " . BirFormFinder::statusWord($open) . "), is still open. Reply \"form #{$open->id}\" to make the change there.", null, null, stay: true);
         }
 
         return match ($target->status) {
             'draft', 'pending' => $this->changeOpen($target, $message, $value, $current, $state, $user),
-            'approved' => self::result(ucfirst(BirFormFinder::describe($target)) . " (#{$target->id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.", null, null, stay: true),
+            'approved' => self::result(ucfirst(BirFormFinder::describe($target)) . " (form #{$target->id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.", null, null, stay: true),
             default => $this->offerCorrection($target, $message, $value, $state, $canAct),
         };
+    }
+
+    /** A change that named a form by its details only: the forms that fit, and that a number is needed. */
+    private function askForNumber(BirFormDraft|array $found, string $message, BirConversationState $state): array
+    {
+        if ($found instanceof BirFormDraft) {
+            $state->setPending(['message' => $message, 'needs' => 'form']);
+
+            return self::result(self::NEEDS_NUMBER . ' That sounds like ' . BirFormFinder::line($found) . ". Reply \"form #{$found->id}\" to change it.", null, null, stay: true);
+        }
+        if ($found['ask']) {
+            $state->setPending(['message' => $message, 'needs' => $found['needs']]);
+        }
+
+        return self::result($found['reply'], null, null, null, $found['candidates'], stay: true);
     }
 
     /** A change on a draft or a form waiting for review. */
@@ -160,16 +206,11 @@ class BirChatCommands
         if ($change['answer'] === null) {
             return self::result($change['reply'], null, null, stay: true);
         }
-        $this->remember($state, $target, $change['answer']);
+        $this->undo->remember($state, $target, $change['answer']);
 
-        $where = '';
-        if ($current === null || $target->id !== $current->id) {
-            $where = 'On ' . BirFormFinder::describe($target) . ' (' . BirFormFinder::versionNote($target) . '): ';
-        }
-        if ($target->version > 1 && $current !== null && $current->id !== $target->id && $current->status === 'finalized'
-            && $current->period === $target->period && $current->employee_id === $target->employee_id) {
-            $where = 'The filed version stays as it is; the change was made on ' . BirFormFinder::correctionName($target) . " (#{$target->id}). ";
-        }
+        $where = $current === null || $target->id !== $current->id
+            ? 'On ' . BirFormFinder::describe($target) . ' (' . BirFormFinder::versionNote($target) . '): '
+            : '';
 
         return self::result($where . $change['reply'] . ' Say "undo" to put it back.', $target, $change['answer']);
     }
@@ -209,12 +250,11 @@ class BirChatCommands
     /** "yes" to a correction offer: the caller starts it (revise), then resume() makes the change. */
     private function accept(array $offer, ?BirFormDraft $current, BirConversationState $state, User $user, bool $canAct): array
     {
-        $filed = BirFormDraft::find($offer['source_id']);
-        $latest = $filed !== null ? $this->finder->latest($filed) : null;
+        $filed = BirFormDraft::with('employee')->find($offer['source_id']);
 
-        // Someone started a correction or the form moved on since: go again on its latest version.
-        if (!$canAct || $filed === null || $filed->status !== 'finalized' || $latest->id !== $filed->id) {
-            return $latest !== null
+        // Someone started a correction or the form moved on since: go again, which says where.
+        if (!$canAct || $filed === null || $filed->status !== 'finalized' || $this->finder->openCorrection($filed) !== null) {
+            return $filed !== null
                 ? $this->change($offer['message'], $current, $state, $user, $canAct)
                 : self::result('That form no longer exists, so nothing was changed.');
         }
@@ -264,59 +304,6 @@ class BirChatCommands
         return self::result("Sent {$current->form_type} #{$current->id} for review.{$note}", null, null, ['type' => 'submit', 'draft_id' => $current->id]);
     }
 
-    /** "undo" (the last change made here) or "undo item 6" (the last change to item 6). */
-    private function undo(?string $item, ?BirFormDraft $current, BirConversationState $state, User $user): array
-    {
-        $changes = $state->changes();
-        $index = null;
-        for ($i = count($changes) - 1; $i >= 0; $i--) {
-            if ($item === null || strtoupper((string) $changes[$i]['item']) === $item) {
-                $index = $i;
-                break;
-            }
-        }
-        if ($index === null) {
-            return self::result($item === null
-                ? 'There is nothing to undo. I can undo changes made here in the chat; changes made on the form itself have "Restore calculated" there.'
-                : "I haven't changed item {$item} in this conversation, so there is nothing to undo.", null, null, stay: true);
-        }
-
-        $change = $changes[$index];
-        $state->dropChange($index);
-        $draft = BirFormDraft::with('employee')->find($change['draft_id']);
-        if ($draft === null) {
-            return self::result('That form no longer exists, so there is nothing to undo.', null, null, stay: true);
-        }
-
-        $field = $this->conversation->field($draft->form_type, $change['field']);
-        $name = BirConversationService::boxName($field);
-        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)
-            || ($draft->status === 'pending' && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true))) {
-            return self::result("{$draft->form_type} #{$draft->id} is " . BirFormFinder::STATUS_WORDS[$draft->status] . " now, so the change to {$name} can't be undone here.", null, null, stay: true);
-        }
-
-        $now = ($draft->fields ?? [])[$change['field']]['value'] ?? null;
-        if (BirConversationService::same($now, $change['after']) === false) {
-            return self::result("{$name} has been changed again since (it is now " . BirConversationService::shown($now, $field) . '), so I left it as it is.', null, null, stay: true);
-        }
-
-        $before = $change['before'];
-        $was = $before['value'] ?? null;
-        $restore = match (true) {
-            ($before['origin'] ?? 'pending') === 'pending' || $was === null => null,
-            empty($before['edited']) && in_array($before['origin'], ['payroll', 'settings'], true) => null,
-            default => $was,
-        };
-        $back = match (true) {
-            $was === null || ($before['origin'] ?? 'pending') === 'pending' => "It is empty again.",
-            $restore === null => 'It is back to the calculated figure, ' . BirConversationService::shown($was, $field) . '.',
-            default => BirConversationService::sentence('It is back to ' . BirConversationService::shown($was, $field)),
-        };
-        $where = $current === null || $current->id !== $draft->id ? ' on ' . BirFormFinder::describe($draft) . " (#{$draft->id})" : '';
-
-        return self::result("Undid the change to {$name}{$where}. {$back}", $draft, ['field' => $change['field'], 'value' => $restore]);
-    }
-
     /**
      * "What is item 25A on Maria Santos's 2316 for 2026?" — what a box holds on any saved form.
      * Null when the message only asks what an item means on a form type ("what is item 14 on
@@ -331,7 +318,7 @@ class BirChatCommands
         if ($item === null && (preg_match(self::NOT_A_LOOKUP, $message)
             || !($wantsValue || BirAnswerParser::looksLikeQuestion($message))
             || !($wantsValue || BirFormFinder::specific($ref))
-            || ($ref['form_type'] ?? $current?->form_type) === null)) {
+            || ($ref['form_type'] ?? $current?->form_type ?? $ref['number']) === null)) {
             return null;
         }
 
@@ -340,7 +327,7 @@ class BirChatCommands
                 return null;
             }
             if ($current === null) {
-                return self::result('Which form do you mean? Name it with the box, for example "what is item 21 on Maria Santos\'s 2316 for 2026?"');
+                return self::result('Which form do you mean? Give its number or describe it with the box, for example "what is item 21 on form #12?" or "on Maria Santos\'s 2316 for 2026".');
             }
             $draft = $current;
         } else {
@@ -358,7 +345,7 @@ class BirChatCommands
             }
             if (is_string($parts)) {
                 if (str_starts_with($parts, 'Which one')) {
-                    $state->setPending($message); // "item 12" finishes it
+                    $state->setPending(['message' => $message, 'needs' => 'box']); // "item 12" finishes it
                 }
 
                 return self::result($parts, null, null, stay: true);
@@ -384,7 +371,7 @@ class BirChatCommands
             $was = array_map(fn (array $f) => BirConversationService::shown(($filed->fields ?? [])[$f['key']]['value'] ?? null, $f), $parts);
             $now = array_map(fn (array $f) => BirConversationService::shown(($draft->fields ?? [])[$f['key']]['value'] ?? null, $f), $parts);
             if ($was !== $now) {
-                $reply .= "\nThe filed version (version {$filed->version}) has " . implode('; ', $was) . '.';
+                $reply .= "\nThe filed version (form #{$filed->id}, version {$filed->version}) has " . implode('; ', $was) . '.';
             }
         }
 
@@ -434,24 +421,34 @@ class BirChatCommands
             return $found;
         }
         if ($found['ask']) {
-            $state->setPending($message); // "2026" or a picked name finishes it
+            $state->setPending(['message' => $message, 'needs' => $found['needs']]); // "2026", a name or "#9" finishes it
         }
 
         return self::result($found['reply'], null, null, null, $found['candidates'], stay: true);
     }
 
-    /** A short reply that adds what a command was missing ("2026", "EMP001"), never a new command. */
-    private function completes(string $message): bool
+    /**
+     * What a short reply adds to the command that asked for it, or null when it is a new
+     * message: a form number ("#9", "9", "form 9") or "the filed one" after a list of forms,
+     * an item number after a list of boxes, a year or a person after "Which year?".
+     */
+    private function completion(string $message, string $needs): ?string
     {
-        if (preg_match('/^\s*(?:item|box|#)\s*\d{1,2}[a-z]?\s*[.!?]?\s*$/i', $message)) {
-            return true; // "item 12" after "Which one do you mean?"
+        $short = str_word_count($message) <= 5 && !BirAnswerParser::looksLikeChange($message);
+        // A bare year ("2026") is a year even here; "#2026" or "form 2026" would be a number.
+        if ($needs === 'form' && preg_match('/^\s*(?:(form|draft)\s*(?:no\.?|number)?\s*)?(#)?\s*(\d{1,6})\s*[.!]?\s*$/i', $message, $m)
+            && ($m[1] !== '' || $m[2] !== '' || !preg_match('/^(19|20)\d{2}$/', $m[3]))) {
+            return "on form #{$m[3]}";
         }
-        if (str_word_count($message) > 5 || BirAnswerParser::looksLikeChange($message) || BirAnswerParser::itemMentioned($message) !== null) {
-            return false;
+        if ($needs === 'box' && preg_match('/^\s*(?:item|box|#)?\s*(\d{1,2}[a-z]?)\s*[.!?]?\s*$/i', $message, $m)) {
+            return 'item ' . strtoupper($m[1]);
+        }
+        if (!$short || BirAnswerParser::itemMentioned($message) !== null) {
+            return null;
         }
         $ref = $this->finder->reference($message);
 
-        return $ref['named'] || $ref['person'] === BirEmployeeResolver::MATCHED;
+        return $ref['named'] || $ref['person'] === BirEmployeeResolver::MATCHED ? $message : null;
     }
 
     /**
@@ -472,24 +469,14 @@ class BirChatCommands
         return [$value, ''];
     }
 
-    private function remember(BirConversationState $state, BirFormDraft $draft, array $answer): void
-    {
-        $state->rememberChange([
-            'draft_id' => $draft->id,
-            'field' => $answer['field'],
-            'item' => $this->conversation->field($draft->form_type, $answer['field'])['item'],
-            'before' => ($draft->fields ?? [])[$answer['field']] ?? [],
-            'after' => $answer['value'],
-        ]);
-    }
-
     /** Remember an answer to one of the chat's questions, so "undo" can take it back too. */
     public function rememberAnswer(BirConversationState $state, BirFormDraft $draft, array $answer): void
     {
-        $this->remember($state, $draft, $answer);
+        $this->undo->remember($state, $draft, $answer);
     }
 
-    private static function result(?string $reply, ?BirFormDraft $draft = null, ?array $answer = null, ?array $action = null, array $candidates = [], bool $stay = false): array
+    /** The shape every command returns (see the class comment). */
+    public static function result(?string $reply, ?BirFormDraft $draft = null, ?array $answer = null, ?array $action = null, array $candidates = [], bool $stay = false): array
     {
         return compact('reply', 'draft', 'answer', 'action', 'candidates', 'stay');
     }

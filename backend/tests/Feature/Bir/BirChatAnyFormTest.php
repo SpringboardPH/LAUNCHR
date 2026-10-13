@@ -11,6 +11,7 @@ use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
  */
 class BirChatAnyFormTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private const ADDRESS = '12 Mabini St., Brgy. San Roque, Quezon City';
@@ -66,7 +68,7 @@ class BirChatAnyFormTest extends TestCase
         BirFormDraft::whereKey($id)->update(['status' => 'approved']);
 
         $this->send("what is item 6 on Maria Santos's 2316 for 2026?", reset: true)
-            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (#{$id}, version 1, approved), \"Item 6, Registered Address\" is " . self::STORED . '.');
+            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$id}, version 1, approved), \"Item 6, Registered Address\" is " . self::STORED . '.');
 
         // By TIN, any word order, and a box with several parts.
         $reply = $this->send('show item 4 of the 2316 2026 for 920-919-920-00001')->json('data.reply');
@@ -78,12 +80,66 @@ class BirChatAnyFormTest extends TestCase
 
         $c = $this->draft1601C('2026-09');
         $this->send('how much is item 14 on the September 2026 1601-C?')
-            ->assertJsonPath('data.reply', "On the September 2026 1601-C (#{$c}, version 1, a draft), \"Item 14, Total Amount of Compensation\" is ₱30,000.00.");
+            ->assertJsonPath('data.reply', "On the September 2026 1601-C (form #{$c}, version 1, a draft), \"Item 14, Total Amount of Compensation\" is ₱30,000.00.");
 
         // A question about what an item means, with no form named, is still the help text.
         $this->assertStringStartsWith('"Item 14, Total Amount of Compensation": ', $this->send('what is item 14 on the 1601-C?')->json('data.reply'));
 
         $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_two_forms_with_the_same_details_are_listed_never_guessed(): void
+    {
+        // What user-side testing found: two drafts for the same person and year, one changed by
+        // hand, and the chat read the other one. They are two forms, told apart by number.
+        $old = $this->draft2316($this->maria, '2026');
+        $new = $this->draft2316($this->maria, '2026');
+        $this->save($new, ['employee_rdo_code' => '049']);
+
+        $this->send("what is item 5 on maria santos's 2316 for 2026?", reset: true)
+            ->assertJsonPath('data.reply', "More than one form fits. Which one do you mean?\n- form #{$new}: Maria Santos' 2316 for 2026, version 1, a draft\n- form #{$old}: Maria Santos' 2316 for 2026, version 1, a draft\nSay its number, for example \"form #{$new}\".");
+        $this->send("#{$new}")
+            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$new}, version 1, a draft), \"Item 5, RDO Code\" is 049.");
+
+        // By number, "form #" or "draft #" (never read as an item number).
+        $this->send("what is item 5 on form #{$old}?")->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$old}, version 1, a draft), \"Item 5, RDO Code\" is empty.");
+        $this->assertStringEndsWith('is 049.', $this->send("what is item 5 on draft #{$new}")->json('data.reply'));
+
+        // By status.
+        BirFormDraft::whereKey($old)->update(['status' => 'finalized']);
+        $this->assertStringContainsString("(form #{$old}, version 1, filed)", $this->send("what is item 5 on maria santos's filed 2316 for 2026?")->json('data.reply'));
+        $this->assertStringContainsString("(form #{$new}, version 1, a draft)", $this->send("what is item 5 on the draft 2316 for maria santos 2026?")->json('data.reply'));
+        $this->send("what is item 5 on maria santos's pending 2316 for 2026?")
+            ->assertJsonPath('data.reply', "There is no pending 2316 for Maria Santos for 2026 saved. Ask for it to prepare one, or check the details.");
+
+        // A number that doesn't fit the rest, or no such form.
+        $this->send("what is item 5 on form #{$old} for 2025?")
+            ->assertJsonPath('data.reply', "Form #{$old} is Maria Santos' 2316 for 2026 (form #{$old}, version 1, filed), which doesn't match the rest of what you said. Which form do you mean?");
+        $this->send('what is item 5 on form #999?')->assertJsonPath('data.reply', 'There is no form #999. Which form do you mean?');
+
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_versions_and_returned_forms_are_told_apart(): void
+    {
+        $v1 = $this->draft1601C('2026-09');
+        BirFormDraft::whereKey($v1)->update(['status' => 'finalized']);
+        $v2 = $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertCreated()->json('data.id');
+        $this->save($v2, ['sheets_attached' => 3]);
+
+        // An amendment not filed yet also says what the filed version holds.
+        $this->send('what is item 4 on amendment 1 of the September 2026 1601-C?', reset: true)
+            ->assertJsonPath('data.reply', "On the September 2026 1601-C (form #{$v2}, version 2, a draft), \"Item 4, Number of Sheet/s Attached\" is 3.\nThe filed version (form #{$v1}, version 1) has empty.");
+        $this->assertStringContainsString("(form #{$v1}, version 1, filed)", $this->send('what is item 4 on the original September 2026 1601-C?')->json('data.reply'));
+        $this->assertStringContainsString("(form #{$v2}, version 2", $this->send('what is item 4 on the latest September 2026 1601-C?')->json('data.reply'));
+        $this->assertStringContainsString("(form #{$v2}, version 2", $this->send('what is item 4 on version 2 of the September 2026 1601-C?')->json('data.reply'));
+
+        BirFormDraft::whereKey($v2)->update(['rejection_reason' => 'Check item 26.']);
+        $this->send('what is item 4 on the September 2026 1601-C?')
+            ->assertJsonPath('data.reply', "More than one form fits. Which one do you mean?\n- form #{$v2}: the September 2026 1601-C, version 2, returned for changes\n- form #{$v1}: the September 2026 1601-C, version 1, filed\nSay its number, for example \"form #{$v2}\".");
+        $this->send('the filed one')->assertJsonPath('data.reply', fn (string $r) => str_contains($r, "(form #{$v1}, version 1, filed)"));
+        $this->assertStringContainsString("(form #{$v2}, version 2, returned for changes)", $this->send('what is item 4 on the returned September 2026 1601-C?')->json('data.reply'));
+        $this->assertStringContainsString("(form #{$v2}, version 2, returned for changes)", $this->send('what is item 4 on the returned 1601-C?')->json('data.reply'), 'Only drafts the reviewer sent back.');
     }
 
     public function test_a_missing_year_or_person_is_asked_and_a_short_answer_finishes_the_question(): void
@@ -93,19 +149,18 @@ class BirChatAnyFormTest extends TestCase
         $this->save($id, ['employee_rdo_code' => '049']);
         $cruz = $this->employee('EMP002', 'Maria', 'Cruz', '111-222-333-000');
 
-        $this->send("what's in item 5 on maria santos's 2316?", reset: true)
-            ->assertJsonPath('data.reply', 'There are 2316s for Maria Santos for 2026 and 2025. Which year?');
+        $this->assertStringStartsWith("More than one form fits. Which one do you mean?\n- form #{$id}: Maria Santos' 2316 for 2026", $this->send("what's in item 5 on maria santos's 2316?", reset: true)->json('data.reply'));
         $this->send('2026')
-            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (#{$id}, version 1, a draft), \"Item 5, RDO Code\" is 049.");
+            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$id}, version 1, a draft), \"Item 5, RDO Code\" is 049.");
 
         $this->draft2316($cruz, '2026');
         $this->send("what's in item 5 on the 2316 for maria 2026?")
             ->assertJsonPath('data.reply', 'More than one person matches that: Maria Santos (EMP001), Maria Cruz (EMP002). Which one did you mean?')
             ->assertJsonCount(2, 'data.candidates');
-        $this->send('EMP001')->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (#{$id}, version 1, a draft), \"Item 5, RDO Code\" is 049.");
+        $this->send('EMP001')->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$id}, version 1, a draft), \"Item 5, RDO Code\" is 049.");
 
         $this->send('what is in item 5 on the 2316 for 2024 for maria santos')
-            ->assertJsonPath('data.reply', 'There is no 2316 for Maria Santos for 2024 saved yet. Ask for it to prepare one.');
+            ->assertJsonPath('data.reply', 'There is no 2316 for Maria Santos for 2024 saved. Ask for it to prepare one, or check the details.');
         $this->send('what is in item 5 of the 2316 for 555-555-555-000 2026')
             ->assertJsonPath('data.reply', 'No employee has the TIN 555-555-555-000. Please check the number.');
     }
@@ -114,7 +169,7 @@ class BirChatAnyFormTest extends TestCase
     {
         $id = $this->draft2316($this->maria, '2026');
         $this->save($id, ['employee_birthdate' => '1990-05-31']);
-        $on = "On Maria Santos' 2316 for 2026 (#{$id}, version 1, a draft), ";
+        $on = "On Maria Santos' 2316 for 2026 (form #{$id}, version 1, a draft), ";
 
         $this->send("what is the company TIN on Maria Santos's 2316 for 2026?", reset: true)
             ->assertJsonPath('data.reply', $on . '"Item 12, TIN" is 987-654-321-00000.');
@@ -128,7 +183,7 @@ class BirChatAnyFormTest extends TestCase
         $this->send('item 3')->assertJsonPath('data.reply', $on . '"Item 3, TIN" is 920-919-920-00001.');
 
         // On the open form, a value question by name; a box nobody has a name for is left to the model's list.
-        $this->assertMatchesRegularExpression('/^On Maria Santos\' 2316 for 2026 \(#\d+, version 1, a draft\), "Item 24, Tax Due" is ₱[\d,]+\.\d\d\./u', $this->chat($id, null, 'magkano ang tax due?')->json('data.reply'));
+        $this->assertMatchesRegularExpression('/^On Maria Santos\' 2316 for 2026 \(form #\d+, version 1, a draft\), "Item 24, Tax Due" is ₱[\d,]+\.\d\d\./u', $this->chat($id, null, 'magkano ang tax due?')->json('data.reply'));
         $this->assertSame([], $this->model->calls(), 'Box names are read in PHP.');
 
         $this->model->willReturn(['kind' => 'explain_source', 'field' => 'taxes_withheld_present']);
@@ -143,25 +198,47 @@ class BirChatAnyFormTest extends TestCase
         $this->assertStringStartsWith("I can't give tax advice", $this->send("how much is maria santos earning on her 2316 for 2026?")->json('data.reply'));
     }
 
-    // ---- Changing a box without opening the form, and undo
+    // ---- Changing a box: the open form, or another by its number; and undo
 
-    public function test_a_box_is_changed_on_a_form_that_is_not_open_then_undone(): void
+    public function test_a_form_that_is_not_open_is_only_changed_by_its_number(): void
     {
         $id = $this->draft2316($this->maria, '2026');
 
-        $res = $this->send('edit 2316 item #6 for maria santos, change it to ' . self::ADDRESS, reset: true)
+        // Details alone: the chat names the form that fits and asks for its number.
+        $this->send('edit 2316 item #6 for maria santos 2026, change it to ' . self::ADDRESS, reset: true)
+            ->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', "To change a form that isn't open here, I need its number. That sounds like form #{$id}: Maria Santos' 2316 for 2026, version 1, a draft. Reply \"form #{$id}\" to change it.");
+        $res = $this->send("#{$id}")
             ->assertJsonPath('data.draft_id', $id)
             ->assertJsonPath('data.answer', ['field' => 'employee_registered_address', 'value' => self::STORED]);
-        $this->assertSame("On Maria Santos' 2316 for 2026 (#{$id}, version 1, a draft): Changed \"Item 6, Registered Address\" to " . self::STORED . '. Say "undo" to put it back.', $res->json('data.reply'));
+        $this->assertSame("On Maria Santos' 2316 for 2026 (form #{$id}, version 1, a draft): Changed \"Item 6, Registered Address\" to " . self::STORED . '. Say "undo" to put it back.', $res->json('data.reply'));
         $this->save($id, $res->json('data.answer')); // what the chat panel does with an answer
 
-        // The form named after the value is read as the form, not saved as part of the address.
-        $this->send('change item 5 to 049 for maria santos 2026')
+        // With the number it is changed straight away, and the form named after the value is not part of it.
+        $this->send("change item 5 to 049 on form #{$id}")
             ->assertJsonPath('data.draft_id', $id)
             ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '049']);
         $this->save($id, ['employee_rdo_code' => '049']);
 
-        // Undo takes back the last change, then the one before.
+        // Two forms fit: both are listed, and the number picks one.
+        $other = $this->draft2316($this->maria, '2026');
+        $this->send('change item 5 on maria santos 2316 2026 to 051', reset: true)
+            ->assertJsonPath('data.reply', "To change a form that isn't open here, I need its number. These fit:\n- form #{$other}: Maria Santos' 2316 for 2026, version 1, a draft\n- form #{$id}: Maria Santos' 2316 for 2026, version 1, a draft\nSay its number, for example \"form #{$other}\".");
+        $this->send("form #{$other}")->assertJsonPath('data.draft_id', $other)->assertJsonPath('data.answer.value', '051');
+
+        // The form open in the chat needs no number.
+        $this->chat($id, null, 'change item 5 to 052')->assertJsonPath('data.draft_id', $id)->assertJsonPath('data.answer.value', '052');
+        $this->chat($id, null, 'change item 5 on maria santos 2316 2026 to 053')->assertJsonPath('data.draft_id', $id)->assertJsonPath('data.answer.value', '053');
+
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_undo_takes_back_the_chats_changes_newest_first(): void
+    {
+        $id = $this->draft2316($this->maria, '2026');
+        $this->save($id, $this->send('change item 6 on form #' . $id . ' to ' . self::ADDRESS, reset: true)->json('data.answer'));
+        $this->save($id, $this->send("change item 5 on form #{$id} to 049")->json('data.answer'));
+
         $this->chat($id, null, 'undo')
             ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => null])
             ->assertJsonPath('data.reply', 'Undid the change to "Item 5, RDO Code". It is empty again.');
@@ -172,8 +249,6 @@ class BirChatAnyFormTest extends TestCase
             'There is nothing to undo. I can undo changes made here in the chat; changes made on the form itself have "Restore calculated" there.',
             $this->chat($id, null, 'undo')->json('data.reply'),
         );
-
-        $this->assertSame([], $this->model->calls());
     }
 
     public function test_undo_brings_back_a_calculated_figure_and_never_overwrites_a_later_change(): void
@@ -202,16 +277,16 @@ class BirChatAnyFormTest extends TestCase
         $hr = User::factory()->create(['role' => 'hr']);
 
         BirFormDraft::whereKey($id)->update(['status' => 'pending']);
-        $this->actingAs($hr)->postJson('/api/bir/chat', ['message' => 'change item 5 on maria santos 2316 2026 to 049', 'reset' => true])
+        $this->actingAs($hr)->postJson('/api/bir/chat', ['message' => "change item 5 on form #{$id} to 049", 'reset' => true])
             ->assertJsonPath('data.answer', null)
             ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 is waiting for review, and only accounting can change it now. You can still ask what any box holds.");
-        $this->send('change item 5 on maria santos 2316 2026 to 049', reset: true)
+        $this->send("change item 5 on form #{$id} to 049", reset: true)
             ->assertJsonPath('data.answer.value', '049');
 
         BirFormDraft::whereKey($id)->update(['status' => 'approved']);
-        $this->send('change item 5 on maria santos 2316 2026 to 049')
+        $this->send("change item 5 on form #{$id} to 049")
             ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 (#{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
+            ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 (form #{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
     }
 
     // ---- A filed form: corrected in a new version, never changed
@@ -220,7 +295,7 @@ class BirChatAnyFormTest extends TestCase
     {
         $id = $this->draft2316($this->maria, '2026');
         BirFormDraft::whereKey($id)->update(['status' => 'finalized']);
-        $change = 'change item 6 on maria santos 2316 2026 to ' . self::ADDRESS;
+        $change = "change item 6 on form #{$id} to " . self::ADDRESS;
 
         // A chat panel that can't start a correction is only pointed to the button.
         $this->send($change, reset: true)
@@ -240,19 +315,20 @@ class BirChatAnyFormTest extends TestCase
         $this->chat($v2, null, null, actions: true)
             ->assertJsonPath('data.draft_id', $v2)
             ->assertJsonPath('data.answer', ['field' => 'employee_registered_address', 'value' => self::STORED])
-            ->assertJsonPath('data.reply', "Started correction version 2 (#{$v2}) from Maria Santos' 2316 for 2026. The filed version stays as it is. Changed \"Item 6, Registered Address\" to " . self::STORED . '. Tell me any other changes, and say done when the correction is finished.');
+            ->assertJsonPath('data.reply', "Started correction version 2 (form #{$v2}) from Maria Santos' 2316 for 2026. The filed version stays as it is. Changed \"Item 6, Registered Address\" to " . self::STORED . '. Tell me any other changes, and say done when the correction is finished.');
         $this->save($v2, ['employee_registered_address' => self::ADDRESS]);
         $this->assertNull(BirFormDraft::findOrFail($id)->fields['employee_registered_address']['value'], 'The filed version is untouched.');
 
-        // Asked again about the filed form, the open correction is changed instead.
-        $this->send('change item 5 on maria santos 2316 2026 to 049', reset: true)
-            ->assertJsonPath('data.draft_id', $v2)
-            ->assertJsonPath('data.answer.value', '049');
+        // Asked again about the filed form: its open correction is named, and its number makes the change.
+        $this->send("change item 5 on form #{$id} to 049", reset: true)
+            ->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', "Form #{$id} (Maria Santos' 2316 for 2026) is filed, so it can't be changed. Its correction, form #{$v2} (version 2, a draft), is still open. Reply \"form #{$v2}\" to make the change there.");
+        $this->send("#{$v2}")->assertJsonPath('data.draft_id', $v2)->assertJsonPath('data.answer.value', '049');
 
         // "no" to an offer changes nothing.
         $this->save($v2, ['employee_rdo_code' => '049']);
         BirFormDraft::whereKey($v2)->update(['status' => 'finalized']);
-        $this->send($change, actions: true);
+        $this->send("change item 6 on form #{$v2} to " . self::ADDRESS, actions: true);
         $this->send('no', actions: true)->assertJsonPath('data.reply', 'Okay, nothing was changed.')->assertJsonPath('data.action', null);
 
         $this->assertSame([], $this->model->calls());
@@ -260,13 +336,9 @@ class BirChatAnyFormTest extends TestCase
 
     public function test_a_filed_1601c_counts_its_amendments_up_to_the_monthly_limit(): void
     {
-        if (!defined(BirFormDraft::class . '::AMENDMENT_LIMITS')) {
-            $this->markTestSkipped('Needs the 1601-C amendment limit in BirFormDraft (Dev B).');
-        }
-
         $v1 = $this->draft1601C('2026-09');
         BirFormDraft::whereKey($v1)->update(['status' => 'finalized']);
-        $this->send('change item 4 on the September 2026 1601-C to 2', reset: true, actions: true)
+        $this->send("change item 4 on form #{$v1} to 2", reset: true, actions: true)
             ->assertJsonPath('data.reply', "The September 2026 1601-C is filed, so it can't be changed. It has 5 of 5 amendments left. To fix it, open it and click \"Start a correction\", or reply yes and I'll start amendment 1 of 5 and make the change there.");
 
         // "yes": the panel starts amendment 1 through revise, then the chat makes the change.
@@ -274,12 +346,12 @@ class BirChatAnyFormTest extends TestCase
         $v2 = $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertCreated()->json('data.id');
         $this->chat($v2, null, null, actions: true)
             ->assertJsonPath('data.answer', ['field' => 'sheets_attached', 'value' => 2])
-            ->assertJsonPath('data.reply', "Started amendment 1 (#{$v2}) from the September 2026 1601-C. The filed version stays as it is. Changed \"Item 4, Number of Sheet/s Attached\" to 2. Tell me any other changes, and say done when the amendment is finished.");
+            ->assertJsonPath('data.reply', "Started amendment 1 (form #{$v2}) from the September 2026 1601-C. The filed version stays as it is. Changed \"Item 4, Number of Sheet/s Attached\" to 2. Tell me any other changes, and say done when the amendment is finished.");
 
         // Amendment 5 filed: nothing more can be offered, and revise refuses a sixth.
         BirFormDraft::whereKey($v2)->delete();
         BirFormDraft::whereKey($v1)->update(['version' => 6]);
-        $this->send('change item 4 on the September 2026 1601-C to 2', actions: true)
+        $this->send("change item 4 on form #{$v1} to 2", actions: true)
             ->assertJsonPath('data.reply', "The September 2026 1601-C is filed and has already been amended 5 times, the most allowed for one month, so it can't be changed or amended again.");
         $this->send('yes', actions: true)->assertJsonPath('data.action', null);
         $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertStatus(400);

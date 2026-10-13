@@ -92,6 +92,9 @@ final class BirAnswerParser
      */
     public static function itemMentioned(string $message): ?string
     {
+        // "draft #12" and "form #12" are a form's number, never item 12.
+        $message = BirFormFinder::withoutFormNumber($message);
+
         return preg_match('/(?:\bitem|\bbox|#)\s*(\d{1,2}[a-z]?)\b/i', $message, $m) ? strtoupper($m[1]) : null;
     }
 

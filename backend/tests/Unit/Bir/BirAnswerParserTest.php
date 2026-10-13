@@ -3,6 +3,7 @@
 namespace Tests\Unit\Bir;
 
 use App\Services\BIR\BirAnswerParser;
+use App\Services\BIR\BirFormFinder;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -126,6 +127,15 @@ class BirAnswerParserTest extends TestCase
         $this->assertSame('12', BirAnswerParser::itemMentioned('in form 2316 what is #12 the TIN'));
         $this->assertSame('7', BirAnswerParser::itemMentioned('set box 7 = 05/31/1990'));
         $this->assertNull(BirAnswerParser::itemMentioned('the 2316 for 2025'));
+
+        // A form's number is never an item: "draft #12" and "form #12" name form 12.
+        $this->assertSame('5', BirAnswerParser::itemMentioned('what is item 5 on draft #12'));
+        $this->assertNull(BirAnswerParser::itemMentioned('open form #12'));
+        $this->assertSame(12, BirFormFinder::formNumber('what is item 5 on draft #12'));
+        $this->assertSame(7, BirFormFinder::formNumber('form no. 7'));
+        $this->assertSame(9, BirFormFinder::formNumber('change item 5 on form #7 to 049 on form #9'), 'The last one given wins.');
+        $this->assertNull(BirFormFinder::formNumber('in form 2316 what is #12'), '"form 2316" is the form type.');
+        $this->assertNull(BirFormFinder::formNumber('the form 1601-C for September'));
     }
 
     public function test_a_field_signed_by_hand_is_never_taken_from_the_chat(): void

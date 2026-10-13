@@ -128,15 +128,23 @@ class BirConversationState
         return Cache::get($this->key() . ':offer');
     }
 
-    /** @param ?string $message a command still missing a year or a person; null clears it */
-    public function setPending(?string $message): void
+    /**
+     * A command still missing something, and what a short reply should give: "form" (a form
+     * number), "box" (an item number) or "detail" (a year or a person). null clears it.
+     *
+     * @param  ?array{message: string, needs: string}  $pending
+     */
+    public function setPending(?array $pending): void
     {
-        $message === null ? Cache::forget($this->key() . ':pending') : $this->put('pending', $message);
+        $pending === null ? Cache::forget($this->key() . ':pending') : $this->put('pending', $pending);
     }
 
-    public function pending(): ?string
+    /** @return ?array{message: string, needs: string} */
+    public function pending(): ?array
     {
-        return Cache::get($this->key() . ':pending');
+        $pending = Cache::get($this->key() . ':pending');
+
+        return is_array($pending) ? $pending : null;
     }
 
     private function put(string $part, mixed $value): void

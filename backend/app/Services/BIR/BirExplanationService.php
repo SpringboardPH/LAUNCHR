@@ -40,7 +40,7 @@ class BirExplanationService
     public const WHICH_FORM = 'Which form do you mean: the 1601-C or the 2316? For example: "what is item 12 on the 2316?"';
 
     /** A request to change a box that names no form, with no form open in the chat. */
-    public const OPEN_A_FORM = 'Which form should I change? Name it with the box, for example "change item 6 on Maria Santos\'s 2316 for 2026 to …", or open the form here first.';
+    public const OPEN_A_FORM = 'Which form should I change? Give its number with the box, for example "change item 6 on form #12 to …", or open the form here first.';
 
     /** "Where did item 25A come from?" with no draft: only a draft has figures. */
     public const SOURCE_NEEDS_DRAFT = 'Where its figure comes from depends on the draft. Open a draft of that form and ask again.';
