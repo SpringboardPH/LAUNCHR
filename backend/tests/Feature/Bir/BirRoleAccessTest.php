@@ -8,6 +8,7 @@ use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -21,6 +22,7 @@ use Tests\TestCase;
  */
 class BirRoleAccessTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private const ALL = ['admin', 'hr', 'accounting'];

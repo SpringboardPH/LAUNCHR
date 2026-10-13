@@ -6,6 +6,7 @@ use App\Models\BirFormDraft;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -15,6 +16,7 @@ use Tests\TestCase;
  */
 class BirPendingEditTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_the_approver_can_edit_a_pending_form_and_it_stays_pending(): void

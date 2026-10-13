@@ -7,6 +7,7 @@ use App\Services\BIR\BirConversationState;
 use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -17,6 +18,7 @@ use Tests\TestCase;
  */
 class BirConversationStateTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_established_values_survive_the_next_message(): void

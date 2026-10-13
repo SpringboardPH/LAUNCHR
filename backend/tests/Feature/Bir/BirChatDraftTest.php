@@ -11,6 +11,7 @@ use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ use Tests\TestCase;
  */
 class BirChatDraftTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private User $accounting;

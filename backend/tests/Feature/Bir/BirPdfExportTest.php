@@ -10,6 +10,7 @@ use App\Services\BIR\BirPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -20,6 +21,7 @@ use Tests\TestCase;
  */
 class BirPdfExportTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private User $accounting;

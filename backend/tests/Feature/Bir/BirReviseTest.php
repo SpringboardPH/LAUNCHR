@@ -5,6 +5,7 @@ namespace Tests\Feature\Bir;
 use App\Models\BirFormDraft;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -13,6 +14,7 @@ use Tests\TestCase;
  */
 class BirReviseTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_revising_a_finalized_form_creates_the_next_version_and_leaves_it_untouched(): void

@@ -7,10 +7,12 @@ use App\Models\Employee;
 use App\Models\Payroll;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 class BirWorkflowTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private function makeDraft(string $status, User $preparer): BirFormDraft

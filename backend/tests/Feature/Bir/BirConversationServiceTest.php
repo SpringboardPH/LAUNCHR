@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\BIR\BirConversationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class BirConversationServiceTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_a_real_2316_for_a_mid_year_hire_lists_previous_employer_figures_once_confirmed(): void

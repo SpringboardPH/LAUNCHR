@@ -5,6 +5,7 @@ namespace Tests\Feature\Bir;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -13,6 +14,7 @@ use Tests\TestCase;
  */
 class BirDraftUpdateTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_entering_a_part_updates_the_totals_after_it(): void

@@ -11,6 +11,7 @@ use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
  */
 class BirChatAnyFormTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private const ADDRESS = '12 Mabini St., Brgy. San Roque, Quezon City';
