@@ -421,13 +421,19 @@ class BirFormController extends Controller
         // Numbered after the highest version of this form (type, period, employee), not the
         // parent's: revising the same filed v1 twice gives v2 then v3, never two v2s. Whether
         // only the latest version may be revised is still open with the accountant. The lock
-        // keeps two revisions created at the same moment from reading the same highest version.
-        $revision = DB::transaction(function () use ($draft, $request) {
+        // keeps two revisions created at the same moment from reading the same highest version,
+        // and so from both getting past the amendment limit (null: the limit is reached).
+        $limit = BirFormDraft::AMENDMENT_LIMITS[$draft->form_type] ?? null;
+        $revision = DB::transaction(function () use ($draft, $request, $limit) {
             $highest = BirFormDraft::where('form_type', $draft->form_type)
                 ->where('period', $draft->period)
                 ->where('employee_id', $draft->employee_id)
                 ->lockForUpdate()
                 ->max('version');
+
+            if ($limit !== null && $highest - 1 >= $limit) {
+                return null;
+            }
 
             return BirFormDraft::create([
                 'form_type' => $draft->form_type,
@@ -444,6 +450,13 @@ class BirFormController extends Controller
                 'validation_errors' => [],
             ]);
         });
+
+        if ($revision === null) {
+            return response()->json([
+                'success' => false,
+                'message' => "This {$draft->form_type} has already been amended {$limit} times for {$draft->period}, the most allowed for one month",
+            ], 400);
+        }
 
         $revision->load('preparer', 'approver', 'employee');
 

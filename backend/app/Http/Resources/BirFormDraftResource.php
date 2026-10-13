@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\BirFormDraft;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,6 +16,8 @@ class BirFormDraftResource extends JsonResource
     public function toArray(Request $request): array
     {
         // source_snapshot (the frozen payroll rows) must never appear in API output.
+        $limit = BirFormDraft::AMENDMENT_LIMITS[$this->form_type] ?? null;
+
         return [
             'id' => $this->id,
             'form_type' => $this->form_type,
@@ -24,6 +27,8 @@ class BirFormDraftResource extends JsonResource
             'status' => $this->status,
             'version' => $this->version,
             'parent_id' => $this->parent_id,
+            // A form with an amendment limit (1601-C): how many of its month's amendments are made.
+            'amendments' => $limit === null ? null : ['made' => $this->amendmentsMade(), 'limit' => $limit],
             'prepared_by' => $this->whenLoaded('preparer', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'approved_by' => $this->whenLoaded('approver', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'rejection_reason' => $this->rejection_reason,

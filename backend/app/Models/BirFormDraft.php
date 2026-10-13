@@ -27,6 +27,14 @@ class BirFormDraft extends Model
      */
     public const PENDING_EDITOR_ROLES = ['accounting'];
 
+    /**
+     * How many times a filed form may be amended, by form type: a 1601-C five times per
+     * month (supervisor's rule). Each amendment is one version after the original, however
+     * many boxes it changes. A form type not listed has no limit (the 2316). Read by revise()
+     * and by the chat (BirFormFinder::amendmentLimit), so the button and the chat agree.
+     */
+    public const AMENDMENT_LIMITS = ['1601-C' => 5];
+
     protected $fillable = [
         'form_type',
         'period',
@@ -53,6 +61,15 @@ class BirFormDraft extends Model
         'validation_errors' => 'array',
         'version' => 'integer',
     ];
+
+    /** Amendments made to this form so far: its highest version, less the original. */
+    public function amendmentsMade(): int
+    {
+        return (int) self::where('form_type', $this->form_type)
+            ->where('period', $this->period)
+            ->where('employee_id', $this->employee_id)
+            ->max('version') - 1;
+    }
 
     public function employee()
     {

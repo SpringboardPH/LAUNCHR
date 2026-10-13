@@ -83,6 +83,7 @@ the move itself is not allowed from the current status.
 | `status` | See §4 |
 | `version` | Starts at 1. Incremented by `revise`. |
 | `parent_id` | `id` of the finalized draft this one corrects, set by `revise`. Null on an original draft. |
+| `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
 | `prepared_by` | `{ id, name }` of whoever created the draft |
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
 | `rejection_reason` | Text a reviewer gave when returning the draft, else null |
@@ -506,6 +507,13 @@ same form (form type, period and employee) so two drafts never share a number, `
 `rejection_reason` cleared, `prepared_by` set to the current user. The original
 is untouched.
 
+A 1601-C can be amended 5 times per month (supervisor's rule,
+`BirFormDraft::AMENDMENT_LIMITS`): once the month's highest version is 6, `revise`
+returns 400 "This 1601-C has already been amended 5 times for 2026-07, the most
+allowed for one month" and creates nothing. An amendment counts once, however many
+boxes it changes. A 2316 has no limit. The chat (`POST /bir/chat`) offers to start
+a correction only while `revise` would allow it, and starts it through this endpoint.
+
 ### GET /bir/drafts/{id}/export
 
 Returns the official BIR form as a PDF (`Content-Type: application/pdf`), filled
@@ -539,8 +547,8 @@ form as real values. In a freshly seeded database most company details are
 still placeholders. They show as `pending` until someone enters the real
 registration details.
 
-**Any finalized version can be revised, any number of times.** Decided: there is
-no limit on revisions. Versions never repeat — revising the same filed v1 twice
+**Any finalized version can be revised; a 1601-C at most 5 times a month.** Decided:
+a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Versions never repeat — revising the same filed v1 twice
 gives v2 then v3, both with `parent_id` pointing at v1. Still open with the
 accountant: whether "no limit" means a chain, where only the latest finalized
 version may be revised. If so, `revise` will refuse older versions; the
