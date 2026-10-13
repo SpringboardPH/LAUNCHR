@@ -182,7 +182,7 @@ class BirFormController extends Controller
         if ($request->refusedByRole()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only accounting can edit a form that has been submitted for review',
+                'message' => 'Only accounting can edit a form that is under review or approved',
             ], 403);
         }
 

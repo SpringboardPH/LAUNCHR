@@ -11,8 +11,9 @@ use Tests\TestCase;
 
 /**
  * A submitted (pending) form can be edited, so the approver can correct it and approve it
- * in the same step (contract §5). The same answer checks apply as on a draft, and approved
- * and finalized forms stay locked.
+ * in the same step (contract §5). An approved form can be edited until it is filed, which
+ * sends it back to draft. Both are accounting-only. The same answer checks apply as on a
+ * draft, and finalized forms stay locked.
  */
 class BirPendingEditTest extends TestCase
 {
@@ -70,23 +71,32 @@ class BirPendingEditTest extends TestCase
         $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/finalize")->assertStatus(400);
     }
 
-    public function test_admin_and_hr_cannot_edit_a_pending_form(): void
+    /** Pending and approved forms are accounting-only: an approval can't be cancelled by admin or HR. */
+    public function test_admin_and_hr_cannot_edit_a_pending_or_approved_form(): void
     {
-        $id = $this->createWithStatus('pending');
-        $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
-        $roleRefusal = ['success' => false, 'message' => 'Only accounting can edit a form that has been submitted for review'];
+        $roleRefusal = ['success' => false, 'message' => 'Only accounting can edit a form that is under review or approved'];
 
-        foreach (['admin', 'hr'] as $role) {
-            $user = User::factory()->create(['role' => $role]);
+        foreach (['pending', 'approved'] as $status) {
+            $id = $this->createWithStatus($status);
+            $approver = $status === 'approved' ? $this->accounting()->id : null;
+            BirFormDraft::whereKey($id)->update(['approved_by' => $approver]);
+            $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
 
-            $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])
-                ->assertForbidden()->assertJson($roleRefusal);
-            // A bad value is still 403, not 422: the role is checked before the answers.
-            $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1,000.00']])
-                ->assertForbidden()->assertJson($roleRefusal);
+            foreach (['admin', 'hr'] as $role) {
+                $user = User::factory()->create(['role' => $role]);
+
+                $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])
+                    ->assertForbidden()->assertJson($roleRefusal);
+                // A bad value is still 403, not 422: the role is checked before the answers.
+                $this->actingAs($user)->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1,000.00']])
+                    ->assertForbidden()->assertJson($roleRefusal);
+            }
+
+            $after = BirFormDraft::findOrFail($id);
+            $this->assertSame($before, $after->fields['surcharge'], "The {$status} form was changed.");
+            $this->assertSame($status, $after->status, "The {$status} form changed status.");
+            $this->assertSame($approver, $after->approved_by, "The {$status} form lost its approver.");
         }
-
-        $this->assertSame($before, BirFormDraft::findOrFail($id)->fields['surcharge'], 'Pending form was changed.');
     }
 
     public function test_admin_and_hr_can_still_edit_a_draft(): void

@@ -16,7 +16,7 @@ If something here has to change after sign-off, raise it on Friday under
 All routes are under `/api/bir`, behind `auth:sanctum` and
 `role:admin,hr,accounting`. Employees cannot reach any of them. `approve`,
 `reject` and `finalize` also need `role:accounting`, and only accounting may
-`PUT` to a pending form (§5). The two switch routes, `PUT /bir/switch` and
+`PUT` to a pending or approved form (§5). The two switch routes, `PUT /bir/switch` and
 `PUT /bir/switch/password`, are admin-only and allow 5 tries a minute (§6).
 
 **Feature switch:** while the system setting `bir_forms_enabled` is off (or has
@@ -51,7 +51,7 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (finalized) |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
 | 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
@@ -442,10 +442,10 @@ approver can correct a submitted form before approving it; a pending form stays
 `pending`. An approved form that is changed goes back to `draft` with
 `approved_by` cleared, so it has to be submitted and approved again before it
 can be filed. A finalized form returns 400 "Only draft, pending and approved
-forms can be edited; this form is in finalized status". A pending form can be edited by
-accounting only: admin and HR get 403 "Only accounting can edit a form that has
-been submitted for review", whatever the body (checked before the answers, so
-never a 422). Anyone who reaches `/bir` can edit a `draft`.
+forms can be edited; this form is in finalized status". A pending or approved
+form can be edited by accounting only: admin and HR get 403 "Only accounting can
+edit a form that is under review or approved", whatever the body (checked before
+the answers, so never a 422), and an approved form keeps its approval. Anyone who reaches `/bir` can edit a `draft`.
 
 After merging the answers, `PUT` recalculates the form's totals (Dev A's
 `BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
