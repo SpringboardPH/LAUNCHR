@@ -50,7 +50,7 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move, or a form that is locked (approved or finalized) |
+| 400 | Illegal status move, or a form that is locked (finalized) |
 | 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
@@ -108,6 +108,8 @@ the move itself is not allowed from the current status.
 | `status` | See §4 |
 | `version` | Starts at 1. Incremented by `revise`. |
 | `parent_id` | `id` of the finalized draft this one corrects, set by `revise`. Null on an original draft. |
+| `root_id` | `id` of the original (version 1) this form is a version of: `parent_id` followed back. Its own `id` on an original. |
+| `label` | How the form is named on screen and in the chat: `"#64"` for an original, `"#64v2"` for its second version, `"#64v3"` for the third. Every version shares the original's number. |
 | `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
 | `prepared_by` | `{ id, name }` of whoever created the draft |
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
@@ -299,9 +301,11 @@ draft ──submit──▶ pending ──approve──▶ approved ──finali
 
 Any other move returns 400 naming the current status. `submit` and `approve`
 also check the form first and refuse it with 422 if it has any `severity: error`
-entry (§6). Fields can be edited in `draft` and `pending` only; an approved or
-finalized form is locked. A finalized form is never edited or moved;
-corrections start a new version and leave the original as filed.
+entry (§6). Fields can be edited in `draft`, `pending` and `approved` (supervisor's
+rule): an approved form isn't filed yet, so a change sends it back to `draft`
+(`approved_by` cleared), to be submitted and approved again. A finalized form is
+locked: never edited or moved; corrections start a new version and leave the
+original as filed.
 
 **Who may approve:** accounting only, confirmed by the supervisor and enforced
 since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
@@ -433,10 +437,12 @@ Both required. 201 with the new draft.
 Flat key to value. The server sets `origin`, `edited` and the provenance keys —
 Dev D never sends those.
 
-Editing is allowed in `draft` and `pending` status, so the approver can correct
-a submitted form before approving it (§5). A pending form stays `pending`. An
-approved or finalized form returns 400 "Only draft and pending forms can be
-edited; this form is in approved status". A pending form can be edited by
+Editing is allowed in `draft`, `pending` and `approved` status (§5). The
+approver can correct a submitted form before approving it; a pending form stays
+`pending`. An approved form that is changed goes back to `draft` with
+`approved_by` cleared, so it has to be submitted and approved again before it
+can be filed. A finalized form returns 400 "Only draft, pending and approved
+forms can be edited; this form is in finalized status". A pending form can be edited by
 accounting only: admin and HR get 403 "Only accounting can edit a form that has
 been submitted for review", whatever the body (checked before the answers, so
 never a 422). Anyone who reaches `/bir` can edit a `draft`.
@@ -560,7 +566,9 @@ Only on a finalized draft, else 400. Returns 201 with a copy in `draft` status,
 `parent_id` set to the original, `version` one above the highest version of the
 same form (form type, period and employee) so two drafts never share a number, `approved_by` and
 `rejection_reason` cleared, `prepared_by` set to the current user. The original
-is untouched.
+is untouched. On a 1601-C the copy's item 2 "Amended Return?" (`is_amended`) is
+set to Yes, since every version after the original is an amended return; its
+`label` is the original's number with the version, like `"#64v2"`.
 
 A 1601-C can be amended 5 times per month (supervisor's rule,
 `BirFormDraft::AMENDMENT_LIMITS`): once the month's highest version is 6, `revise`

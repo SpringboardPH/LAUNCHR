@@ -16,10 +16,12 @@ class BirFormDraft extends Model
 
     /**
      * Statuses whose fields can be changed with PUT. pending is included so the approver can
-     * correct a submitted form and approve it in the same step (contract §5). Read by both
+     * correct a submitted form and approve it in the same step (contract §5). approved is
+     * included because an approved form isn't filed yet (supervisor's rule): changing it sends
+     * it back to draft (reopenIfApproved()), to be submitted and approved again. Read by both
      * UpdateBirDraftFieldsRequest and BirFormController::update(), so they can't drift apart.
      */
-    public const EDITABLE_STATUSES = ['draft', 'pending'];
+    public const EDITABLE_STATUSES = ['draft', 'pending', 'approved'];
 
     /**
      * Roles that may edit a pending form; anyone else gets 403 (contract §5). A draft can be
@@ -61,6 +63,53 @@ class BirFormDraft extends Model
         'validation_errors' => 'array',
         'version' => 'integer',
     ];
+
+    /**
+     * The number of the original this form is a version of (its own for an original):
+     * parent_id followed back, since revise sets it to the version that was revised.
+     */
+    public function rootId(): int
+    {
+        $seen = [];
+        $form = $this;
+        while ($form->parent_id !== null && !isset($seen[$form->id]) && ($parent = self::find($form->parent_id)) !== null) {
+            $seen[$form->id] = true;
+            $form = $parent;
+        }
+
+        return $form->id;
+    }
+
+    /** "#64" for an original, "#64v2" for its second version: every version shares the original's number. */
+    public function label(): string
+    {
+        return '#' . $this->rootId() . ($this->version > 1 ? "v{$this->version}" : '');
+    }
+
+    /** An approved form that is changed goes back to draft: it has to be submitted and approved again. */
+    public function reopenIfApproved(): void
+    {
+        if ($this->status === 'approved') {
+            $this->status = 'draft';
+            $this->approved_by = null;
+        }
+    }
+
+    /**
+     * The fields a new version starts with: a copy of the filed one's. On a 1601-C, item 2
+     * "Amended Return?" is Yes, since every version after the original is an amended return.
+     *
+     * @return array<string, mixed>
+     */
+    public static function fieldsForRevision(self $filed): array
+    {
+        $fields = $filed->fields ?? [];
+        if ($filed->form_type === '1601-C') {
+            $fields['is_amended'] = ['value' => true, 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null];
+        }
+
+        return $fields;
+    }
 
     /** Amendments made to this form so far: its highest version, less the original. */
     public function amendmentsMade(): int

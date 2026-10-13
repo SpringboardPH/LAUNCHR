@@ -27,6 +27,9 @@ class BirFormDraftResource extends JsonResource
             'status' => $this->status,
             'version' => $this->version,
             'parent_id' => $this->parent_id,
+            // The original's id, and the label the screens show: "#64", then "#64v2" for version 2.
+            'root_id' => $this->rootId(),
+            'label' => $this->label(),
             // A form with an amendment limit (1601-C): how many of its month's amendments are made.
             'amendments' => $limit === null ? null : ['made' => $this->amendmentsMade(), 'limit' => $limit],
             'prepared_by' => $this->whenLoaded('preparer', fn ($user) => ['id' => $user->id, 'name' => $user->name]),

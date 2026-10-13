@@ -74,6 +74,23 @@ class BirReviseTest extends TestCase
         $this->actingAs($this->accounting())->getJson("/api/bir/drafts/{$july->id}")->assertJsonPath('data.amendments', ['made' => 1, 'limit' => 5]);
     }
 
+    public function test_a_1601c_amendment_is_marked_amended_and_every_version_is_labelled_by_its_original(): void
+    {
+        $original = $this->finalized('2026-07', 1);
+
+        $v2 = $this->revise($original->id)->assertCreated()
+            ->assertJsonPath('data.fields.is_amended.value', true) // item 2 "Amended Return?" is Yes
+            ->assertJsonPath('data.root_id', $original->id)
+            ->assertJsonPath('data.label', "#{$original->id}v2")
+            ->json('data.id');
+        BirFormDraft::whereKey($v2)->update(['status' => 'finalized']);
+        $this->revise($v2)->assertCreated()->assertJsonPath('data.label', "#{$original->id}v3");
+
+        $this->actingAs($this->accounting())->getJson("/api/bir/drafts/{$original->id}")
+            ->assertJsonPath('data.label', "#{$original->id}")
+            ->assertJsonPath('data.root_id', $original->id);
+    }
+
     public function test_only_a_finalized_form_can_be_revised(): void
     {
         $draft = BirFormDraft::create([

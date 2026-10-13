@@ -159,8 +159,8 @@ class BirFormController extends Controller
     }
 
     /**
-     * Saves answers to a draft or pending form (BirFormDraft::EDITABLE_STATUSES); pending lets
-     * the approver (accounting only) correct a submitted form before approving it.
+     * Saves answers to a draft, pending or approved form (BirFormDraft::EDITABLE_STATUSES); pending
+     * lets accounting correct a submitted form; an approved one goes back to draft (reopenIfApproved).
      * UpdateBirDraftFieldsRequest has already refused unknown keys and values that don't suit
      * their field (422); it skips those checks for a missing or locked form, or a pending one
      * the caller's role may not edit, so the 404, 400 and 403 below still come first.
@@ -175,7 +175,7 @@ class BirFormController extends Controller
         if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)) {
             return response()->json([
                 'success' => false,
-                'message' => "Only draft and pending forms can be edited; this form is in {$draft->status} status",
+                'message' => "Only draft, pending and approved forms can be edited; this form is in {$draft->status} status",
             ], 400);
         }
 
@@ -197,6 +197,7 @@ class BirFormController extends Controller
         // Totals follow their parts. A total someone typed (edited) is never overwritten, so a
         // hand-typed total that doesn't add up is still left for the validator to flag.
         $draft->fields = BirFormMapper::recalculate($draft->form_type, $fields);
+        $draft->reopenIfApproved();
         $draft->save();
 
         $draft->load('preparer', 'approver', 'employee');
@@ -449,16 +450,14 @@ class BirFormController extends Controller
                 'approved_by' => null,
                 'rejection_reason' => null,
                 // stdClass so an empty set stores {} rather than [].
-                'fields' => $draft->fields ?: new \stdClass(),
+                'fields' => BirFormDraft::fieldsForRevision($draft) ?: new \stdClass(),
                 'validation_errors' => [],
             ]);
         });
 
         if ($revision === null) {
-            return response()->json([
-                'success' => false,
-                'message' => "This {$draft->form_type} has already been amended {$limit} times for {$draft->period}, the most allowed for one month",
-            ], 400);
+            $message = "This {$draft->form_type} has already been amended {$limit} times for {$draft->period}, the most allowed for one month";
+            return response()->json(['success' => false, 'message' => $message], 400);
         }
 
         $revision->load('preparer', 'approver', 'employee');

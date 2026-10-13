@@ -43,18 +43,31 @@ class BirPendingEditTest extends TestCase
             ->assertJsonValidationErrors(['fields.surcharge']);
     }
 
-    public function test_approved_and_finalized_forms_stay_locked(): void
+    public function test_a_finalized_form_stays_locked(): void
     {
-        foreach (['approved', 'finalized'] as $status) {
-            $id = $this->createWithStatus($status);
-            $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
+        $id = $this->createWithStatus('finalized');
+        $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
 
-            $this->answer($id, ['surcharge' => '1000.00'])
-                ->assertStatus(400)
-                ->assertJsonPath('message', "Only draft and pending forms can be edited; this form is in {$status} status");
+        $this->answer($id, ['surcharge' => '1000.00'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Only draft, pending and approved forms can be edited; this form is in finalized status');
 
-            $this->assertSame($before, BirFormDraft::findOrFail($id)->fields['surcharge'], "{$status} form was changed.");
-        }
+        $this->assertSame($before, BirFormDraft::findOrFail($id)->fields['surcharge'], 'The filed form was changed.');
+    }
+
+    public function test_changing_an_approved_form_sends_it_back_to_draft_to_be_approved_again(): void
+    {
+        $id = $this->createWithStatus('approved');
+        BirFormDraft::whereKey($id)->update(['approved_by' => $this->accounting()->id]);
+
+        $this->answer($id, ['surcharge' => '1000.00'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.approved_by', null)
+            ->assertJsonPath('data.fields.surcharge.value', '1000.00');
+
+        // It can't be marked as filed until it is submitted and approved again.
+        $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/finalize")->assertStatus(400);
     }
 
     public function test_admin_and_hr_cannot_edit_a_pending_form(): void
@@ -89,7 +102,7 @@ class BirPendingEditTest extends TestCase
 
     public function test_a_locked_form_is_400_before_the_role_check(): void
     {
-        $id = $this->createWithStatus('approved');
+        $id = $this->createWithStatus('finalized');
 
         $this->actingAs(User::factory()->create(['role' => 'hr']))
             ->putJson("/api/bir/drafts/{$id}", ['fields' => ['surcharge' => '1000.00']])

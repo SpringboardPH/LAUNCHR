@@ -146,11 +146,11 @@ class BirUpdateFieldsRequestTest extends TestCase
         $this->answer(999999, ['not_a_field' => 'abc'])->assertNotFound();
 
         $id = $this->create1601C();
-        BirFormDraft::whereKey($id)->update(['status' => 'approved']);
+        BirFormDraft::whereKey($id)->update(['status' => 'finalized']);
 
         $this->answer($id, ['not_a_field' => 'abc'])
             ->assertStatus(400)
-            ->assertJsonPath('message', 'Only draft and pending forms can be edited; this form is in approved status');
+            ->assertJsonPath('message', 'Only draft, pending and approved forms can be edited; this form is in finalized status');
     }
 
     private function answer(int $draftId, array $fields): TestResponse
