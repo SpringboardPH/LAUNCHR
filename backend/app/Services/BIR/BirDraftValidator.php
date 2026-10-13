@@ -291,15 +291,21 @@ class BirDraftValidator
             return [];
         }
 
-        $expected = $this->snapshotTaxCentavos($rows);
-        if ($expected === $actual) {
+        $withheld = $this->snapshotTaxCentavos($rows);
+        // On the 2316, item 25A is what payroll withheld less the year-end refund (Form2316Mapper).
+        $refund = $draft->form_type === Form2316Schema::FORM_TYPE
+            ? ($this->centavos(($draft->fields ?? [])['year_end_refund'] ?? null) ?? 0)
+            : 0;
+        if ($withheld - $refund === $actual) {
             return [];
         }
+
+        $lessRefund = $refund !== 0 ? ", less the year-end refund of {$this->money($refund)}" : '';
 
         return [[
             'field' => $field,
             'code' => 'payroll_mismatch',
-            'message' => "\"{$schema[$field]['label']}\" is {$this->money($actual)}, but the payroll this draft was built from withheld {$this->money($expected)}.",
+            'message' => "\"{$schema[$field]['label']}\" is {$this->money($actual)}, but the payroll this draft was built from withheld {$this->money($withheld)}{$lessRefund}.",
         ]];
     }
 

@@ -62,12 +62,14 @@ class Form2316Schema
         'taxable_income_previous_employer' => 'The taxable pay the employee got from the previous employer this year, from that employer\'s 2316. Enter 0 if there was none.',
         'gross_taxable_income' => 'Item 21 plus item 22: the taxable pay for the whole year.',
         'tax_due' => "The year's income tax on item 23, from the BIR annual tax table.",
-        'taxes_withheld_present' => "The tax this company withheld from the employee's pay during the year, from payroll.",
+        'taxes_withheld_present' => "The tax this company withheld from the employee's pay during the year, less any year-end refund of tax withheld beyond the tax due.",
+        'taxes_withheld_payroll' => "All the tax this company's payroll withheld from the employee this year, before any year-end refund. Item 25A is this less the refund. It isn't printed on the form.",
+        'year_end_refund' => 'Tax withheld beyond the tax due (item 24), refunded to the employee at year-end. Enter it as a negative amount in item 26 of the 1601-C for the month it is refunded. It isn\'t printed on the form.',
         'taxes_withheld_previous' => "The tax the previous employer withheld this year, from that employer's 2316. Enter 0 if there was none.",
         'total_taxes_withheld_adjusted' => 'Item 25A plus item 25B.',
         'pera_tax_credit' => 'A 5% tax credit for contributions to a Personal Equity and Retirement Account (PERA). Usually 0.',
         'total_taxes_withheld_final' => 'Item 26 plus item 27. If it differs from the tax due (item 24), a year-end adjustment is needed: a refund or more tax withheld.',
-        'nontax_mwe_basic' => 'For a minimum wage earner, their statutory minimum wage; for an employee whose taxable pay for the year is ₱250,000 or less, their basic pay. Shown after their SSS/PhilHealth/Pag-IBIG share.',
+        'nontax_mwe_basic' => 'For a minimum wage earner, their statutory minimum wage; for an employee whose taxable pay for the year is ₱250,000 or less, all their pay: basic, holiday, overtime and night shift differential. Shown after their SSS/PhilHealth/Pag-IBIG share (item 36).',
         'nontax_mwe_holiday' => "Minimum wage earners only: holiday pay. It isn't taxed.",
         'nontax_mwe_overtime' => "Minimum wage earners only: overtime pay. It isn't taxed.",
         'nontax_mwe_night_diff' => "Minimum wage earners only: night shift differential. It isn't taxed.",
@@ -75,9 +77,9 @@ class Form2316Schema
         'nontax_thirteenth_month' => '13th month pay and other bonuses for the year, up to ₱90,000; this part is tax-free. Anything above ₱90,000 goes to item 48.',
         'nontax_de_minimis' => "Small tax-free benefits within BIR limits, such as rice subsidy or uniform allowance. LAUNCHR doesn't classify these yet, so it shows 0.",
         'nontax_statutory_contributions' => "The employee's own share of SSS, PhilHealth and Pag-IBIG (and union dues) for the year. It isn't taxed.",
-        'nontax_other_mwe_compensation' => "Other pay, such as holiday, overtime and night shift pay, of an employee whose taxable pay for the year is ₱250,000 or less. It isn't taxed.",
+        'nontax_other_mwe_compensation' => "Other tax-exempt pay that isn't in items 29 to 36. The pay of an employee at ₱250,000 or less is all in item 29, so this is usually 0.",
         'nontax_total' => "Items 29 to 37 added up: all the pay that isn't taxed.",
-        'tax_basic_salary' => 'Basic pay of a taxable employee, after their SSS/PhilHealth/Pag-IBIG share. It includes holiday pay and night shift differential.',
+        'tax_basic_salary' => 'Basic pay of a taxable employee, before their SSS/PhilHealth/Pag-IBIG share (also shown in item 36) and before withholding tax. It includes holiday pay and night shift differential.',
         'tax_representation' => "A taxable representation allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
         'tax_transportation' => "A taxable transportation allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
         'tax_cola' => "A taxable cost of living allowance. LAUNCHR payroll doesn't track this separately yet, so it shows 0.",
@@ -320,8 +322,21 @@ class Form2316Schema
             [
                 'key' => 'taxes_withheld_present', 'item' => '25A', 'label' => 'Amount of Taxes Withheld — Present Employer',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => "= annual sum of deductions['Withholding Tax'] across this employer's payrolls for the year",
+                'rule' => '= taxes_withheld_payroll less year_end_refund (Form2316Mapper::totals())',
                 'pdf_anchor' => '2316.25A',
+            ],
+            [
+                'key' => 'taxes_withheld_payroll', 'item' => null,
+                'label' => 'Tax withheld by payroll this year (before any year-end refund)',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => "= annual sum of deductions['Withholding Tax'] across this employer's payrolls for the year; feeds item 25A; no box on the printed form",
+                'pdf_anchor' => null,
+            ],
+            [
+                'key' => 'year_end_refund', 'item' => null, 'label' => 'Year-end refund to the employee',
+                'type' => 'decimal', 'source' => 'payroll', 'required' => true,
+                'rule' => '= taxes_withheld_payroll + item 25B - item 24, between 0 and taxes_withheld_payroll; entered as a negative 1601-C item 26 in the month refunded; no box on the printed form',
+                'pdf_anchor' => null,
             ],
             [
                 'key' => 'taxes_withheld_previous', 'item' => '25B', 'label' => 'Amount of Taxes Withheld — Previous Employer, if applicable',
@@ -351,7 +366,7 @@ class Form2316Schema
                 'key' => 'nontax_mwe_basic', 'item' => '29',
                 'label' => 'Basic Salary (including the exempt P250,000 & below) or the Statutory Minimum Wage of the MWE',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => '>= 0; basic net of the EE share, for an MWE or an employee at or under P250,000 taxable for the year; 0 otherwise (key name predates the P250,000 case)',
+                'rule' => '>= 0; after the EE share (item 36): an MWE\'s basic pay, or all the pay (basic, holiday, overtime, night differential) of an employee at or under P250,000 taxable for the year; 0 otherwise (key name predates the P250,000 case)',
                 'pdf_anchor' => '2316.29',
             ],
             [
@@ -399,7 +414,7 @@ class Form2316Schema
             [
                 'key' => 'nontax_other_mwe_compensation', 'item' => '37', 'label' => 'Salaries and Other Forms of Compensation',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => false,
-                'rule' => '>= 0; holiday, overtime and night differential pay of an employee at or under P250,000; 0 otherwise',
+                'rule' => '>= 0; defaults 0 — pay of an employee at or under P250,000 is all in item 29',
                 'pdf_anchor' => '2316.37',
             ],
             [
@@ -412,7 +427,7 @@ class Form2316Schema
             [
                 'key' => 'tax_basic_salary', 'item' => '39', 'label' => 'Basic Salary',
                 'type' => 'decimal', 'source' => 'payroll', 'required' => true,
-                'rule' => '>= 0; taxable employees only: pay net of the EE share, 13th month and overtime (holiday and night differential stay here)',
+                'rule' => '>= 0; taxable employees only: pay before the EE share (also in item 36), less the 13th month and overtime (holiday and night differential stay here)',
                 'pdf_anchor' => '2316.39',
             ],
             [

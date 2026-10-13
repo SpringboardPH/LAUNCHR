@@ -312,7 +312,10 @@ class BirDemoSeeder extends Seeder
         return round(PayrollService::calculateWithholdingTax($taxable, 'semi_monthly'), 2);
     }
 
-    /** The year's taxable pay at this employer, for the year-end adjustment. */
+    /**
+     * The year's taxable pay at this employer as the 2316 counts it, for t he year-end
+     * adjustment: basic pay before the SSS/PhilHealth/Pag-IBIG share (item 39).
+     */
     private function annualTaxable(array $e, int $year): float
     {
         $taxable = 0.0;
@@ -322,7 +325,7 @@ class BirDemoSeeder extends Seeder
             }
             $month = (int) substr($end, 5, 2);
             $second = (int) substr($end, 8, 2) > 15;
-            $taxable += $e['monthly'] / 2 - array_sum($this->employeeShare($e['monthly']));
+            $taxable += $e['monthly'] / 2;
             foreach (self::EXTRAS as $kind => [, $share]) {
                 if (in_array($month, $e[$kind] ?? [], true) && $second) {
                     $taxable += $e['monthly'] * $share;

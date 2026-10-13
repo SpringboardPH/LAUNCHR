@@ -238,8 +238,9 @@ class BirDraftValidatorTest extends TestCase
         $error = $this->errorsByField($id)['total_taxes_withheld_adjusted'];
         $label = Form2316Schema::byKey()['total_taxes_withheld_adjusted']['label'];
 
+        // Tax due is 0, so the 300 withheld is refunded at year-end and 25A is 0: 26 should be 0 + 5,000.
         $this->assertSame('total_mismatch', $error['code']);
-        $this->assertSame("\"{$label}\" should be 5,300.00 (items 25A and 25B) but is 300.00.", $error['message']);
+        $this->assertSame("\"{$label}\" should be 5,000.00 (items 25A and 25B) but is 300.00.", $error['message']);
     }
 
     public function test_an_amount_that_is_not_plain_decimal_text_is_flagged_and_its_total_is_not_checked(): void
@@ -309,9 +310,10 @@ class BirDraftValidatorTest extends TestCase
         $error = $this->errorsByField($id)['taxes_withheld_present'];
         $label = Form2316Schema::byKey()['taxes_withheld_present']['label'];
 
+        // Tax due is 0, so 25A should be the 600.50 withheld less its year-end refund: 0.
         $this->assertSame('payroll_mismatch', $error['code']);
         $this->assertSame('warning', $error['severity']);
-        $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50.", $error['message']);
+        $this->assertSame("\"{$label}\" is 1,234.56, but the payroll this draft was built from withheld 600.50, less the year-end refund of 600.50.", $error['message']);
     }
 
     public function test_a_draft_without_a_payroll_snapshot_is_never_flagged(): void

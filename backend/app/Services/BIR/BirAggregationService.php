@@ -162,8 +162,13 @@ class BirAggregationService
         $category = $pay['category'];
 
         $v = [];
-        // Section A — non-taxable. Below the P250,000 line, basic goes to 29 and other pay to 37.
-        $v['nontax_mwe_basic'] = $category === 'taxable' ? 0.0 : $pay['basic'];               // 29
+        // Section A — non-taxable, after the employee's SSS/PhilHealth/Pag-IBIG share (item 36). Below
+        // the P250,000 line all of the pay goes to 29 (accountant, 10/2026; matches the filed 2316s).
+        $v['nontax_mwe_basic'] = match ($category) {                                          // 29
+            'mwe' => $pay['basic'],
+            'exempt_250k' => $pay['basic'] + $pay['premium'],
+            default => 0.0,
+        };
         $v['nontax_mwe_holiday'] = $isMwe ? $pay['holiday'] : 0.0;                           // 30
         $v['nontax_mwe_overtime'] = $isMwe ? $pay['overtime'] : 0.0;                         // 31
         $v['nontax_mwe_night_diff'] = $isMwe ? $pay['night_diff'] : 0.0;                     // 32
@@ -171,12 +176,13 @@ class BirAggregationService
         $v['nontax_thirteenth_month'] = $pay['thirteenth'];                                   // 34
         $v['nontax_de_minimis'] = 0.0;                                                        // 35 — GAP, same as 1601-C item 18
         $v['nontax_statutory_contributions'] = $pay['ee'];                                    // 36
-        $v['nontax_other_mwe_compensation'] = $category === 'exempt_250k' ? $pay['premium'] : 0.0; // 37
+        $v['nontax_other_mwe_compensation'] = 0.0;                                            // 37 — pay at or under P250,000 is all in 29
         $v['nontax_total'] = round(array_sum($v), 2);                                         // 38
 
-        // Section B — taxable. Holiday and night differential stay in basic; there's no box of their own.
+        // Section B — taxable. Basic pay is before the employee's share, which is also shown in item 36,
+        // and before withholding tax (accountant, 10/2026). Holiday and night differential stay in basic.
         $section = [];
-        $section['tax_basic_salary'] = $category === 'taxable' ? $pay['basic'] + $pay['premium'] - $pay['overtime'] : 0.0; // 39
+        $section['tax_basic_salary'] = $category === 'taxable' ? $pay['basic'] + $pay['ee'] + $pay['premium'] - $pay['overtime'] : 0.0; // 39
         $section['tax_representation'] = 0.0;                                                 // 40
         $section['tax_transportation'] = 0.0;                                                 // 41
         $section['tax_cola'] = 0.0;                                                           // 42
@@ -197,7 +203,10 @@ class BirAggregationService
         $v['gross_taxable_income'] = $v['taxable_income_present'];                           // 23 (+ user item 22, Form2316Mapper)
         // An MWE's exempt pay never reaches item 23, so anything taxable left (e.g. a 13th month over 90,000) is taxed normally.
         $v['tax_due'] = self::annualTaxDue($v['gross_taxable_income']);                       // 24
-        $v['taxes_withheld_present'] = round($pay['tax'], 2);                                 // 25A
+        // Tax withheld beyond the tax due is refunded at year-end, so 25A shows what is kept (accountant, 10/2026).
+        $v['taxes_withheld_payroll'] = round($pay['tax'], 2);                                 // feeds 25A
+        $v['year_end_refund'] = self::yearEndRefund($v['taxes_withheld_payroll'], 0.0, $v['tax_due']);
+        $v['taxes_withheld_present'] = round($v['taxes_withheld_payroll'] - $v['year_end_refund'], 2); // 25A
         $v['total_taxes_withheld_adjusted'] = $v['taxes_withheld_present'];                  // 26 (+ user item 25B, Form2316Mapper)
         $v['total_taxes_withheld_final'] = $v['total_taxes_withheld_adjusted'];              // 28 (+ user item 27, Form2316Mapper)
 
@@ -224,6 +233,16 @@ class BirAggregationService
                 'warnings' => [...self::excludedWarnings($excluded), ...self::annualWarnings($employee, $year, $rows, $pay, $v)],
             ],
         ];
+    }
+
+    /**
+     * Tax this company withheld beyond what is due for the year, refunded to the employee at
+     * year-end and entered as a negative adjustment in 1601-C item 26. A previous employer's
+     * tax (item 25B) counts toward what is due, but only this company's withholding is refunded.
+     */
+    public static function yearEndRefund(float $withheldHere, float $withheldPrevious, float $taxDue): float
+    {
+        return round(max(0.0, min($withheldHere, $withheldHere + $withheldPrevious - $taxDue)), 2);
     }
 
     /** Annual tax due on taxable compensation (2316 item 24). Public so Form2316Mapper can recompute once a previous employer's pay (item 22) is added. */
@@ -406,12 +425,19 @@ class BirAggregationService
         if ($pay['category'] === 'mwe' && $pay['tax'] > 0) {
             $warnings[] = 'The employee is flagged MWE but had tax withheld.';
         }
-        $gap = round($v['tax_due'] - $v['taxes_withheld_present'], 2);
-        if ($gap != 0 && $pay['category'] !== 'mwe') {
+        if ($v['year_end_refund'] > 0) {
             $warnings[] = sprintf(
-                'Tax due %s vs. withheld %s: %s %s. Needs a year-end adjustment.',
-                number_format($v['tax_due'], 2), number_format($v['taxes_withheld_present'], 2),
-                number_format(abs($gap), 2), $gap > 0 ? 'under-withheld' : 'over-withheld',
+                'Tax withheld %s is more than the tax due %s: refund %s to the employee at year-end and enter -%s in item 26 of that month\'s 1601-C. Item 25A shows %s after the refund.',
+                number_format($v['taxes_withheld_payroll'], 2), number_format($v['tax_due'], 2),
+                number_format($v['year_end_refund'], 2), number_format($v['year_end_refund'], 2),
+                number_format($v['taxes_withheld_present'], 2),
+            );
+        }
+        $gap = round($v['tax_due'] - $v['taxes_withheld_present'], 2);
+        if ($gap > 0 && $pay['category'] !== 'mwe') {
+            $warnings[] = sprintf(
+                'Tax due %s vs. withheld %s: %s under-withheld. Needs a year-end adjustment.',
+                number_format($v['tax_due'], 2), number_format($v['taxes_withheld_present'], 2), number_format($gap, 2),
             );
         }
         return $warnings;

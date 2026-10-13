@@ -347,22 +347,25 @@ class BirAggregationServiceTest extends TestCase
 
         $r = BirAggregationService::annualCompensation($e->id, 2026);
 
-        // Sample: 324,000 taxable and 11,100 tax.
+         // Sample: 324,000 taxable and 11,100 tax. Item 39 is before the EE share, which is
+        // also shown in item 36 (accountant, 10/2026).
         $this->assertSame('0.00', $r['nontax_mwe_basic']);                    // 29
         $this->assertSame('27000.00', $r['nontax_thirteenth_month']);         // 34
         $this->assertSame('26700.00', $r['nontax_statutory_contributions']);  // 36
         $this->assertSame('53700.00', $r['nontax_total']);                    // 38
-        $this->assertSame('297300.00', $r['tax_basic_salary']);               // 39 = 324,000 - 26,700
-        $this->assertSame('297300.00', $r['tax_regular_total']);              // 52
-        $this->assertSame('351000.00', $r['gross_compensation_present']);    // 19
-        $this->assertSame('297300.00', $r['gross_taxable_income']);          // 23
-        $this->assertSame('7095.00', $r['tax_due']);                          // 24 = 47,300 x 15%
-        $this->assertSame('7093.92', $r['taxes_withheld_present']);           // 25A = 24 x 295.58
+        $this->assertSame('324000.00', $r['tax_basic_salary']);               // 39 = 13,500 x 24
+        $this->assertSame('324000.00', $r['tax_regular_total']);              // 52
+        $this->assertSame('377700.00', $r['gross_compensation_present']);    // 19 = 38 + 52
+        $this->assertSame('324000.00', $r['gross_taxable_income']);          // 23
+        $this->assertSame('11100.00', $r['tax_due']);                         // 24 = 74,000 x 15%
+        $this->assertSame('7093.92', $r['taxes_withheld_payroll']);           // 24 x 295.58
+        $this->assertSame('0.00', $r['year_end_refund']);
+        $this->assertSame('7093.92', $r['taxes_withheld_present']);           // 25A
         $this->assertSame('7093.92', $r['total_taxes_withheld_final']);       // 28
         $this->assertSame('123-456-789-00000', $r['employee_tin']);
         $this->assertSame('A', $r['employee_last_name']);
         $this->assertSame('taxable', $r['_meta']['category']);
-        $this->assertSame(['Tax due 7,095.00 vs. withheld 7,093.92: 1.08 under-withheld. Needs a year-end adjustment.'],
+        $this->assertSame(['Tax due 11,100.00 vs. withheld 7,093.92: 4,006.08 under-withheld. Needs a year-end adjustment.'],
             $r['_meta']['warnings']);
     }
 
@@ -384,9 +387,12 @@ class BirAggregationServiceTest extends TestCase
         $this->assertSame('228000.00', $r['nontax_mwe_basic']);
         $this->assertSame('260000.00', $r['gross_compensation_present']);
         $this->assertSame('0.00', $r['tax_due']);
-        $this->assertSame('16851.60', $r['taxes_withheld_present']);
+         // Withheld as if all year; it is refunded at year-end, so 25A shows 0 (accountant, 10/2026).
+        $this->assertSame('16851.60', $r['taxes_withheld_payroll']);
+        $this->assertSame('16851.60', $r['year_end_refund']);
+        $this->assertSame('0.00', $r['taxes_withheld_present']);
         $this->assertSame(['from' => '2026-07-01', 'to' => '2026-12-31'], $r['_meta']['payroll_range']);
-        $this->assertSame(['Tax due 0.00 vs. withheld 16,851.60: 16,851.60 over-withheld. Needs a year-end adjustment.'],
+        $this->assertSame(['Tax withheld 16,851.60 is more than the tax due 0.00: refund 16,851.60 to the employee at year-end and enter -16,851.60 in item 26 of that month\'s 1601-C. Item 25A shows 0.00 after the refund.'],
             $r['_meta']['warnings']);
     }
 
@@ -400,27 +406,31 @@ class BirAggregationServiceTest extends TestCase
 
         $r = BirAggregationService::annualCompensation($e->id, 2026);
 
-        // 507,000 gross - 5,000 undeclared - 500 late = 501,500.
-        $this->assertSame('501500.00', $r['gross_compensation_present']);    // 19
+        // 507,000 gross - 5,000 undeclared - 500 late = 501,500; item 19 also counts the 2,000 EE
+        // share twice, in item 36 and in item 39 (before the share).
+        $this->assertSame('503500.00', $r['gross_compensation_present']);    // 19
         $this->assertSame('90000.00', $r['nontax_thirteenth_month']);         // 34 capped
         $this->assertSame('10000.00', $r['tax_thirteenth_month_excess']);     // 48
         $this->assertSame('2000.00', $r['tax_overtime']);                     // 50
-        $this->assertSame('397500.00', $r['tax_basic_salary']);               // 39
-        $this->assertSame('409500.00', $r['tax_regular_total']);              // 52
-        $this->assertSame('24400.00', $r['tax_due']);                         // 22,500 + 9,500 x 20%
+        $this->assertSame('399500.00', $r['tax_basic_salary']);               // 39
+        $this->assertSame('411500.00', $r['tax_regular_total']);              // 52
+        $this->assertSame('24800.00', $r['tax_due']);                         // 22,500 + 11,500 x 20%
     }
 
-    public function test_2316_premium_pay_below_250k_goes_to_item_37(): void
+    public function test_2316_premium_pay_below_250k_goes_to_item_29_with_the_basic_pay(): void
     {
         $e = $this->employee('X');
-        $this->payroll($e, '2026-06-01', '2026-06-15', 10800, [],
+        $this->payroll($e, '2026-06-01', '2026-06-15', 10800, ['SSS EE Contribution' => 400],
             [['label' => 'Special Holiday', 'amount' => 500], ['label' => 'Overtime Pay', 'amount' => 300]]);
 
         $r = BirAggregationService::annualCompensation($e->id, 2026);
 
-        $this->assertSame('10000.00', $r['nontax_mwe_basic']);                // 29
+        // All the pay except the EE share (accountant, 10/2026): 10,800 - 400.
+        $this->assertSame('10400.00', $r['nontax_mwe_basic']);                // 29
         $this->assertSame('0.00', $r['nontax_mwe_holiday']);                  // 30 is MWE-only
-        $this->assertSame('800.00', $r['nontax_other_mwe_compensation']);     // 37
+        $this->assertSame('400.00', $r['nontax_statutory_contributions']);    // 36
+        $this->assertSame('0.00', $r['nontax_other_mwe_compensation']);       // 37
+        $this->assertSame('10800.00', $r['gross_compensation_present']);     // 19
         $this->assertContains("No '13th Month Pay' in this year's payroll. If it was paid outside payroll, item 34 is short.",
             $r['_meta']['warnings']);
     }

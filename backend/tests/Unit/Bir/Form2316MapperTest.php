@@ -81,11 +81,11 @@ class Form2316MapperTest extends TestCase
         ]));
 
         $this->assertSame('0.00', $fields['nontax_mwe_basic']['value']);            // 29: no longer exempt
-        $this->assertSame('219600.00', $fields['tax_basic_salary']['value']);       // 39
-        $this->assertSame('219600.00', $fields['tax_regular_total']['value']);      // 52
-        $this->assertSame('260000.00', $fields['gross_compensation_present']['value']); // 19 unchanged: same pay, other box
-        $this->assertSame('319600.00', $fields['gross_taxable_income']['value']);   // 23 = 219,600 + 100,000
-        $this->assertSame('10440.00', $fields['tax_due']['value']);                 // 24 = 69,600 x 15%
+        $this->assertSame('240000.00', $fields['tax_basic_salary']['value']);       // 39 = 219,600 + the 20,400 EE share
+        $this->assertSame('240000.00', $fields['tax_regular_total']['value']);      // 52
+        $this->assertSame('280400.00', $fields['gross_compensation_present']['value']); // 19 = 40,400 + 240,000
+        $this->assertSame('340000.00', $fields['gross_taxable_income']['value']);   // 23 = 240,000 + 100,000
+        $this->assertSame('13500.00', $fields['tax_due']['value']);                 // 24 = 90,000 x 15%
         $this->assertSame('3000.00', $fields['total_taxes_withheld_adjusted']['value']); // 26 = 0 + 3,000
         $this->assertSame('3000.00', $fields['total_taxes_withheld_final']['value']);    // 28
 
@@ -99,17 +99,17 @@ class Form2316MapperTest extends TestCase
     public function test_other_taxable_pay_entered_by_the_user_is_taxed(): void
     {
         $e = $this->employee('A');
-        $this->year($e, 27000, 2225, 485.05); // 297,300 taxable: tax due 7,095
+        $this->year($e, 27000, 2225, 485.05); // 324,000 taxable: tax due 11,100
 
         $fields = Form2316Mapper::totals($this->answer(Form2316Mapper::map($e->id, 2026)['fields'], [
             'tax_others_51a_desc' => 'Commission paid outside payroll', 'tax_others_51a_amount' => '10000.00',
             'pera_tax_credit' => '100.00',
         ]));
 
-        $this->assertSame('307300.00', $fields['tax_regular_total']['value']);      // 52
-        $this->assertSame('361000.00', $fields['gross_compensation_present']['value']); // 19 = 351,000 + 10,000
-        $this->assertSame('307300.00', $fields['taxable_income_present']['value']); // 21
-        $this->assertSame('8595.00', $fields['tax_due']['value']);                  // (307,300 - 250,000) x 15%
+        $this->assertSame('334000.00', $fields['tax_regular_total']['value']);      // 52
+        $this->assertSame('387700.00', $fields['gross_compensation_present']['value']); // 19 = 377,700 + 10,000
+        $this->assertSame('334000.00', $fields['taxable_income_present']['value']); // 21
+        $this->assertSame('12600.00', $fields['tax_due']['value']);                 // (334,000 - 250,000) x 15%
         $this->assertSame('5920.60', $fields['total_taxes_withheld_final']['value']); // 28 = 5,820.60 + 100
     }
 
@@ -164,8 +164,11 @@ class Form2316MapperTest extends TestCase
         $this->assertSame('12000.00', $fields['nontax_statutory_contributions']['value']); // 36
         $this->assertSame('280000.00', $fields['gross_compensation_present']['value']); // 19
         $this->assertSame('0.00', $fields['tax_due']['value']);                     // 24
-        $this->assertSame('6000.00', $fields['taxes_withheld_present']['value']);   // 25A: withheld as if all year
-        $this->assertContains('Tax due 0.00 vs. withheld 6,000.00: 6,000.00 over-withheld. Needs a year-end adjustment.',
+        // Withheld as if all year, then refunded at year-end: 25A shows 0 (accountant, 10/2026).
+        $this->assertSame('6000.00', $fields['taxes_withheld_payroll']['value']);
+        $this->assertSame('6000.00', $fields['year_end_refund']['value']);
+        $this->assertSame('0.00', $fields['taxes_withheld_present']['value']);      // 25A
+        $this->assertContains('Tax withheld 6,000.00 is more than the tax due 0.00: refund 6,000.00 to the employee at year-end and enter -6,000.00 in item 26 of that month\'s 1601-C. Item 25A shows 0.00 after the refund.',
             $built['meta']['warnings']);
         $this->assertAddsUp($e, $fields);
 
@@ -175,9 +178,11 @@ class Form2316MapperTest extends TestCase
         ]));
 
         $this->assertSame('0.00', $fields['nontax_mwe_basic']['value']);            // 29
-        $this->assertSame('228000.00', $fields['tax_basic_salary']['value']);       // 39
-        $this->assertSame('328000.00', $fields['gross_taxable_income']['value']);   // 23 = 228,000 + 100,000
-        $this->assertSame('11700.00', $fields['tax_due']['value']);                 // 78,000 x 15%
+        $this->assertSame('240000.00', $fields['tax_basic_salary']['value']);       // 39 = 228,000 + the 12,000 EE share
+        $this->assertSame('340000.00', $fields['gross_taxable_income']['value']);   // 23 = 240,000 + 100,000
+        $this->assertSame('13500.00', $fields['tax_due']['value']);                 // 90,000 x 15%
+        $this->assertSame('0.00', $fields['year_end_refund']['value']);             // no longer over-withheld
+        $this->assertSame('6000.00', $fields['taxes_withheld_present']['value']);   // 25A
         $this->assertSame('9000.00', $fields['total_taxes_withheld_final']['value']); // 28 = 6,000 + 3,000
         $this->assertAddsUp($e, $fields);
     }
@@ -192,12 +197,12 @@ class Form2316MapperTest extends TestCase
         $fields = $built['fields'];
 
         $this->assertSame(['01/01', '09/30'], $this->period($fields));
-        $this->assertSame('270000.00', $fields['gross_compensation_present']['value']); // 19
-        $this->assertSame('256500.00', $fields['tax_basic_salary']['value']);       // 39: over P250,000
+        $this->assertSame('283500.00', $fields['gross_compensation_present']['value']); // 19 = 13,500 EE + 270,000
+        $this->assertSame('270000.00', $fields['tax_basic_salary']['value']);       // 39: 256,500 after the share is over P250,000
         $this->assertSame('0.00', $fields['nontax_mwe_basic']['value']);            // 29
-        $this->assertSame('975.00', $fields['tax_due']['value']);                   // 6,500 x 15%
+        $this->assertSame('3000.00', $fields['tax_due']['value']);                  // 20,000 x 15%
         $this->assertSame('900.00', $fields['taxes_withheld_present']['value']);    // 25A
-        $this->assertContains('Tax due 975.00 vs. withheld 900.00: 75.00 under-withheld. Needs a year-end adjustment.',
+        $this->assertContains('Tax due 3,000.00 vs. withheld 900.00: 2,100.00 under-withheld. Needs a year-end adjustment.',
             $built['meta']['warnings']);
         $this->assertAddsUp($e, $fields);
     }
@@ -227,14 +232,14 @@ class Form2316MapperTest extends TestCase
         $this->assertSame('0.00', $fields['tax_due']['value']);
         $this->assertAddsUp($at, $fields);
 
-        // 10 centavos more a month: 250,001.00, so basic moves to 39 and the peso is taxed.
+        // 10 centavos more a month: 250,001.00 after the share, so basic moves to 39 (before the share) and is taxed.
         $over = $this->employee('O');
         $this->year($over, 26000.10, 1000, 0, 1, 10);
         $fields = Form2316Mapper::map($over->id, 2026)['fields'];
 
         $this->assertSame('0.00', $fields['nontax_mwe_basic']['value']);            // 29
-        $this->assertSame('250001.00', $fields['tax_basic_salary']['value']);       // 39
-        $this->assertSame('0.15', $fields['tax_due']['value']);                     // 1.00 x 15%
+        $this->assertSame('260001.00', $fields['tax_basic_salary']['value']);       // 39
+        $this->assertSame('1500.15', $fields['tax_due']['value']);                  // 10,001.00 x 15%
         $this->assertAddsUp($over, $fields);
     }
 
@@ -280,9 +285,9 @@ class Form2316MapperTest extends TestCase
 
         $this->assertSame('90000.00', $fields['nontax_thirteenth_month']['value']); // 34: the tax-free part
         $this->assertSame('30000.00', $fields['tax_thirteenth_month_excess']['value']); // 48: the rest
-        $this->assertSame('1416000.00', $fields['tax_basic_salary']['value']);      // 39
-        $this->assertSame('1446000.00', $fields['tax_regular_total']['value']);     // 52 = 39 + 48
-        $this->assertSame('264000.00', $fields['tax_due']['value']);                // 102,500 + 646,000 x 25%
+        $this->assertSame('1440000.00', $fields['tax_basic_salary']['value']);      // 39: before the 24,000 EE share
+        $this->assertSame('1470000.00', $fields['tax_regular_total']['value']);     // 52 = 39 + 48
+        $this->assertSame('270000.00', $fields['tax_due']['value']);                // 102,500 + 670,000 x 25%
         $this->assertAddsUp($e, $fields);
     }
 

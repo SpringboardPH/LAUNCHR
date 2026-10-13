@@ -61,7 +61,7 @@ class Form1601CSchema
         'exempt_250k_compensation' => "Taxable pay of employees, other than minimum wage earners, who will earn ₱250,000 or less this year. No tax is withheld from them.",
         'net_taxable_compensation' => 'Item 22 less item 23: the pay that withholding tax was worked out on.',
         'total_taxes_withheld' => "All income tax withheld from employees' pay this month, from payroll.",
-        'prior_month_adjustment' => 'A correction to tax withheld in earlier months: positive if too little was withheld, negative if too much. Usually 0.',
+        'prior_month_adjustment' => "A correction to tax withheld in earlier months: positive if too little was withheld, negative if too much. A year-end refund to an employee (from their 2316) goes here as a negative amount. Usually 0.",
         'taxes_withheld_for_remittance' => 'Item 25 plus item 26: the tax to pay to the BIR for this month.',
         'previously_remitted_tax' => 'For an amended return only: the tax already paid with the original return for this month.',
         'other_remittances' => "Any other payment already made for this month's withholding tax. Usually 0.",
