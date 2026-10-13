@@ -563,7 +563,7 @@ registration details.
 **Any finalized version can be revised; a 1601-C at most 5 times a month.** Decided:
 a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Versions never repeat — revising the same filed v1 twice
 gives v2 then v3, both with `parent_id` pointing at v1. Still open with the
-accountant: whether "no limit" means a chain, where only the latest finalized
+accountant: whether "revised" means a chain, where only the latest finalized
 version may be revised. If so, `revise` will refuse older versions; the
 numbering stays as it is.
 
