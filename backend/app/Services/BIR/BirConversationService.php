@@ -125,6 +125,12 @@ class BirConversationService
         return $boxes;
     }
 
+    /** @return array<int, array<string, mixed>> every field of a form, in form order */
+    public function fields(string $formType): array
+    {
+        return $this->schemaFor($formType);
+    }
+
     /** @return array<string, mixed> one schema field, by key */
     public function field(string $formType, string $key): array
     {
@@ -154,9 +160,12 @@ class BirConversationService
      * included. Nothing is saved here: answer goes back to the caller, which saves it through
      * PUT like the preview's Change button, so it is checked and recorded with the user's name.
      *
+     * $value, when given, is the new value already read off the message (with any trailing
+     * "for Maria Santos 2026" taken off by the caller); otherwise it is read here.
+     *
      * @return array{answer: ?array{field: string, value: mixed}, reply: string}
      */
-    public function change(BirFormDraft $draft, string $message): array
+    public function change(BirFormDraft $draft, string $message, ?string $value = null): array
     {
         $form = $draft->form_type;
         $item = BirAnswerParser::itemMentioned($message);
@@ -175,7 +184,7 @@ class BirConversationService
         }
 
         $name = self::boxName($field);
-        $value = self::newValue($message);
+        $value ??= self::newValue($message);
         if ($value === null) {
             return ['answer' => null, 'reply' => "What should {$name} be? For example: \"change item {$item} to …\"."];
         }
@@ -192,7 +201,7 @@ class BirConversationService
             ? "Changed {$name} from " . self::display($entry['value'], $field['type']) . " to {$shown}."
             : self::sentence("Changed {$name} to {$shown}");
         if (in_array($field['source'], ['payroll', 'settings'], true) && $had && empty($entry['edited'])) {
-            $reply .= ' This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.';
+            $reply .= ' This replaces the calculated figure, and the change is recorded with your name.';
         }
 
         return ['answer' => ['field' => $field['key'], 'value' => $parsed['value']], 'reply' => $reply];
@@ -247,7 +256,7 @@ class BirConversationService
     }
 
     /** The new value: after "to", "ng", ":" or "=", or between "gawing" and "ang item". Null if none. */
-    private static function newValue(string $message): ?string
+    public static function newValue(string $message): ?string
     {
         $value = match (true) {
             (bool) preg_match('/^\s*gawing\s+(.+?)\s+ang\s+(?:item|box|#)/iu', $message, $m) => $m[1],
@@ -268,7 +277,7 @@ class BirConversationService
     }
 
     /** A sentence ends with one full stop, even when the value already ends with one ("Inc."). */
-    private static function sentence(string $text): string
+    public static function sentence(string $text): string
     {
         return str_ends_with($text, '.') ? $text : "{$text}.";
     }
@@ -277,6 +286,22 @@ class BirConversationService
     public static function boxName(array $field): string
     {
         return '"' . ($field['item'] !== null ? "Item {$field['item']}, {$field['label']}" : $field['label']) . '"';
+    }
+
+    /** A value as the user should read it, or "empty". */
+    public static function shown(mixed $value, array $field): string
+    {
+        return $value === null || $value === '' ? 'empty' : self::display($value, $field['type']);
+    }
+
+    /** True when a stored value is still what the chat saved, for "undo". Amounts compare as numbers. */
+    public static function same(mixed $stored, mixed $saved): bool
+    {
+        if (is_numeric($stored) && is_numeric($saved)) {
+            return (float) $stored === (float) $saved;
+        }
+
+        return $stored === $saved || (is_scalar($stored) && is_scalar($saved) && (string) $stored === (string) $saved);
     }
 
     /** A value as the user should read it. Dates as MM/DD/YYYY, the way BIR forms write them. */

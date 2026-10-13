@@ -6,6 +6,7 @@ use App\Helpers\SystemClock;
 use App\Http\Controllers\Controller;
 use App\Models\BirFormDraft;
 use App\Services\BIR\BirAnswerParser;
+use App\Services\BIR\BirChatCommands;
 use App\Services\BIR\BirConversationService;
 use App\Services\BIR\BirConversationState;
 use App\Services\BIR\BirDraftValidator;
@@ -40,6 +41,12 @@ use RuntimeException;
  * on the open draft and is never saved as the answer to another question. These three are
  * read in PHP before the model is asked, so they work with it switched off.
  *
+ * Supervisor's changes (BirChatCommands): a box on any saved form can be read or changed
+ * without opening it; a filed form says how it can be corrected (the button, or "yes");
+ * "done" sends the open form for review; "undo" takes back a change made here. A TIN finds
+ * the employee for a 2316. A caller that can run the workflow's revise and submit for the
+ * chat sends actions: true; without it, the chat only points to the buttons.
+ *
  * Each step is a service call — nothing is computed here.
  */
 class BirChatController extends Controller
@@ -50,6 +57,7 @@ class BirChatController extends Controller
         private readonly BirConversationService $conversation,
         private readonly BirDraftValidator $validator,
         private readonly BirExplanationService $explanations,
+        private readonly BirChatCommands $commands,
     ) {}
 
     public function message(Request $request)
@@ -59,23 +67,24 @@ class BirChatController extends Controller
             'reset' => ['sometimes', 'boolean'],
             'draft_id' => ['sometimes', 'integer'],
             'field' => ['sometimes', 'string'],
+            'actions' => ['sometimes', 'boolean'],
         ]);
+        $state = new BirConversationState($request->user()->id);
+        $canAct = (bool) ($validated['actions'] ?? false);
 
         if (isset($validated['draft_id'])) {
-            return $this->draftTurn((int) $validated['draft_id'], $validated['field'] ?? null, $validated['message'] ?? null);
+            return $this->draftTurn((int) $validated['draft_id'], $validated['field'] ?? null, $validated['message'] ?? null, $state, $request, $canAct);
         }
 
-        $state = new BirConversationState($request->user()->id);
-
         if ($validated['reset'] ?? false) {
-            $state->forget();
+            $state->reset();
         }
 
         $message = $validated['message'];
 
-        // Changing a box needs a form open in the chat; with none, say how to open one.
-        if (BirAnswerParser::looksLikeChange($message)) {
-            return $this->reply($state->get(), false, BirExplanationService::OPEN_A_FORM);
+        // Reading or changing a box on a saved form, "yes", "done" and "undo": PHP only.
+        if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
+            return $this->commandReply($command, null);
         }
 
         // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
@@ -91,6 +100,14 @@ class BirChatController extends Controller
                 'success' => false,
                 'message' => $e->getMessage() . ' You can still pick a form and period manually.',
             ], 503);
+        }
+
+        // A TIN names the employee whatever the model made of it: "2316 for 920-919-920-00001 2024".
+        if (preg_match(BirEmployeeResolver::TIN_PATTERN, $message, $tin)) {
+            $parsed['employee_query'] = $tin[0];
+            if (str_contains($message, '2316')) {
+                $parsed['kind'] = 'form_request';
+            }
         }
 
         // Not a form request: a fixed reply, and nothing is remembered from it.
@@ -138,6 +155,10 @@ class BirChatController extends Controller
     {
         $match = $this->employees->resolve((string) $merged['employee_query']);
 
+        if ($match['status'] === BirEmployeeResolver::NOT_FOUND && preg_match(BirEmployeeResolver::TIN_PATTERN, (string) $merged['employee_query'])) {
+            return $this->reply($merged, false, "No employee has the TIN {$merged['employee_query']}. Please check the number, or give their name or employee ID.");
+        }
+
         if ($match['status'] === BirEmployeeResolver::NOT_FOUND) {
             return $this->reply($merged, false, sprintf(
                 'I could not find anyone matching "%s". Could you check the spelling, or give their employee ID?',
@@ -179,7 +200,7 @@ class BirChatController extends Controller
      * One turn of filling in a draft. Nothing is saved here: an accepted answer comes back
      * as data.answer for the caller to save through PUT /bir/drafts/{id}.
      */
-    private function draftTurn(int $draftId, ?string $field, ?string $message)
+    private function draftTurn(int $draftId, ?string $field, ?string $message, BirConversationState $state, Request $request, bool $canAct)
     {
         // employee: BirConversationService::context() needs the hire date for a 2316.
         $draft = BirFormDraft::with('employee')->find($draftId);
@@ -191,17 +212,15 @@ class BirChatController extends Controller
         $editable = in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true);
         $locked = "This form is {$draft->status}, so it can't be changed here. You can still ask what a box means or where its figure came from.";
 
-        // "change item 12 to …": read in PHP, whatever question is open. Never an answer.
-        if ($message !== null && BirAnswerParser::looksLikeChange($message)) {
-            if (!$editable) {
-                return $this->draftReply($draft, ['question' => null, 'answer' => null], $locked);
-            }
-            $open = $this->conversation->turn($draft, null, null)['question'];
-            $change = $this->conversation->change($draft, $message);
+        // "change item 12 to …" (here or on any form), reading a box on another form, "yes",
+        // "done", "undo": read in PHP, whatever question is open. Never an answer.
+        if ($message !== null && ($command = $this->commands->handle($message, $draft, $state, $request->user(), $canAct)) !== null) {
+            return $this->commandReply($command, $draft);
+        }
 
-            return $change['answer'] !== null
-                ? $this->draftReply($draft, ['question' => null, 'answer' => $change['answer']], $change['reply'])
-                : $this->draftReply($draft, ['question' => $open, 'answer' => null], self::thenAsk($change['reply'], $open));
+        // Just after the chat's "yes" started a correction: the change it was asked for.
+        if ($message === null && ($resumed = $this->commands->resume($draft, $state)) !== null) {
+            return $this->commandReply($resumed, $draft);
         }
 
         // "What is item 12?" / "where did item 25A come from?": the item number picks the box.
@@ -218,8 +237,33 @@ class BirChatController extends Controller
         if ($turn['unread']) {
             $turn['reply'] = $this->sorted($draft, $turn, (string) $message) ?? $turn['reply'];
         }
+        if ($turn['answer'] !== null) {
+            $this->commands->rememberAnswer($state, $draft, $turn['answer']); // "undo" can take it back
+        }
 
-        return $this->draftReply($draft, $turn, $turn['reply'] ?? $this->finished($draft));
+        return $this->draftReply($draft, $turn, $turn['reply'] ?? $this->finished($draft, $canAct));
+    }
+
+    /**
+     * A command's result as a reply. An answer goes with the form it is for, so the caller
+     * saves it there and the chat moves there. Otherwise the chat stays where it was, and
+     * asks its open question again when the command says to.
+     *
+     * @param  array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool}  $command
+     */
+    private function commandReply(array $command, ?BirFormDraft $current)
+    {
+        if ($command['draft'] !== null && $command['answer'] !== null) {
+            return $this->draftReply($command['draft'], ['question' => null, 'answer' => $command['answer']], (string) $command['reply']);
+        }
+        if ($current === null) {
+            return $this->reply([], false, $command['reply'], $command['candidates'], $command['action']);
+        }
+
+        $editable = in_array($current->status, BirFormDraft::EDITABLE_STATUSES, true);
+        $open = $command['stay'] && $editable ? $this->conversation->turn($current, null, null)['question'] : null;
+
+        return $this->draftReply($current, ['question' => $open, 'answer' => null], $command['reply'] === null ? null : self::thenAsk($command['reply'], $open), $command['action'], $command['candidates']);
     }
 
     /**
@@ -263,12 +307,12 @@ class BirChatController extends Controller
     }
 
     /** Once nothing is left to ask: whether anything else still blocks submitting. */
-    private function finished(BirFormDraft $draft): string
+    private function finished(BirFormDraft $draft, bool $canAct = false): string
     {
         $errors = count(array_filter($this->validator->validate($draft), fn (array $entry) => $entry['severity'] === 'error'));
 
         return $errors === 0
-            ? 'That is everything this form needs from you. Check the preview, then use Submit to send it for review.'
+            ? 'That is everything this form needs from you. Check the preview, then ' . ($canAct ? 'say done or use Submit' : 'use Submit') . ' to send it for review.'
             : "That is everything I can ask here, but {$errors} " . ($errors === 1 ? 'issue still needs' : 'issues still need')
                 . ' fixing before it can be submitted. They are listed on the draft.';
     }
@@ -276,21 +320,24 @@ class BirChatController extends Controller
     /**
      * Same envelope as reply(), plus the draft turn: question is the field now being asked
      * (null when nothing is), answer is { field, value } to save, done means nothing is left.
+     * action, when set, is a workflow step for the caller to run first ({type: revise|submit,
+     * draft_id}); reply is shown once it succeeds.
      *
      * @param  array{question: ?array, answer: ?array}  $turn
      */
-    private function draftReply(BirFormDraft $draft, array $turn, string $reply)
+    private function draftReply(BirFormDraft $draft, array $turn, ?string $reply, ?array $action = null, array $candidates = [])
     {
         return response()->json([
             'success' => true,
             'data' => [
                 'understood' => false,
                 'intent' => null,
-                'candidates' => [],
+                'candidates' => $candidates,
                 'reply' => $reply,
                 'draft_id' => $draft->id,
                 'question' => $turn['question'],
                 'answer' => $turn['answer'],
+                'action' => $action,
                 'done' => $turn['question'] === null && $turn['answer'] === null,
             ],
             'message' => $turn['answer'] !== null ? 'Answer read' : ($turn['question'] !== null ? 'Question asked' : 'Nothing left to ask'),
@@ -301,7 +348,7 @@ class BirChatController extends Controller
      * @param  array<string,mixed>  $intent
      * @param  array<int,array<string,mixed>>  $candidates
      */
-    private function reply(array $intent, bool $understood, string $reply, array $candidates = [])
+    private function reply(array $intent, bool $understood, ?string $reply, array $candidates = [], ?array $action = null)
     {
         return response()->json([
             'success' => true,
@@ -310,6 +357,7 @@ class BirChatController extends Controller
                 'intent' => $intent,
                 'candidates' => $candidates,
                 'reply' => $reply,
+                'action' => $action,
             ],
             'message' => $understood ? 'Request understood' : 'Needs clarification',
         ]);

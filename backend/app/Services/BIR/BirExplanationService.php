@@ -13,11 +13,16 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * text, and the source is what the draft recorded — its origin, any override (who, when,
  * and what it replaced), and the payroll rows frozen onto it when it was created. No
  * figure is recalculated here, and the language model writes none of it.
+ *
+ * Supervisor's changes: figures on saved forms may be shown (BirChatCommands reads any box by
+ * its item number), so the decline is only for tax advice and says how to read a box instead.
+ * A correction or amendment has no payroll rows of its own; its source is the version it was
+ * copied from.
  */
 class BirExplanationService
 {
-    /** A tax, rate or salary question: declined, and pointed to accounting. */
-    public const DECLINE = "I can't answer tax questions or give out pay figures. Please check with accounting. I can explain what a box on this form means or where its figure came from.";
+    /** A tax, rate or salary question: declined, and pointed to what the chat can do instead. */
+    public const DECLINE = "I can't give tax advice or work out pay; please check with accounting. I can read any box on a saved form by its item number, for example \"what is item 21 on Maria Santos's 2316 for 2026?\", and explain what a box means or where its figure came from.";
 
     /** A request for a different form while a draft is being filled in. */
     public const NEW_REQUEST = 'That sounds like a different form. Click "New conversation" to start it.';
@@ -34,8 +39,8 @@ class BirExplanationService
     /** A question about an item that didn't say which form, with no form in the conversation. */
     public const WHICH_FORM = 'Which form do you mean: the 1601-C or the 2316? For example: "what is item 12 on the 2316?"';
 
-    /** A request to change a box with no form open in the chat. */
-    public const OPEN_A_FORM = 'To change a box, the form has to be open here first. Ask for it to start a new one, or open a saved one with "Open with the assistant".';
+    /** A request to change a box that names no form, with no form open in the chat. */
+    public const OPEN_A_FORM = 'Which form should I change? Name it with the box, for example "change item 6 on Maria Santos\'s 2316 for 2026 to …", or open the form here first.';
 
     /** "Where did item 25A come from?" with no draft: only a draft has figures. */
     public const SOURCE_NEEDS_DRAFT = 'Where its figure comes from depends on the draft. Open a draft of that form and ask again.';
@@ -109,7 +114,12 @@ class BirExplanationService
     /** The payroll records the draft was built from, as saved on source_snapshot. */
     private function payrollRecords(BirFormDraft $draft): string
     {
-        $rows = collect($draft->source_snapshot['rows'] ?? []);
+        // A correction is a copy: its rows are the ones saved with the version it came from.
+        $from = $draft;
+        while ($from->source_snapshot === null && $from->parent_id !== null && ($parent = BirFormDraft::find($from->parent_id)) !== null) {
+            $from = $parent;
+        }
+        $rows = collect($from->source_snapshot['rows'] ?? []);
 
         if ($rows->isEmpty()) {
             return 'no finalized or paid payroll records were found for this period, so its payroll figures are zero.';

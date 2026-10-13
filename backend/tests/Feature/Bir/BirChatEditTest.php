@@ -114,7 +114,7 @@ class BirChatEditTest extends TestCase
         $reply = $this->chat($id, 'employee_rdo_code', 'change item 12 to 987-654-321-676')
             ->assertJsonPath('data.answer', ['field' => 'present_employer_tin', 'value' => '987-654-321-00676'])
             ->json('data.reply');
-        $this->assertSame('Changed "Item 12, TIN" from 987-654-321-00000 to 987-654-321-00676. This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.', $reply);
+        $this->assertSame('Changed "Item 12, TIN" from 987-654-321-00000 to 987-654-321-00676. This replaces the calculated figure, and the change is recorded with your name. Say "undo" to put it back.', $reply);
 
         // The caller saves it through PUT, which records who changed it and what it replaced.
         $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => ['present_employer_tin' => '987-654-321-00676']])->assertOk();
@@ -124,7 +124,7 @@ class BirChatEditTest extends TestCase
 
         $this->chat($id, 'employee_rdo_code', 'palitan ang item 5 ng 049')
             ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '049'])
-            ->assertJsonPath('data.reply', 'Changed "Item 5, RDO Code" to 049.');
+            ->assertJsonPath('data.reply', 'Changed "Item 5, RDO Code" to 049. Say "undo" to put it back.');
 
         $this->chat($id, null, 'gawing 21a ang item 5')
             ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '21A']);
@@ -132,7 +132,7 @@ class BirChatEditTest extends TestCase
         $tax = BirFormDraft::findOrFail($id)->fields['taxes_withheld_present']['value'];
         $this->chat($id, null, 'change item 25A to 2,900')
             ->assertJsonPath('data.answer', ['field' => 'taxes_withheld_present', 'value' => '2900.00'])
-            ->assertJsonPath('data.reply', 'Changed "Item 25A, Amount of Taxes Withheld — Present Employer" from ₱' . number_format((float) $tax, 2) . ' to ₱2,900.00. This replaces the calculated figure. The change is recorded with your name, and "Restore calculated" in the preview undoes it.');
+            ->assertJsonPath('data.reply', 'Changed "Item 25A, Amount of Taxes Withheld — Present Employer" from ₱' . number_format((float) $tax, 2) . ' to ₱2,900.00. This replaces the calculated figure, and the change is recorded with your name. Say "undo" to put it back.');
 
         $this->assertSame([], $this->model->calls());
     }
@@ -166,7 +166,7 @@ class BirChatEditTest extends TestCase
 
         $this->chat($id, null, 'change item 5 to 049')
             ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', "This form is approved, so it can't be changed here. You can still ask what a box means or where its figure came from.");
+            ->assertJsonPath('data.reply', "Bir Tester's 2316 for 2026 (#{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
 
         $this->send('change TIN to 987-654-321-676', reset: true)
             ->assertJsonPath('data.reply', BirExplanationService::OPEN_A_FORM);

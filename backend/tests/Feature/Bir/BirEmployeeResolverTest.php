@@ -159,4 +159,28 @@ class BirEmployeeResolverTest extends TestCase
 
         $this->assertSame(BirEmployeeResolver::NOT_FOUND, $result['status']);
     }
+
+    public function test_a_tin_finds_the_employee_however_it_is_written(): void
+    {
+        $this->employee('EMP200', 'Maria', 'Santos')->update(['tin_number' => '920-919-920-00001']);
+
+        foreach (['920-919-920-00001', '920919920 00001', '920-919-920-001', '920 919 920', '92091992000001'] as $tin) {
+            $this->assertSame('EMP200', $this->resolver->resolve($tin)['employee']?->employee_id, $tin);
+        }
+        $this->assertSame(BirEmployeeResolver::NOT_FOUND, $this->resolver->resolve('920-919-920-00002')['status'], 'A different branch is someone else.');
+        $this->assertSame(BirEmployeeResolver::NOT_FOUND, $this->resolver->byTin('111-111-111-000')['status']);
+    }
+
+    public function test_a_name_in_a_sentence_is_found_and_a_lone_first_name_only_where_a_name_belongs(): void
+    {
+        $this->employee('EMP200', 'Grace', 'Lim');
+
+        $this->assertSame('EMP200', $this->resolver->mentionedIn('edit 2316 item #6 for grace lim, change it to …')['employee']?->employee_id);
+        $this->assertSame('EMP200', $this->resolver->mentionedIn("what is item 6 on Grace's 2316 for 2026")['employee']?->employee_id);
+        $this->assertSame('EMP200', $this->resolver->mentionedIn('item 5 for EMP200')['employee']?->employee_id);
+        $this->assertSame('EMP004', $this->resolver->mentionedIn('2316 for ana garcai 2026')['employee']?->employee_id, 'Typos after "for" are forgiven.');
+
+        $this->assertSame(BirEmployeeResolver::NOT_NAMED, $this->resolver->mentionedIn('by the grace of the 1601-C for September 2026')['status']);
+        $this->assertSame(BirEmployeeResolver::AMBIGUOUS, $this->resolver->mentionedIn('the 2316 for juan 2026')['status']);
+    }
 }

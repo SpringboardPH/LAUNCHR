@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Cache;
  * 30 minutes of silence. From Week 5 this moves onto the draft record, which
  * outlives a single sitting — a half-finished 2316 should still be there on
  * Monday.
+ *
+ * Supervisor's changes: three more things are remembered, each under its own key so that
+ * forget() (a request understood) leaves them alone and only reset() (New conversation)
+ * clears them: the changes made in the chat, newest last, for "undo"; an offer to start a
+ * correction of a filed form, for "yes"; and a command still missing a year or a person,
+ * so "2026" can finish it.
  */
 class BirConversationState
 {
@@ -24,6 +30,9 @@ class BirConversationState
 
     /** Fields carried between messages. */
     private const FIELDS = ['form_type', 'tax_year', 'tax_month', 'employee_query', 'employee_id'];
+
+    /** How many changes "undo" can step back through. */
+    private const UNDO_DEPTH = 20;
 
     public function __construct(private readonly int $userId) {}
 
@@ -69,6 +78,70 @@ class BirConversationState
     public function forget(): void
     {
         Cache::forget($this->key());
+    }
+
+    /** New conversation: everything is forgotten, the changes "undo" knows about included. */
+    public function reset(): void
+    {
+        $this->forget();
+        foreach (['undo', 'offer', 'pending'] as $part) {
+            Cache::forget($this->key() . ":{$part}");
+        }
+    }
+
+    /**
+     * A change the chat made (or is about to make, once the caller saves it), for "undo".
+     * before is the box's entry as it was; after is the value it was changed to.
+     *
+     * @param  array{draft_id: int, field: string, before: array, after: mixed}  $change
+     */
+    public function rememberChange(array $change): void
+    {
+        $changes = $this->changes();
+        $changes[] = $change;
+        $this->put('undo', array_slice($changes, -self::UNDO_DEPTH));
+    }
+
+    /** @return array<int, array{draft_id: int, field: string, before: array, after: mixed}> oldest first */
+    public function changes(): array
+    {
+        return Cache::get($this->key() . ':undo', []);
+    }
+
+    /** Forget one remembered change, by its place in changes(). */
+    public function dropChange(int $index): void
+    {
+        $changes = $this->changes();
+        unset($changes[$index]);
+        $this->put('undo', array_values($changes));
+    }
+
+    /** @param ?array<string, mixed> $value null clears it */
+    public function setOffer(?array $value): void
+    {
+        $value === null ? Cache::forget($this->key() . ':offer') : $this->put('offer', $value);
+    }
+
+    /** @return ?array<string, mixed> */
+    public function offer(): ?array
+    {
+        return Cache::get($this->key() . ':offer');
+    }
+
+    /** @param ?string $message a command still missing a year or a person; null clears it */
+    public function setPending(?string $message): void
+    {
+        $message === null ? Cache::forget($this->key() . ':pending') : $this->put('pending', $message);
+    }
+
+    public function pending(): ?string
+    {
+        return Cache::get($this->key() . ':pending');
+    }
+
+    private function put(string $part, mixed $value): void
+    {
+        Cache::put($this->key() . ":{$part}", $value, now()->addMinutes(self::TTL_MINUTES));
     }
 
     /**

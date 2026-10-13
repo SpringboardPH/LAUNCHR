@@ -19,6 +19,11 @@ use Illuminate\Support\Collection;
  *
  * Separated employees are included deliberately. A 2316 is issued to people
  * who left during the year — excluding them would break the ordinary case.
+ *
+ * Supervisor's changes: a TIN finds the employee too ("2316 for 920-919-920-00001 2024"),
+ * matched on its digits so dashes and spaces don't matter, and mentionedIn() finds whoever
+ * a whole sentence names ("edit 2316 item 6 for maria santos, change it to …"), so a box
+ * on any saved form can be read or changed without the model.
  */
 class BirEmployeeResolver
 {
@@ -27,6 +32,22 @@ class BirEmployeeResolver
     public const AMBIGUOUS = 'ambiguous';
 
     public const NOT_FOUND = 'not_found';
+
+    /** mentionedIn() only: the message names no one. */
+    public const NOT_NAMED = 'not_named';
+
+    /**
+     * A TIN as people type it: 3-3-3 digits with the same dash or space between and an
+     * optional 3-5 digit branch code, nine digits then the branch code, or all of it run
+     * together (12-14 digits). A bare 9-digit number is not taken as a TIN, since it reads
+     * as an amount just as well.
+     */
+    public const TIN_PATTERN = '/(?<![\d-])(?:\d{3}([- ])\d{3}\1\d{3}(?:\1\d{3,5})?|\d{9}[- ]\d{3,5}|\d{12,14})(?![\d-])/';
+
+    /** Words that look like a first or last name but name a month, a form or a command. */
+    private const NOT_NAMES = [
+        'may', 'june', 'april', 'august', 'item', 'box', 'form', 'change', 'edit', 'update', 'the', 'for',
+    ];
 
     /** Maximum candidates shown before asking the user to be more specific. */
     private const MAX_CANDIDATES = 5;
@@ -48,9 +69,11 @@ class BirEmployeeResolver
             return $this->result(self::NOT_FOUND);
         }
 
-        $employees = Employee::query()
-            ->select(['id', 'employee_id', 'first_name', 'last_name', 'email', 'status', 'hire_date'])
-            ->get();
+        if (preg_match(self::TIN_PATTERN, $query, $m) && strlen(preg_replace('/\D/', '', $query)) === strlen(preg_replace('/\D/', '', $m[0]))) {
+            return $this->byTin($m[0]);
+        }
+
+        $employees = $this->employees();
 
         foreach ([
             fn () => $this->byEmployeeId($employees, $query),
@@ -70,6 +93,102 @@ class BirEmployeeResolver
         }
 
         return $this->result(self::NOT_FOUND);
+    }
+
+    /**
+     * The employee with this TIN. The first nine digits must match; a branch code counts
+     * only when both have one, so 920-919-920 finds 920-919-920-00000, and 001 equals 00001.
+     *
+     * @return array{status:string, employee:?Employee, candidates:array<int,array<string,mixed>>}
+     */
+    public function byTin(string $tin): array
+    {
+        $wanted = self::tinParts($tin);
+        $hits = $this->employees()->filter(function (Employee $e) use ($wanted) {
+            $has = self::tinParts((string) $e->tin_number);
+
+            return $has['base'] !== '' && $has['base'] === $wanted['base']
+                && ($has['branch'] === null || $wanted['branch'] === null || $has['branch'] === $wanted['branch']);
+        })->values();
+
+        return match ($hits->count()) {
+            0 => $this->result(self::NOT_FOUND),
+            1 => $this->result(self::MATCHED, $hits->first()),
+            default => $this->result(self::AMBIGUOUS, null, $hits),
+        };
+    }
+
+    /**
+     * Whoever a whole sentence names: a TIN, an employee ID, or a name written in it
+     * ("for maria santos", "Maria Santos's 2316"). A full name beats a last or first name
+     * alone; failing those, the words after "for", "ni" or "kay" are looked up like a typed
+     * name, typos allowed. NOT_NAMED when nothing in it names a person.
+     *
+     * @return array{status:string, employee:?Employee, candidates:array<int,array<string,mixed>>, query:?string}
+     */
+    public function mentionedIn(string $text): array
+    {
+        if (preg_match(self::TIN_PATTERN, $text, $m)) {
+            return $this->byTin($m[0]) + ['query' => $m[0]];
+        }
+
+        $employees = $this->employees();
+        $words = preg_split('/\s+/', $this->normalize(preg_replace("/['’]s\b/u", '', $text)), -1, PREG_SPLIT_NO_EMPTY);
+
+        foreach ($words as $word) {
+            $hits = $this->byEmployeeId($employees, $word);
+            if ($hits->count() === 1) {
+                return $this->result(self::MATCHED, $hits->first()) + ['query' => $word];
+            }
+        }
+
+        // A first or last name alone counts only where a name is expected: after "for",
+        // "ni", "kay", "of" or "si", or before 's ("Maria's"), so "hope" or "grace" in a
+        // sentence never picks out an employee. A full name counts anywhere.
+        preg_match_all("/\b(?:for|ni|kay|of|si)\s+((?:[\p{L}.-]+\s*){1,3})|([\p{L}.-]+(?:\s+[\p{L}.-]+)?)['’]s\b/iu", $text, $slots);
+        $named = preg_split('/\s+/', $this->normalize(implode(' ', [...$slots[1], ...$slots[2]])), -1, PREG_SPLIT_NO_EMPTY);
+
+        $has = fn (string $name, array $in) => ($parts = explode(' ', $this->normalize($name))) !== []
+            && array_diff($parts, $in) === [] && array_diff($parts, self::NOT_NAMES) !== [];
+        foreach ([
+            fn (Employee $e) => $has($e->first_name, $words) && $has($e->last_name, $words),
+            fn (Employee $e) => $has($e->last_name, $named),
+            fn (Employee $e) => $has($e->first_name, $named),
+        ] as $tier) {
+            $hits = $employees->filter($tier)->values();
+            if ($hits->count() === 1) {
+                return $this->result(self::MATCHED, $hits->first()) + ['query' => null];
+            }
+            if ($hits->count() > 1) {
+                return $this->result(self::AMBIGUOUS, null, $hits) + ['query' => null];
+            }
+        }
+
+        // "for mariaa santos": the words after "for" / "ni" / "kay", up to the next keyword.
+        if (preg_match('/\b(?:for|ni|kay)\s+([\p{L}][\p{L} .\'-]*?)(?=\s*(?:[,;:?!]|\'s\b|\b(?:item|box|to|ng|for|on|in|sa|of|change|from|na)\b|\d|$))/iu', $text, $m)) {
+            $query = trim($m[1], " .'-");
+            if ($query !== '' && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
+                return $this->resolve($query) + ['query' => $query];
+            }
+        }
+
+        return $this->result(self::NOT_NAMED) + ['query' => null];
+    }
+
+    /** @return Collection<int, Employee> */
+    private function employees(): Collection
+    {
+        return Employee::query()
+            ->select(['id', 'employee_id', 'first_name', 'last_name', 'email', 'status', 'hire_date', 'tin_number'])
+            ->get();
+    }
+
+    /** @return array{base: string, branch: ?int} the first nine digits, and the branch code as a number */
+    private static function tinParts(string $tin): array
+    {
+        $digits = preg_replace('/\D/', '', $tin);
+
+        return ['base' => strlen($digits) >= 9 ? substr($digits, 0, 9) : '', 'branch' => strlen($digits) > 9 ? (int) substr($digits, 9) : null];
     }
 
     /** Tier 1: "EMP003" is unambiguous. */
