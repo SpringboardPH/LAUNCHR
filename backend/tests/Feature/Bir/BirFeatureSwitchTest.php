@@ -16,6 +16,8 @@ use Tests\TestCase;
  * GET /bir/config is 403 "The BIR Form Assistant is not enabled" for admin, HR and accounting, and
  * nothing changes. The role check still comes first, so an employee gets the role message.
  *
+ * The company password and the switch (PUT /bir/switch/password, PUT /bir/switch) stay open too.
+ *
  * Deliberately does not use EnablesBirForms: the switch starts off here, as in a fresh install.
  */
 class BirFeatureSwitchTest extends TestCase
@@ -121,6 +123,31 @@ class BirFeatureSwitchTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.enabled', false);
+    }
+
+    /** The company password and the switch stay open while off, or BIR could never be turned on. */
+    #[DataProvider('offStates')]
+    public function test_an_admin_can_set_the_password_and_turn_it_on_while_off(string $off): void
+    {
+        $this->switchOff($off);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $this->actingAs($admin)
+            ->putJson('/api/bir/switch/password', ['password' => 'test-company-pass', 'password_confirmation' => 'test-company-pass'])
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->putJson('/api/bir/switch', ['enabled' => true, 'password' => 'test-company-pass'])
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+
+        $this->actingAs($admin)->getJson('/api/bir/config')->assertOk()->assertJsonPath('data.enabled', true);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function offStates(): array
+    {
+        return array_combine(self::OFF_STATES, array_map(fn (string $off) => [$off], self::OFF_STATES));
     }
 
     public function test_with_the_switch_on_config_says_enabled_and_actions_work(): void

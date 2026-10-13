@@ -130,6 +130,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/config', [BirFormController::class, 'config']);
         Route::middleware(['role:admin', 'throttle:5,1'])->group(function () {
             Route::put('/switch/password', [BirSwitchController::class, 'setPassword']);
+            Route::put('/switch', [BirSwitchController::class, 'toggle']);
         });
         Route::middleware('bir.enabled')->group(function () {
             Route::get('/drafts', [BirFormController::class, 'index']);

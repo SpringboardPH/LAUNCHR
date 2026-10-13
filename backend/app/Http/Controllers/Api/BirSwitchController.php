@@ -53,4 +53,42 @@ class BirSwitchController extends Controller
             'message' => 'Company password saved',
         ]);
     }
+
+    /** Turns bir_forms_enabled on or off; the only way to change it (the general settings save refuses it). */
+    public function toggle(Request $request)
+    {
+        $request->validate([
+            'enabled' => 'required|boolean',
+            'password' => 'required|string',
+        ]);
+
+        $hash = SystemSettings::get(self::PASSWORD_KEY);
+        if (empty($hash)) {
+            return response()->json(['success' => false, 'message' => 'No company password is set up'], 422);
+        }
+        if (!Hash::check($request->input('password'), $hash)) {
+            return response()->json(['success' => false, 'message' => 'The company password is incorrect'], 422);
+        }
+
+        $enabled = $request->boolean('enabled');
+        $existing = SystemSettings::where('key', 'bir_forms_enabled')->first();
+        $before = (bool) $existing?->value;
+
+        SystemSettings::set('bir_forms_enabled', $enabled, $existing?->description, 'boolean');
+
+        $state = $enabled ? 'on' : 'off';
+        AuditLog::log(
+            'BIR_SWITCH',
+            "{$request->user()->name} turned the BIR Form Assistant {$state}",
+            null,
+            ['enabled' => $before],
+            ['enabled' => $enabled]
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => ['enabled' => $enabled],
+            'message' => "The BIR Form Assistant is now {$state}",
+        ]);
+    }
 }
