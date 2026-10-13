@@ -77,6 +77,21 @@ class BirPdfExportTest extends TestCase
         $this->assertStringNotContainsString('NOT FOR FILING', $this->text($id));
     }
 
+    public function test_a_new_version_of_a_filed_2316_says_in_red_that_it_was_filed_before(): void
+    {
+        $v1 = $this->draft('2316');
+        BirFormDraft::whereKey($v1)->update(['status' => 'finalized']);
+        $v2 = $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertCreated()->json('data.id');
+
+        $this->assertStringContainsString("THIS FORM HAS ALREADY BEEN FILED AS FORM #{$v1}. THIS IS VERSION 2, FORM #{$v1}v2.", $this->text($v2));
+        BirFormDraft::whereKey($v2)->update(['status' => 'approved']);
+        $this->assertStringContainsString('THIS FORM HAS ALREADY BEEN FILED', $this->text($v2), 'Until this version is filed itself.');
+
+        BirFormDraft::whereKey($v2)->update(['status' => 'finalized']);
+        $this->assertStringNotContainsString('ALREADY BEEN FILED', $this->text($v2), 'Filed itself: it is the filed one now.');
+        $this->assertStringNotContainsString('ALREADY BEEN FILED', $this->text($v1));
+    }
+
     public function test_an_unknown_draft_is_a_404_and_employees_cannot_export(): void
     {
         $this->actingAs($this->accounting)->getJson('/api/bir/drafts/999/export')->assertNotFound();

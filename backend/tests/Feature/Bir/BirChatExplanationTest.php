@@ -200,7 +200,7 @@ class BirChatExplanationTest extends TestCase
     public function test_a_question_about_a_box_with_no_box_named_and_none_open_asks_which(): void
     {
         $id = $this->draft2316();
-        BirFormDraft::whereKey($id)->update(['status' => 'approved']);
+        BirFormDraft::whereKey($id)->update(['status' => 'finalized']); // locked: no question open
         $this->model->willReturn(['kind' => 'explain_source', 'field' => null]);
 
         $this->chat($id, null, 'where did this come from?')->assertJsonPath('data.reply', BirExplanationService::WHICH_BOX);

@@ -99,13 +99,16 @@ class BirChatEditTest extends TestCase
         $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$id}", ['fields' => ['employee_rdo_code' => '049']])->assertOk();
         $this->model->willReturn(['kind' => 'answer', 'field' => null]);
 
+        // "TIN" names three boxes: the chat asks which, and the item number finishes the change.
         $reply = $this->chat($id, 'employee_registered_address', 'change TIN to 987-654-321-676')
             ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.question.field', 'employee_registered_address')
             ->json('data.reply');
+        $this->assertStringStartsWith("Which one do you mean? On the 2316 that could be:\n- item 3: the employee's Taxpayer Identification Number\n- item 12: the company's TIN", $reply);
+        $this->chat($id, null, 'item 12')
+            ->assertJsonPath('data.answer', ['field' => 'present_employer_tin', 'value' => '987-654-321-00676']);
 
-        $this->assertStringStartsWith('Which box do you want to change? Give its item number. On the 2316, that could be item 3, item 12 or item 16.', $reply);
-        $this->assertStringContainsString("\n\n\"Item 6, Registered Address\" is needed for this form. What is it?", $reply, 'The open question is asked again.');
+        // Afterwards the open question is asked again, and an answer to it is still read as one.
+        $this->chat($id, null, null)->assertJsonPath('data.question.field', 'employee_registered_address');
         $this->assertSame([], $this->model->calls(), 'Read in PHP: the model is not asked.');
     }
 
@@ -164,11 +167,11 @@ class BirChatEditTest extends TestCase
     public function test_a_locked_form_or_no_form_is_never_changed(): void
     {
         $id = $this->draft2316();
-        BirFormDraft::whereKey($id)->update(['status' => 'approved']);
+        BirFormDraft::whereKey($id)->update(['status' => 'finalized']);
 
         $this->chat($id, null, 'change item 5 to 049')
             ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', "Bir Tester's 2316 for 2026 (form #{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
+            ->assertJsonPath('data.reply', "Bir Tester's 2316 for 2026 is filed, so it can't be changed. To fix it, open it and click \"Start a correction\".");
 
         $this->send('change TIN to 987-654-321-676', reset: true)
             ->assertJsonPath('data.reply', BirExplanationService::OPEN_A_FORM);

@@ -19,6 +19,10 @@ use setasign\Fpdi\Fpdi;
  *
  * Until a form is approved, every page says DRAFT across the top, so a draft can be
  * printed and checked but is never mistaken for one ready to file.
+ *
+ * A 2316 whose earlier version was already filed, exported before this version is filed
+ * itself, also says so in red on every page (supervisor's request), so a correction is never
+ * sent out as if it were the first certificate.
  */
 class BirPdfService
 {
@@ -37,6 +41,7 @@ class BirPdfService
         };
 
         $values = $this->valuesByAnchor($schema, $draft->fields ?? []);
+        $filedBefore = $this->filedBefore($draft);
 
         $pdf = new Fpdi('P', 'pt');
         $pdf->SetCompression($compress);
@@ -59,6 +64,9 @@ class BirPdfService
 
             if (!in_array($draft->status, self::FILEABLE_STATUSES, true)) {
                 $this->markAsDraft($pdf, $draft, $size['width']);
+            }
+            if ($filedBefore !== null) {
+                $this->markAsFiledBefore($pdf, $draft, $filedBefore, $size['width']);
             }
         }
 
@@ -195,6 +203,37 @@ class BirPdfService
         $pdf->SetTextColor(200, 0, 0);
         $pdf->SetXY(0, 0);
         $pdf->Cell($pageWidth, 8, self::latin1("DRAFT #{$draft->id} ({$draft->status}) — NOT FOR FILING"), 0, 0, 'C');
+        $pdf->SetTextColor(0, 0, 0);
+    }
+
+    /**
+     * The filed earlier version of this 2316, when this version isn't filed yet itself; else
+     * null. Only versions of the same form count (BirFormNames::rootId).
+     */
+    private function filedBefore(BirFormDraft $draft): ?BirFormDraft
+    {
+        if ($draft->form_type !== Form2316Schema::FORM_TYPE || $draft->version <= 1 || $draft->status === 'finalized') {
+            return null;
+        }
+        $root = BirFormNames::rootId($draft);
+
+        return BirFormDraft::where('form_type', $draft->form_type)
+            ->where('period', $draft->period)
+            ->where('employee_id', $draft->employee_id)
+            ->where('status', 'finalized')
+            ->where('version', '<', $draft->version)
+            ->orderByDesc('version')
+            ->get()
+            ->first(fn (BirFormDraft $d) => BirFormNames::rootId($d) === $root);
+    }
+
+    private function markAsFiledBefore(Fpdi $pdf, BirFormDraft $draft, BirFormDraft $filed, float $pageWidth): void
+    {
+        $pdf->SetFont(self::FONT, 'B', 8);
+        $pdf->SetTextColor(200, 0, 0);
+        $pdf->SetXY(0, 9);
+        $pdf->Cell($pageWidth, 8, self::latin1('THIS FORM HAS ALREADY BEEN FILED AS FORM ' . BirFormNames::label($filed)
+            . '. THIS IS VERSION ' . $draft->version . ', FORM ' . BirFormNames::label($draft) . '.'), 0, 0, 'C');
         $pdf->SetTextColor(0, 0, 0);
     }
 

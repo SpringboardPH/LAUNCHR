@@ -49,13 +49,8 @@ class BirChatCommands
 
     private const NEEDS_NUMBER = "To change a form that isn't open here, I need its number.";
 
-    /** Words asking for what a box holds rather than what it means. */
-    private const VALUE_WORDS = '/\b(value|laman|nakalagay|how much|magkano|amount|figure|show|give|tell me|check|what\'?s in|what is in|ano ang nasa|ano yung nasa)\b/i';
-
-    private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source)\b/i';
-
-    /** A question about what a box means, or a request for a new form: never read as a lookup by name. */
-    private const NOT_A_LOOKUP = '/\b(mean|means|meaning|ibig sabihin|explain|paliwanag|make|generate|prepare|create|gawa|gumawa|need|kailangan)\b/i';
+    /** Words of a change command, never part of a box's name. */
+    private const COMMAND_WORDS = ['change', 'update', 'set', 'edit', 'correct', 'replace', 'fix', 'palitan', 'pakipalitan', 'baguhin', 'gawing', 'it', 'please'];
 
     public function __construct(
         private readonly BirFormFinder $finder,
@@ -64,6 +59,7 @@ class BirChatCommands
         private readonly BirDraftValidator $validator,
         private readonly BirIntentService $intent,
         private readonly BirChatUndo $undo,
+        private readonly BirChatLookup $lookup,
     ) {}
 
     /** @return ?array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool} */
@@ -74,7 +70,10 @@ class BirChatCommands
         $pending = $state->pending();
         $state->setPending(null);
         if ($pending !== null && ($extra = $this->completion($message, $pending['needs'])) !== null) {
-            $message = "{$pending['message']} {$extra}";
+            // An item number for a change goes right after the command word, before the new value.
+            $message = !empty($pending['insert']) && str_starts_with($extra, 'item ')
+                ? preg_replace('/^(\s*\S+)/u', '$1 ' . $extra, $pending['message'], 1)
+                : "{$pending['message']} {$extra}";
         }
 
         $offer = $state->offer();
@@ -94,8 +93,8 @@ class BirChatCommands
             (bool) preg_match(self::UNDO, $message) => $this->undo->undo($item, $current, $state, $user),
             (bool) preg_match(self::DONE, $message) => $this->done($current, $canAct),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
-            $item !== null => $this->lookup($message, $item, $current, $state),
-            default => $this->lookup($message, null, $current, $state),
+            (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
+            default => $this->lookup->lookup($message, $item, $current, $state),
         };
 
         // A reply that asks for a number, an item or a year waits for it: the open question
@@ -120,9 +119,9 @@ class BirChatCommands
         $state->setOffer(null);
 
         $change = $this->conversation->change($draft, $offer['message'], $offer['value']);
-        $started = 'Started ' . BirFormFinder::correctionName($draft) . " (form #{$draft->id}) from " . BirFormFinder::describe($draft)
+        $started = 'Started ' . BirFormNames::correctionName($draft) . ', form ' . BirFormNames::name($draft) . ', from ' . BirFormNames::describe($draft)
             . '. The filed version stays as it is.';
-        $finish = ' Tell me any other changes, and say done when the ' . (BirFormFinder::isAmendment($draft) ? 'amendment' : 'correction') . ' is finished.';
+        $finish = ' Tell me any other changes, and say done when the ' . (BirFormNames::isAmendment($draft) ? 'amendment' : 'correction') . ' is finished.';
 
         if ($change['answer'] === null) {
             return self::result("{$started} {$change['reply']}{$finish}", $draft);
@@ -150,33 +149,71 @@ class BirChatCommands
         }
         $ref = $this->finder->reference($around);
 
-        if ($ref['number'] === null && !$ref['named'] && $ref['person'] === BirEmployeeResolver::NOT_NAMED) {
+        if ($ref['number'] !== null) {
+            $found = $this->lookup->target($ref, $current, $message, $state);
+            if (!$found instanceof BirFormDraft) {
+                return $found; // no such form, or it doesn't fit the rest: already worded
+            }
+            $target = $found;
+        } elseif (!$ref['named'] && $ref['person'] === BirEmployeeResolver::NOT_NAMED) {
             if ($current === null) {
                 return self::result(BirExplanationService::OPEN_A_FORM);
             }
             $target = $current;
         } else {
-            $found = $ref['number'] !== null
-                ? $this->target($ref, $current, $message, $state)
-                : $this->finder->resolve($ref, $current, self::NEEDS_NUMBER . ' These fit:');
-            if ($found instanceof BirFormDraft && ($ref['number'] !== null || $found->id === $current?->id)) {
-                $target = $found;
-            } else {
+            $found = $this->finder->resolve($ref, $current, self::NEEDS_NUMBER . ' These fit:');
+            if (!$found instanceof BirFormDraft || $found->id !== $current?->id) {
                 return $this->askForNumber($found, $message, $state);
+            }
+            $target = $found;
+        }
+
+        // "change local home address of form 71 to …": the box by its name, when only one fits.
+        if (BirAnswerParser::itemMentioned($message) === null) {
+            $named = $this->itemNamed($target, $around, $ref);
+            if ($named !== null && str_starts_with($named, 'Which one')) {
+                $state->setPending(['message' => $message, 'needs' => 'box', 'insert' => true]);
+
+                return self::result($named, null, null, stay: true);
+            }
+            if ($named !== null) {
+                $message = preg_replace('/^(\s*\S+)/u', '$1 item ' . $named, $message, 1);
             }
         }
 
         if ($target->status === 'finalized' && ($open = $this->finder->openCorrection($target)) !== null) {
             $state->setPending(['message' => $message, 'needs' => 'form']);
+            $label = BirFormNames::label($open);
 
-            return self::result('Form #' . $target->id . ' (' . BirFormFinder::describe($target) . ") is filed, so it can't be changed. Its correction, form #{$open->id} "
-                . "(version {$open->version}, " . BirFormFinder::statusWord($open) . "), is still open. Reply \"form #{$open->id}\" to make the change there.", null, null, stay: true);
+            return self::result('Form ' . BirFormNames::label($target) . ' (' . BirFormNames::describe($target) . ") is filed, so it can't be changed. Its "
+                . BirFormNames::versionWord($open) . ', form ' . BirFormNames::name($open) . ', ' . BirFormNames::statusWord($open)
+                . ", is still open. Reply \"form {$label}\" to make the change there.", null, null, stay: true);
         }
 
-        return match ($target->status) {
-            'draft', 'pending' => $this->changeOpen($target, $message, $value, $current, $state, $user),
-            'approved' => self::result(ucfirst(BirFormFinder::describe($target)) . " (form #{$target->id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.", null, null, stay: true),
+        // Approved forms can be changed once the workflow allows it (Dev B): they go back to draft.
+        $editable = in_array($target->status, BirFormDraft::EDITABLE_STATUSES, true);
+
+        return match (true) {
+            $editable => $this->changeOpen($target, $message, $value, $current, $state, $user),
+            $target->status === 'approved' => self::result(ucfirst(BirFormNames::describe($target)) . ' (form ' . BirFormNames::name($target) . ") is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.", null, null, stay: true),
             default => $this->offerCorrection($target, $message, $value, $state, $canAct),
+        };
+    }
+
+    /**
+     * The item a change names by its box's name (BirBoxMatcher), "Which one…" when several
+     * boxes share the name, or null when the words name no box.
+     */
+    private function itemNamed(BirFormDraft $target, string $around, array $ref): ?string
+    {
+        $fields = array_values(array_filter($this->conversation->fields($target->form_type), fn (array $f) => $f['source'] !== 'manual'));
+        $who = $ref['employee'] !== null ? [$ref['employee']->first_name, $ref['employee']->last_name] : [];
+        $match = BirBoxMatcher::match($fields, $around, array_filter([...$who, $ref['query'], ...self::COMMAND_WORDS]));
+
+        return match (true) {
+            $match['fields'] === [] => null,
+            $match['ambiguous'] => BirBoxMatcher::whichOne($target->form_type, $match['fields']),
+            default => (string) $match['fields'][0]['item'],
         };
     }
 
@@ -186,7 +223,7 @@ class BirChatCommands
         if ($found instanceof BirFormDraft) {
             $state->setPending(['message' => $message, 'needs' => 'form']);
 
-            return self::result(self::NEEDS_NUMBER . ' That sounds like ' . BirFormFinder::line($found) . ". Reply \"form #{$found->id}\" to change it.", null, null, stay: true);
+            return self::result(self::NEEDS_NUMBER . ' That sounds like ' . BirFormNames::line($found) . '. Reply "form ' . BirFormNames::label($found) . '" to change it.', null, null, stay: true);
         }
         if ($found['ask']) {
             $state->setPending(['message' => $message, 'needs' => $found['needs']]);
@@ -199,26 +236,34 @@ class BirChatCommands
     private function changeOpen(BirFormDraft $target, string $message, ?string $value, ?BirFormDraft $current, BirConversationState $state, User $user): array
     {
         if ($target->status === 'pending' && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true)) {
-            return self::result(ucfirst(BirFormFinder::describe($target)) . ' is waiting for review, and only accounting can change it now. You can still ask what any box holds.', null, null, stay: true);
+            return self::result(ucfirst(BirFormNames::describe($target)) . ' is waiting for review, and only accounting can change it now. You can still ask what any box holds.', null, null, stay: true);
         }
 
         $change = $this->conversation->change($target, $message, $value);
         if ($change['answer'] === null) {
+            if (BirAnswerParser::itemMentioned($message) === null) {
+                // "Which box?": the item number that comes back finishes this same change.
+                $state->setPending(['message' => $message, 'needs' => 'box', 'insert' => true]);
+            }
+
             return self::result($change['reply'], null, null, stay: true);
         }
         $this->undo->remember($state, $target, $change['answer']);
 
         $where = $current === null || $target->id !== $current->id
-            ? 'On ' . BirFormFinder::describe($target) . ' (' . BirFormFinder::versionNote($target) . '): '
+            ? 'On ' . BirFormNames::describe($target) . ' (' . BirFormNames::versionNote($target) . '): '
+            : '';
+        $again = $target->status === 'approved'
+            ? ' It was approved, so this sends it back to a draft: submit it for review again to have it approved.'
             : '';
 
-        return self::result($where . $change['reply'] . ' Say "undo" to put it back.', $target, $change['answer']);
+        return self::result($where . $change['reply'] . $again . ' Say "undo" to put it back.', $target, $change['answer']);
     }
 
     /** A filed form: say so, and offer the two ways to correct it, unless its amendments are used up. */
     private function offerCorrection(BirFormDraft $filed, string $message, ?string $value, BirConversationState $state, bool $canAct): array
     {
-        $name = ucfirst(BirFormFinder::describe($filed));
+        $name = ucfirst(BirFormNames::describe($filed));
         $limit = BirFormFinder::amendmentLimit($filed->form_type);
         $made = $filed->version - 1;
 
@@ -261,7 +306,7 @@ class BirChatCommands
 
         $limit = BirFormFinder::amendmentLimit($filed->form_type);
         if ($limit !== null && $filed->version - 1 >= $limit) {
-            return self::result(ucfirst(BirFormFinder::describe($filed)) . " has already been amended {$limit} times, so it can't be amended again.");
+            return self::result(ucfirst(BirFormNames::describe($filed)) . " has already been amended {$limit} times, so it can't be amended again.");
         }
 
         $state->setOffer($offer + ['accepted' => true]);
@@ -276,9 +321,9 @@ class BirChatCommands
             return self::result('There is no form open here to send for review. Open one, or ask for a new one.');
         }
 
-        $name = ucfirst(BirFormFinder::describe($current));
+        $name = ucfirst(BirFormNames::describe($current));
         if ($current->status !== 'draft') {
-            return self::result("{$name} is already " . BirFormFinder::STATUS_WORDS[$current->status] . ', so there is nothing to submit.', null, null, stay: true);
+            return self::result("{$name} is already " . BirFormNames::STATUS_WORDS[$current->status] . ', so there is nothing to submit.', null, null, stay: true);
         }
 
         $errors = array_values(array_filter($this->validator->validate($current), fn (array $e) => $e['severity'] === 'error'));
@@ -297,134 +342,11 @@ class BirChatCommands
         if ($current->version > 1) {
             $limit = BirFormFinder::amendmentLimit($current->form_type);
             $note = $limit !== null
-                ? ' This is amendment ' . ($current->version - 1) . ': ' . BirFormFinder::monthName($current->period) . ' has now used ' . ($current->version - 1) . " of its {$limit} amendments."
+                ? ' This is amendment ' . ($current->version - 1) . ': ' . BirFormNames::monthName($current->period) . ' has now used ' . ($current->version - 1) . " of its {$limit} amendments."
                 : " This is correction version {$current->version}.";
         }
 
-        return self::result("Sent {$current->form_type} #{$current->id} for review.{$note}", null, null, ['type' => 'submit', 'draft_id' => $current->id]);
-    }
-
-    /**
-     * "What is item 25A on Maria Santos's 2316 for 2026?" — what a box holds on any saved form.
-     * Null when the message only asks what an item means on a form type ("what is item 14 on
-     * the 1601-C?"); the chat's help text answers that. With no item number ($item null) the
-     * box is found by name, and only for a question that names a form or asks for a value.
-     */
-    private function lookup(string $message, ?string $item, ?BirFormDraft $current, BirConversationState $state): ?array
-    {
-        $ref = $this->finder->reference($message);
-        $wantsValue = preg_match(self::VALUE_WORDS, $message) === 1;
-
-        if ($item === null && (preg_match(self::NOT_A_LOOKUP, $message)
-            || !($wantsValue || BirAnswerParser::looksLikeQuestion($message))
-            || !($wantsValue || BirFormFinder::specific($ref))
-            || ($ref['form_type'] ?? $current?->form_type ?? $ref['number']) === null)) {
-            return null;
-        }
-
-        if (!BirFormFinder::specific($ref)) {
-            if (!$wantsValue || ($ref['form_type'] !== null && $current !== null && $ref['form_type'] !== $current->form_type)) {
-                return null;
-            }
-            if ($current === null) {
-                return self::result('Which form do you mean? Give its number or describe it with the box, for example "what is item 21 on form #12?" or "on Maria Santos\'s 2316 for 2026".');
-            }
-            $draft = $current;
-        } else {
-            $found = $this->target($ref, $current, $message, $state);
-            if (!$found instanceof BirFormDraft) {
-                return $found;
-            }
-            $draft = $found;
-        }
-
-        if ($item === null) {
-            $parts = $this->boxNamed($draft, $message, $ref);
-            if ($parts === null) {
-                return null; // names no box: the chat carries on as before (the model sorts it)
-            }
-            if (is_string($parts)) {
-                if (str_starts_with($parts, 'Which one')) {
-                    $state->setPending(['message' => $message, 'needs' => 'box']); // "item 12" finishes it
-                }
-
-                return self::result($parts, null, null, stay: true);
-            }
-        } else {
-            $parts = array_values(array_filter($this->conversation->fieldsForItem($draft->form_type, $item), fn (array $f) => $f['source'] !== 'manual'));
-        }
-        if ($parts === []) {
-            return self::result("The {$draft->form_type} has no item {$item} kept here.", null, null, stay: true);
-        }
-
-        $on = 'On ' . BirFormFinder::describe($draft) . ' (' . BirFormFinder::versionNote($draft) . ')';
-        if (preg_match(self::SOURCE_WORDS, $message)) {
-            return self::result("{$on}:\n" . implode("\n\n", array_map(fn (array $f) => $this->explanations->source($draft, $f['key']), $parts)), null, null, stay: true);
-        }
-
-        $lines = array_map(fn (array $f) => BirConversationService::boxName($f) . ' is ' . BirConversationService::shown(($draft->fields ?? [])[$f['key']]['value'] ?? null, $f), $parts);
-        $reply = count($lines) === 1 ? BirConversationService::sentence("{$on}, {$lines[0]}") : "{$on}:\n" . implode("\n", array_map(fn ($l) => BirConversationService::sentence($l), $lines));
-
-        // A later version that isn't filed yet: say what the filed one holds, if different.
-        $filed = $this->finder->versions($draft)->where('status', 'finalized')->where('version', '<', $draft->version)->last();
-        if ($draft->status !== 'finalized' && $filed !== null) {
-            $was = array_map(fn (array $f) => BirConversationService::shown(($filed->fields ?? [])[$f['key']]['value'] ?? null, $f), $parts);
-            $now = array_map(fn (array $f) => BirConversationService::shown(($draft->fields ?? [])[$f['key']]['value'] ?? null, $f), $parts);
-            if ($was !== $now) {
-                $reply .= "\nThe filed version (form #{$filed->id}, version {$filed->version}) has " . implode('; ', $was) . '.';
-            }
-        }
-
-        return self::result($reply, null, null, stay: true);
-    }
-
-    /**
-     * The boxes a question names on this form (BirBoxMatcher), or what to say instead: which
-     * of several it means, or the decline for a tax question. When no box's name fits, the
-     * model may pick one, but only from this form's list of boxes; null when it picks none.
-     *
-     * @return array<int, array<string, mixed>>|string|null
-     */
-    private function boxNamed(BirFormDraft $draft, string $message, array $ref): array|string|null
-    {
-        $fields = array_values(array_filter($this->conversation->fields($draft->form_type), fn (array $f) => $f['source'] !== 'manual'));
-        $who = $ref['employee'] !== null ? [$ref['employee']->first_name, $ref['employee']->last_name] : [];
-        $match = BirBoxMatcher::match($fields, $message, array_filter([...$who, $ref['query']]));
-
-        if ($match['fields'] === []) {
-            if ($match['words'] === 0) {
-                return null; // names no box at all: nothing to guess
-            }
-            try {
-                $sorted = $this->intent->classifyDraftMessage($message, $draft->form_type, $this->conversation->boxes($draft->form_type), null);
-            } catch (\RuntimeException) {
-                return null;
-            }
-            if ($sorted['kind'] === 'tax_question') {
-                return BirExplanationService::DECLINE;
-            }
-            $field = $sorted['field'] !== null ? $this->conversation->field($draft->form_type, $sorted['field']) : null;
-            if ($field === null || $field['item'] === null) {
-                return null;
-            }
-            $match = ['fields' => $this->conversation->fieldsForItem($draft->form_type, $field['item']), 'ambiguous' => false, 'words' => 1];
-        }
-
-        return $match['ambiguous'] ? BirBoxMatcher::whichOne($draft->form_type, $match['fields']) : $match['fields'];
-    }
-
-    /** The form a reference names (BirFormFinder::resolve()), or the reply saying what is missing. */
-    private function target(array $ref, ?BirFormDraft $current, string $message, BirConversationState $state): BirFormDraft|array
-    {
-        $found = $this->finder->resolve($ref, $current);
-        if ($found instanceof BirFormDraft) {
-            return $found;
-        }
-        if ($found['ask']) {
-            $state->setPending(['message' => $message, 'needs' => $found['needs']]); // "2026", a name or "#9" finishes it
-        }
-
-        return self::result($found['reply'], null, null, null, $found['candidates'], stay: true);
+        return self::result('Sent form ' . BirFormNames::name($current) . " for review.{$note}", null, null, ['type' => 'submit', 'draft_id' => $current->id]);
     }
 
     /**
@@ -436,9 +358,9 @@ class BirChatCommands
     {
         $short = str_word_count($message) <= 5 && !BirAnswerParser::looksLikeChange($message);
         // A bare year ("2026") is a year even here; "#2026" or "form 2026" would be a number.
-        if ($needs === 'form' && preg_match('/^\s*(?:(form|draft)\s*(?:no\.?|number)?\s*)?(#)?\s*(\d{1,6})\s*[.!]?\s*$/i', $message, $m)
-            && ($m[1] !== '' || $m[2] !== '' || !preg_match('/^(19|20)\d{2}$/', $m[3]))) {
-            return "on form #{$m[3]}";
+        if ($needs === 'form' && preg_match('/^\s*(?:(form|draft)\s*(?:no\.?|number)?\s*)?(#)?\s*(\d{1,6})(?:\s*v(\d{1,2}))?\s*[.!]?\s*$/i', $message, $m)
+            && ($m[1] !== '' || $m[2] !== '' || isset($m[4]) || !preg_match('/^(19|20)\d{2}$/', $m[3]))) {
+            return "on form #{$m[3]}" . (isset($m[4]) && $m[4] !== '' ? "v{$m[4]}" : '');
         }
         if ($needs === 'box' && preg_match('/^\s*(?:item|box|#)?\s*(\d{1,2}[a-z]?)\s*[.!?]?\s*$/i', $message, $m)) {
             return 'item ' . strtoupper($m[1]);

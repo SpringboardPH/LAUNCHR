@@ -35,14 +35,6 @@ class BirFormFinder
         'december' => 12, 'dec' => 12, 'disyembre' => 12,
     ];
 
-    /** How each status is said to the user. */
-    public const STATUS_WORDS = [
-        'draft' => 'a draft',
-        'pending' => 'waiting for review',
-        'approved' => 'approved',
-        'finalized' => 'filed',
-    ];
-
     /**
      * How people say each status, checked in this order. "returned" is a draft the reviewer
      * sent back (it has a rejection reason), so it is only those drafts.
@@ -55,11 +47,12 @@ class BirFormFinder
         'draft' => '/\b(drafts?)\b(?!\s*(?:no\.?|number)?\s*#?\s*\d)/i',
     ];
 
-    /** "form #12", "draft 12", "form no. 12", "form number 12": a form's number. */
-    public const FORM_NUMBER = '/\b(?:form|draft)\s*(?:no\.?|number)?\s*(#)?\s*(\d{1,6})\b(?!-?c\b)/i';
-
-    /** At most this many forms are listed when several fit. */
-    private const LISTED = 8;
+    /**
+     * A form's number as people write it: "form #12", "draft 12", "form no. 12", and labels
+     * with a version, "#64v2", "64v2", "form #64 v2". Groups: 1 "#", 2 the number, 3 the
+     * version of a label.
+     */
+    public const FORM_NUMBER = '/(?:\b(?:form|draft)\s*(?:no\.?|number)?\s*(#)?\s*|(?<![\w#])(?=#?\d{1,6}\s*v\d)(#)?)(\d{1,6})(?:\s*v(\d{1,2}))?\b(?!-?c\b)/i';
 
     public function __construct(private readonly BirEmployeeResolver $employees) {}
 
@@ -69,16 +62,34 @@ class BirFormFinder
      */
     public static function formNumber(string $text): ?int
     {
-        preg_match_all(self::FORM_NUMBER, $text, $all, PREG_SET_ORDER);
-        $numbers = array_filter($all, fn (array $m) => $m[1] === '#' || !in_array($m[2], ['2316', '1601'], true));
+        return self::formLabel($text)['number'];
+    }
 
-        return $numbers === [] ? null : (int) end($numbers)[2];
+    /**
+     * The form number a text gives and the version its label names ("#64v2": 64 and 2), the
+     * last one if several. "form 2316" and "form 1601-C" name a form type, not a number.
+     *
+     * @return array{number: ?int, version: ?int}
+     */
+    public static function formLabel(string $text): array
+    {
+        preg_match_all(self::FORM_NUMBER, $text, $all, PREG_SET_ORDER | PREG_UNMATCHED_AS_NULL);
+        $found = array_filter($all, [self::class, 'isFormNumber']);
+        $last = $found === [] ? null : end($found);
+
+        return ['number' => $last === null ? null : (int) $last[3], 'version' => isset($last[4]) ? (int) $last[4] : null];
     }
 
     /** The text with any form number taken out, so "draft #12" is never read as item 12 or the year. */
     public static function withoutFormNumber(string $text): string
     {
-        return preg_replace_callback(self::FORM_NUMBER, fn (array $m) => $m[1] === '#' || !in_array($m[2], ['2316', '1601'], true) ? ' ' : $m[0], $text);
+        return preg_replace_callback(self::FORM_NUMBER, fn (array $m) => self::isFormNumber($m) ? ' ' : $m[0], $text, -1, $count, PREG_UNMATCHED_AS_NULL);
+    }
+
+    /** "form #2316" is form 2316; "form 2316" without the "#" is the form type. */
+    private static function isFormNumber(array $m): bool
+    {
+        return ($m[1] ?? $m[2]) === '#' || isset($m[4]) || !in_array($m[3], ['2316', '1601'], true);
     }
 
     /**
@@ -89,7 +100,8 @@ class BirFormFinder
      */
     public function reference(string $text): array
     {
-        $number = self::formNumber($text);
+        $label = self::formLabel($text);
+        $number = $label['number'];
         $text = self::withoutFormNumber($text);
         $person = $this->employees->mentionedIn($text);
         $rest = preg_replace(BirEmployeeResolver::TIN_PATTERN, ' ', $text);
@@ -107,7 +119,7 @@ class BirFormFinder
             (bool) preg_match('/\b(?:version|v)\s*(\d{1,2})\b/i', $rest, $m) => (int) $m[1],
             (bool) preg_match('/\bamendment\s*(?:no\.?\s*|#\s*)?(\d{1,2})\b/i', $rest, $m) => (int) $m[1] + 1,
             (bool) preg_match('/\b(original|first version)\b/i', $rest) => 1,
-            default => null,
+            default => $label['version'],
         };
         $rest = preg_replace('/\b(?:version|v|amendment)\s*(?:no\.?\s*|#\s*)?\d{1,2}\b/i', ' ', $rest);
         $status = null;
@@ -202,10 +214,23 @@ class BirFormFinder
             ->get();
     }
 
+    /**
+     * Every version of one form, oldest first: the forms that share this one's original.
+     * (Two separate drafts for the same period are two forms, each with its own versions.)
+     *
+     * @return Collection<int, BirFormDraft>
+     */
+    public function chain(BirFormDraft $draft): Collection
+    {
+        $root = BirFormNames::rootId($draft);
+
+        return $this->versions($draft)->filter(fn (BirFormDraft $d) => BirFormNames::rootId($d) === $root)->values();
+    }
+
     /** A correction of this filed form that isn't filed yet, the newest one, or null. */
     public function openCorrection(BirFormDraft $filed): ?BirFormDraft
     {
-        return $this->versions($filed)
+        return $this->chain($filed)
             ->filter(fn (BirFormDraft $d) => $d->version > $filed->version && $d->status !== 'finalized')
             ->last();
     }
@@ -228,8 +253,17 @@ class BirFormFinder
             if ($draft === null) {
                 return self::ask("There is no form #{$ref['number']}. Which form do you mean?", true, needs: 'form');
             }
+            // "#64v2" or "form 64 version 2": that version of form 64.
+            if ($ref['version'] !== null && $ref['version'] !== $draft->version) {
+                $chain = $this->chain($draft);
+                $draft = $chain->firstWhere('version', $ref['version']);
+                if ($draft === null) {
+                    return self::ask('Form ' . BirFormNames::label($chain->first()) . " has no version {$ref['version']}. "
+                        . BirFormNames::listing($chain, 'Its versions are:'), true, needs: 'form');
+                }
+            }
             if (!$this->agrees($ref, $draft, withStatus: true)) {
-                return self::ask("Form #{$draft->id} is " . self::describe($draft) . ' (' . self::versionNote($draft) . "), which doesn't match the rest of what you said. Which form do you mean?", true, needs: 'form');
+                return self::ask('Form ' . BirFormNames::label($draft) . ' is ' . BirFormNames::describe($draft) . ' (' . BirFormNames::versionNote($draft) . "), which doesn't match the rest of what you said. Which form do you mean?", true, needs: 'form');
             }
 
             return $draft;
@@ -273,35 +307,16 @@ class BirFormFinder
                 'draft' => ' draft',
                 'returned' => ' returned',
                 'pending' => ' pending',
-                default => ' ' . self::STATUS_WORDS[$ref['status']],
+                default => ' ' . BirFormNames::STATUS_WORDS[$ref['status']],
             };
             $version = $ref['version'] !== null ? " (version {$ref['version']})" : '';
 
-            return self::ask("There is no{$status} " . substr(self::wanted($ref), 2) . "{$version} saved. Ask for it to prepare one, or check the details.", false);
+            return self::ask("There is no{$status} " . substr(BirFormNames::wanted($ref), 2) . "{$version} saved. Ask for it to prepare one, or check the details.", false);
         }
 
         return $forms->count() === 1 && $lead === null
             ? $forms->first()
-            : ($forms->count() === 1 ? $forms->first() : self::ask(self::listing($forms, $lead ?? self::SEVERAL), true, needs: 'form'));
-    }
-
-    private const SEVERAL = 'More than one form fits. Which one do you mean?';
-
-    /** "More than one form fits. Which one? - form #7: …" */
-    public static function listing(Collection $forms, string $lead = self::SEVERAL): string
-    {
-        $lines = $forms->take(self::LISTED)->map(fn (BirFormDraft $d) => '- ' . self::line($d))->implode("\n");
-        $more = $forms->count() > self::LISTED
-            ? "\n…and " . ($forms->count() - self::LISTED) . ' more. Add a detail such as the period, the person, or "filed" or "draft".'
-            : '';
-
-        return "{$lead}\n{$lines}{$more}\nSay its number, for example \"form #{$forms->first()->id}\".";
-    }
-
-    /** "form #7: Maria Santos's 2316 for 2026, version 1, filed". */
-    public static function line(BirFormDraft $draft): string
-    {
-        return "form #{$draft->id}: " . self::describe($draft) . ", version {$draft->version}, " . self::statusWord($draft);
+            : ($forms->count() === 1 ? $forms->first() : self::ask(BirFormNames::listing($forms, $lead ?? BirFormNames::SEVERAL), true, needs: 'form'));
     }
 
     /** True when nothing the reference names contradicts this form (status and version too, if asked). */
@@ -340,69 +355,6 @@ class BirFormFinder
         $limits = defined(BirFormDraft::class . '::AMENDMENT_LIMITS') ? BirFormDraft::AMENDMENT_LIMITS : [];
 
         return $limits[$formType] ?? null;
-    }
-
-    /** "amendment 2" on a 1601-C, "correction version 2" on a 2316. */
-    public static function correctionName(BirFormDraft $draft): string
-    {
-        return self::isAmendment($draft) ? 'amendment ' . ($draft->version - 1) : "correction version {$draft->version}";
-    }
-
-    /** A corrected 1601-C is an amendment, counted against its month's limit. */
-    public static function isAmendment(BirFormDraft $draft): bool
-    {
-        return $draft->form_type === Form1601CSchema::FORM_TYPE;
-    }
-
-    /** "Maria Santos's 2316 for 2026" / "the September 2026 1601-C". */
-    public static function describe(BirFormDraft $draft): string
-    {
-        if ($draft->form_type === Form2316Schema::FORM_TYPE) {
-            $name = trim(($draft->employee?->first_name ?? '') . ' ' . ($draft->employee?->last_name ?? ''));
-
-            return ($name !== '' ? self::possessive($name) : 'the') . " 2316 for {$draft->period}";
-        }
-
-        return 'the ' . self::monthName($draft->period) . ' 1601-C';
-    }
-
-    /** "form #12, version 1, filed". */
-    public static function versionNote(BirFormDraft $draft): string
-    {
-        return "form #{$draft->id}, version {$draft->version}, " . self::statusWord($draft);
-    }
-
-    /** "filed", "waiting for review", "a draft", or "returned for changes" for a draft the reviewer sent back. */
-    public static function statusWord(BirFormDraft $draft): string
-    {
-        return $draft->status === 'draft' && $draft->rejection_reason !== null
-            ? 'returned for changes'
-            : (self::STATUS_WORDS[$draft->status] ?? $draft->status);
-    }
-
-    /** "2026-09" → "September 2026". */
-    public static function monthName(string $period): string
-    {
-        return preg_match('/^(\d{4})-(\d{2})$/', $period, $m) ? date('F', mktime(0, 0, 0, (int) $m[2], 1)) . " {$m[1]}" : $period;
-    }
-
-    /** What a reference asks for, in words: "a 2316 for Maria Santos for 2026", "a 1601-C for September 2026". */
-    public static function wanted(array $ref): string
-    {
-        $who = $ref['employee'] !== null ? ' for ' . trim($ref['employee']->first_name . ' ' . $ref['employee']->last_name) : '';
-        $when = match (true) {
-            $ref['year'] !== null && $ref['month'] !== null => ' for ' . self::monthName(sprintf('%04d-%02d', $ref['year'], $ref['month'])),
-            $ref['month'] !== null => ' for ' . date('F', mktime(0, 0, 0, $ref['month'], 1)),
-            $ref['year'] !== null => " for {$ref['year']}",
-            default => '',
-        };
-
-        return "a {$ref['form_type']}{$who}{$when}";
-    }
-
-    private static function possessive(string $name): string
-    {
-        return str_ends_with(mb_strtolower($name), 's') ? "{$name}'" : "{$name}'s";
     }
 
     /**

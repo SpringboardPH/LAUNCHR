@@ -184,6 +184,9 @@ class BirConversationService
         }
 
         $name = self::boxName($field);
+        if (array_key_exists('fixed', $field)) {
+            return ['answer' => null, 'reply' => "{$name} is always " . ucfirst(self::display($field['fixed'], $field['type'])) . " on this form, so it can't be changed."];
+        }
         $value ??= self::newValue($message);
         if ($value === null) {
             return ['answer' => null, 'reply' => "What should {$name} be? For example: \"change item {$item} to …\"."];

@@ -59,7 +59,7 @@ class BirChatUndo
         $name = BirConversationService::boxName($field);
         if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)
             || ($draft->status === 'pending' && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true))) {
-            return BirChatCommands::result("Form #{$draft->id} is " . BirFormFinder::statusWord($draft) . " now, so the change to {$name} can't be undone here.", stay: true);
+            return BirChatCommands::result('Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . " now, so the change to {$name} can't be undone here.", stay: true);
         }
 
         $now = ($draft->fields ?? [])[$change['field']]['value'] ?? null;
@@ -80,7 +80,7 @@ class BirChatUndo
             $restore === null => 'It is back to the calculated figure, ' . BirConversationService::shown($was, $field) . '.',
             default => BirConversationService::sentence('It is back to ' . BirConversationService::shown($was, $field)),
         };
-        $where = $current === null || $current->id !== $draft->id ? " on form #{$draft->id}" : '';
+        $where = $current === null || $current->id !== $draft->id ? ' on form ' . BirFormNames::name($draft) : '';
 
         return BirChatCommands::result("Undid the change to {$name}{$where}. {$back}", $draft, ['field' => $change['field'], 'value' => $restore]);
     }
