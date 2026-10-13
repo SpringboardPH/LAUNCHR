@@ -51,6 +51,7 @@ class BirRoleAccessTest extends TestCase
         'revise' => ['POST', '/api/bir/drafts/{id}/revise', 'finalized', [], self::ALL, 201],
         'validate' => ['POST', '/api/bir/drafts/{id}/validate', 'draft', [], self::ALL, 200],
         'export' => ['GET', '/api/bir/drafts/{id}/export', 'draft', [], self::ALL, 200],
+        'employees' => ['GET', '/api/bir/drafts/{id}/employees', 'draft', [], self::ALL, 200],
         // draft_id with no message only asks the next question; the model is never called.
         'chat' => ['POST', '/api/bir/chat', 'draft', ['draft_id' => '{id}'], self::ALL, 200],
         // The company password and the switch are admin-only. No password is saved here, so the

@@ -43,6 +43,7 @@ class BirFeatureSwitchTest extends TestCase
         'revise' => ['POST', '/api/bir/drafts/{id}/revise', 'finalized', []],
         'validate' => ['POST', '/api/bir/drafts/{id}/validate', 'draft', []],
         'export' => ['GET', '/api/bir/drafts/{id}/export', 'draft', []],
+        'employees' => ['GET', '/api/bir/drafts/{id}/employees', 'draft', []],
         'chat' => ['POST', '/api/bir/chat', 'draft', ['draft_id' => '{id}']],
     ];
 

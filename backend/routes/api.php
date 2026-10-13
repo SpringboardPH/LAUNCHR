@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\DtrController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\BirFormController;
 use App\Http\Controllers\Api\BirChatController;
+use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
 
 // Public routes
@@ -146,6 +147,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
             Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);
             Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
+            Route::get('/drafts/{id}/employees', [BirEmployeeListController::class, 'show']);
             Route::post('/chat', [BirChatController::class, 'message']);
         });
     });

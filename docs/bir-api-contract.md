@@ -326,6 +326,7 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized | accounting only |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
+| GET | `/bir/drafts/{id}/employees` | A 1601-C's employee list, frozen when the draft was made | admin, hr, accounting |
 | POST | `/bir/chat` | Dev C. Controller method is `message`. | admin, hr, accounting |
 | PUT | `/bir/switch/password` | Set or change the company password for the switch | admin only |
 | PUT | `/bir/switch` | Turn the BIR Form Assistant on or off, with the company password | admin only |
@@ -565,6 +566,96 @@ the employee code on a 2316, and the version.
 
 404 if the draft is missing; employees get 403 like the rest of `/bir`. The PDF
 shows the draft's stored values, so a later payroll change does not alter it.
+
+### GET /bir/drafts/{id}/employees
+
+Each employee's part of a 1601-C, for the screen and the chat. Nothing is
+recomputed: the rows are the ones the aggregation produced when the draft was
+created (`_meta.employees`), saved on the draft with each employee's name and TIN
+as they were then. Later payroll edits, a rename, a new TIN or a change to the
+minimum wage earner list don't alter it. A revision has no snapshot of its own, so
+it shows the list of the nearest version up its `parent_id` chain
+(`BirFormDraft::sourceSnapshot()`). Nothing else saved with the draft is returned;
+the payroll rows stay hidden.
+
+| Code | When |
+|---|---|
+| 403 | An employee ("Unauthorized. Admin access required."), or the switch is off ("The BIR Form Assistant is not enabled"), as on every `/bir` route. |
+| 404 | `{ "success": false, "message": "Draft not found" }` |
+| 422 | A 2316: `{ "success": false, "message": "The employee list is only for a 1601-C" }` |
+| 200 | The list, below. |
+| 200 | A 1601-C made before the employee list existed (before 13 Oct 2026): the same keys with `employees`, `totals` and `differences` null, and the message "This form was made before the employee list existed. Make a new draft to see it." |
+
+```json
+{
+  "success": true,
+  "data": {
+    "draft_id": 12,
+    "form_type": "1601-C",
+    "period": "2026-09",
+    "version": 1,
+    "employees": [
+      {
+        "employee_id": 3,
+        "name": "VILLANUEVA, ANDRES",
+        "tin": "123-456-789-00000",
+        "category": "taxable",
+        "payroll_count": 2,
+        "compensation": "52000.00",
+        "mwe_basic": "0.00",
+        "mwe_premium": "0.00",
+        "thirteenth": "0.00",
+        "ee": "1300.00",
+        "taxable": "50700.00",
+        "exempt_250k": "0.00",
+        "tax_withheld": "500.00"
+      }
+    ],
+    "totals": {
+      "compensation": "52000.00", "mwe_basic": "0.00", "mwe_premium": "0.00", "thirteenth": "0.00",
+      "ee": "1300.00", "taxable": "50700.00", "exempt_250k": "0.00", "tax_withheld": "500.00"
+    },
+    "differences": [
+      { "item": "14", "key": "total_compensation", "employees_total": "52000.00", "form_value": "53000.00", "difference": "1000.00" }
+    ]
+  },
+  "message": "Employee list retrieved"
+}
+```
+
+`employees` has one row per employee with counted payroll that month, ordered by
+employee id; empty for a month with no payroll (all totals "0.00").
+
+| Key | Meaning |
+|---|---|
+| `employee_id` | The employee's id |
+| `name` | `"LAST, FIRST"` in capitals, as it was when the draft was made. Null for a draft made before names were saved (13 Oct 2026) or an employee deleted outright by then. |
+| `tin` | The TIN as the form prints it (`123-456-789-00000`), as it was then. Null if the employee had none, or as for `name`. |
+| `category` | `mwe` (minimum wage earner), `exempt_250k` (₱250,000 a year or less) or `taxable` |
+| `payroll_count` | How many of the employee's payrolls that month were counted |
+| `compensation` | Their part of item 14 |
+| `mwe_basic` | Item 15 |
+| `mwe_premium` | Item 16 |
+| `thirteenth` | Item 17, the non-taxable part of 13th month and other benefits |
+| `ee` | Item 19, their share of SSS, PhilHealth and Pag-IBIG |
+| `taxable` | Item 22 |
+| `exempt_250k` | Item 23 |
+| `tax_withheld` | Item 25 |
+
+`totals` is each money column added up, from the rows as stored. Money is
+contract decimal text throughout, never a number.
+
+`differences` compares each total with the draft's current value for its item:
+14 `total_compensation`, 15 `mwe_statutory_wage`, 16 `mwe_premium_pay`,
+17 `thirteenth_month_and_benefits`, 19 `statutory_contributions_ee`,
+22 `total_taxable_compensation`, 23 `exempt_250k_compensation` and
+25 `total_taxes_withheld`. Only items that differ are listed, in that order;
+`[]` means the employees add up to the form. `difference` is the form's value less
+the employees' total, so a positive one means the form shows more. A blank item is
+listed with `form_value` and `difference` null. Items can differ because someone
+overrode a figure, because item 20 was answered (it lowers item 22, which the
+employees' rows don't include), or by ₱0.01 when rounding each row differs from
+rounding the month.
 
 ### PUT /bir/switch/password
 
