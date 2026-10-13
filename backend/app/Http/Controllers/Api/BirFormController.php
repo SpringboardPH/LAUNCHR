@@ -12,6 +12,7 @@ use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\BirAggregationService;
 use App\Services\BIR\BirDraftValidator;
+use App\Services\BIR\BirEmployeeList;
 use App\Services\BIR\BirPdfService;
 use App\Services\BIR\Mappers\BirFormMapper;
 use App\Services\BIR\Schemas\Form1601CSchema;
@@ -116,7 +117,7 @@ class BirFormController extends Controller
      * 'rows' are the payroll rows its totals came from (same period and status filters as
      * BirAggregationService; empty when the period has no payroll), and 'meta' is the
      * aggregation's _meta unchanged — excluded payrolls per status, warnings, and on a 2316
-     * the category and payroll range.
+     * the category and payroll range. A 1601-C adds 'people', each listed employee's name and TIN.
      */
     private function buildSourceSnapshot(string $formType, string $period, ?int $employeeId, array $meta): array
     {
@@ -143,7 +144,8 @@ class BirFormController extends Controller
             ])
             ->all();
 
-        return ['rows' => $rows, 'meta' => $meta];
+        return ['rows' => $rows, 'meta' => $meta]
+            + ($formType === '1601-C' && isset($meta['employees']) ? ['people' => BirEmployeeList::people($meta)] : []);
     }
 
     public function show(int $id)
