@@ -128,6 +128,8 @@ class BirAggregationService
                     'taxable' => $taxable->count(),
                     'exempt_250k' => $exempt->count(),
                 ],
+                // Each employee's part of the form, frozen with the draft by store().
+                'employees' => self::employeeRows($employees),
                 'warnings' => [
                     // Zeros everywhere would otherwise look like a finished form.
                     ...($employees->isEmpty() ? [sprintf('No finalized or paid payroll for %04d-%02d.', $year, $month)] : []),
@@ -260,7 +262,38 @@ class BirAggregationService
     /** One employee's month for the 1601-C; the P250,000 test projects the month over 12. */
     private static function employeeMonth(int $employeeId, Collection $rows, bool $isMwe): array
     {
-        return ['employee_id' => $employeeId] + self::classify(self::payTotals($rows), $isMwe, 12);
+        return ['employee_id' => $employeeId, 'payroll_count' => $rows->count()]
+            + self::classify(self::payTotals($rows), $isMwe, 12);
+    }
+
+    /**
+     * Each employee's part of the 1601-C, ordered by employee id. Added up over all employees,
+     * compensation is item 14, mwe_basic 15, mwe_premium 16, thirteenth 17, ee 19, taxable 22,
+     * exempt_250k 23 and tax_withheld 25. Money as contract strings, like the form's fields.
+     */
+    private static function employeeRows(Collection $employees): array
+    {
+        return $employees->sortKeys()->map(function (array $e) {
+            $isMwe = $e['category'] === 'mwe';
+            $mweBasic = $isMwe ? $e['basic'] : 0.0;
+            $mwePremium = $isMwe ? $e['premium'] : 0.0;
+
+            return [
+                'employee_id' => $e['employee_id'],
+                'category' => $e['category'],
+                'payroll_count' => $e['payroll_count'],
+            ] + self::contractValues([
+                'compensation' => $e['compensation'],
+                'mwe_basic' => $mweBasic,
+                'mwe_premium' => $mwePremium,
+                'thirteenth' => $e['thirteenth'],
+                'ee' => $e['ee'],
+                // Item 22 is item 14 less items 15 to 19 (18 is 0), so each employee's part is too.
+                'taxable' => $e['compensation'] - $mweBasic - $mwePremium - $e['thirteenth'] - $e['ee'],
+                'exempt_250k' => $e['category'] === 'exempt_250k' ? $e['taxable'] : 0.0,
+                'tax_withheld' => $e['tax'],
+            ]);
+        })->values()->all();
     }
 
     /** Raw sums over payroll rows: BIR compensation, its parts, EE share and tax withheld. */

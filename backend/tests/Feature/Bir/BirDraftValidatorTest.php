@@ -10,6 +10,7 @@ use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -18,6 +19,7 @@ use Tests\TestCase;
  */
 class BirDraftValidatorTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_a_fresh_1601c_reports_unanswered_questions_and_missing_company_settings(): void

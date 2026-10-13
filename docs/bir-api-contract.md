@@ -16,7 +16,26 @@ If something here has to change after sign-off, raise it on Friday under
 All routes are under `/api/bir`, behind `auth:sanctum` and
 `role:admin,hr,accounting`. Employees cannot reach any of them. `approve`,
 `reject` and `finalize` also need `role:accounting`, and only accounting may
-`PUT` to a pending form (§5).
+`PUT` to a pending form (§5). The two switch routes, `PUT /bir/switch` and
+`PUT /bir/switch/password`, are admin-only and allow 5 tries a minute (§6).
+
+**Feature switch:** while the system setting `bir_forms_enabled` is off (or has
+no row), every route except `GET /bir/config`, `PUT /bir/switch` and
+`PUT /bir/switch/password` returns 403
+`{ "success": false, "message": "The BIR Form Assistant is not enabled" }` to
+every role, admin included, and changes nothing. Config stays open so the screen
+can read `enabled` and hide the page; the switch routes stay open, or BIR could
+never be turned on (§6).
+
+`bir_forms_enabled` changes only through `PUT /bir/switch`: an admin, with the
+company password. The company password is one shared password, not anyone's
+login, set by an admin in the app through `PUT /bir/switch/password`. Only its
+bcrypt hash is stored, in the setting `bir_switch_password_hash`, and no endpoint
+ever returns it. The general settings save (`PUT /api/admin/settings/{key}`)
+refuses both keys with 403 "Use the BIR switch, which asks for the company
+password". `GET /api/admin/settings` and `GET /api/admin/settings/{key}` never
+return the hash; the single-key read answers 404 "Setting not found", as for a
+missing key.
 
 Every response uses the envelope already used across LAUNCHR:
 
@@ -32,9 +51,10 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (approved or finalized) |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form), or the caller prepared the form they are trying to approve |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
-| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
+| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
+| 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
 400 for "Only pending leave requests can be approved".
@@ -44,6 +64,11 @@ or admin or HR on `approve`, `reject` or `finalize`, gets 403 "Unauthorized.
 Only accounting users can do this." (employees: "Unauthorized. Admin access
 required.", the app-wide message) even for a draft that doesn't exist. On
 `PUT` the order is 404, then 400 (locked), then 403 (role), then 422 (fields).
+
+The switch is checked right after the employee check and before everything
+else: with it off, admin, HR and accounting get the switch message on every
+route but config and the switch routes, including admin or HR on `approve`, `reject` or `finalize`
+and drafts that don't exist. An employee still gets the role message.
 
 A 422 from `submit` or `approve` is "fix the form", not "bad request": it carries the draft in
 `data`, with `validation_errors` filled in. Tell it apart from a 400, which means
@@ -301,7 +326,10 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized | accounting only |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
+| GET | `/bir/drafts/{id}/employees` | A 1601-C's employee list, frozen when the draft was made | admin, hr, accounting |
 | POST | `/bir/chat` | Dev C. Controller method is `message`. | admin, hr, accounting |
+| PUT | `/bir/switch/password` | Set or change the company password for the switch | admin only |
+| PUT | `/bir/switch` | Turn the BIR Form Assistant on or off, with the company password | admin only |
 
 Employees get 403 on all of them.
 
@@ -310,6 +338,7 @@ Employees get 403 on all of them.
 ```json
 {
   "enabled": false,
+  "switch_password_set": false,
   "form_types": ["1601-C", "2316"],
   "status_flow": {
     "draft": ["pending"],
@@ -325,9 +354,17 @@ Employees get 403 on all of them.
 ```
 
 `enabled` reads `bir_forms_enabled` from system settings and is false by
-default — the Week 8 feature switch. `status_flow` is served from the same
+default — the feature switch, enforced since Week 8 (§1). While it is
+false, config and the two switch routes are the only `/bir` routes that work;
+every other one returns 403 "The BIR Form Assistant is not enabled". Only
+`PUT /bir/switch` changes it. `status_flow` is served from the same
 constant the controller enforces, so Dev D can drive button visibility from it
 rather than hardcoding the transitions.
+
+`switch_password_set` is true once an admin has set the company password
+(`PUT /bir/switch/password`). While it is false, `PUT /bir/switch` refuses with
+"No company password is set up", so the screen can ask for a password first.
+Config never returns the password or its hash.
 
 `schemas` is each schema's `fields()` (§4), every field with all its keys
 (shortened above). The screen reads keys, labels, item numbers and help text
@@ -530,6 +567,158 @@ the employee code on a 2316, and the version.
 404 if the draft is missing; employees get 403 like the rest of `/bir`. The PDF
 shows the draft's stored values, so a later payroll change does not alter it.
 
+### GET /bir/drafts/{id}/employees
+
+Each employee's part of a 1601-C, for the screen and the chat. Nothing is
+recomputed: the rows are the ones the aggregation produced when the draft was
+created (`_meta.employees`), saved on the draft with each employee's name and TIN
+as they were then. Later payroll edits, a rename, a new TIN or a change to the
+minimum wage earner list don't alter it. A revision has no snapshot of its own, so
+it shows the list of the nearest version up its `parent_id` chain
+(`BirFormDraft::sourceSnapshot()`). Nothing else saved with the draft is returned;
+the payroll rows stay hidden.
+
+| Code | When |
+|---|---|
+| 403 | An employee ("Unauthorized. Admin access required."), or the switch is off ("The BIR Form Assistant is not enabled"), as on every `/bir` route. |
+| 404 | `{ "success": false, "message": "Draft not found" }` |
+| 422 | A 2316: `{ "success": false, "message": "The employee list is only for a 1601-C" }` |
+| 200 | The list, below. |
+| 200 | A 1601-C made before the employee list existed (before 13 Oct 2026): the same keys with `employees`, `totals` and `differences` null, and the message "This form was made before the employee list existed. Make a new draft to see it." |
+
+```json
+{
+  "success": true,
+  "data": {
+    "draft_id": 12,
+    "form_type": "1601-C",
+    "period": "2026-09",
+    "version": 1,
+    "employees": [
+      {
+        "employee_id": 3,
+        "name": "VILLANUEVA, ANDRES",
+        "tin": "123-456-789-00000",
+        "category": "taxable",
+        "payroll_count": 2,
+        "compensation": "52000.00",
+        "mwe_basic": "0.00",
+        "mwe_premium": "0.00",
+        "thirteenth": "0.00",
+        "ee": "1300.00",
+        "taxable": "50700.00",
+        "exempt_250k": "0.00",
+        "tax_withheld": "500.00"
+      }
+    ],
+    "totals": {
+      "compensation": "52000.00", "mwe_basic": "0.00", "mwe_premium": "0.00", "thirteenth": "0.00",
+      "ee": "1300.00", "taxable": "50700.00", "exempt_250k": "0.00", "tax_withheld": "500.00"
+    },
+    "differences": [
+      { "item": "14", "key": "total_compensation", "employees_total": "52000.00", "form_value": "53000.00", "difference": "1000.00" }
+    ]
+  },
+  "message": "Employee list retrieved"
+}
+```
+
+`employees` has one row per employee with counted payroll that month, ordered by
+employee id; empty for a month with no payroll (all totals "0.00").
+
+| Key | Meaning |
+|---|---|
+| `employee_id` | The employee's id |
+| `name` | `"LAST, FIRST"` in capitals, as it was when the draft was made. Null for a draft made before names were saved (13 Oct 2026) or an employee deleted outright by then. |
+| `tin` | The TIN as the form prints it (`123-456-789-00000`), as it was then. Null if the employee had none, or as for `name`. |
+| `category` | `mwe` (minimum wage earner), `exempt_250k` (₱250,000 a year or less) or `taxable` |
+| `payroll_count` | How many of the employee's payrolls that month were counted |
+| `compensation` | Their part of item 14 |
+| `mwe_basic` | Item 15 |
+| `mwe_premium` | Item 16 |
+| `thirteenth` | Item 17, the non-taxable part of 13th month and other benefits |
+| `ee` | Item 19, their share of SSS, PhilHealth and Pag-IBIG |
+| `taxable` | Item 22 |
+| `exempt_250k` | Item 23 |
+| `tax_withheld` | Item 25 |
+
+`totals` is each money column added up, from the rows as stored. Money is
+contract decimal text throughout, never a number.
+
+`differences` compares each total with the draft's current value for its item:
+14 `total_compensation`, 15 `mwe_statutory_wage`, 16 `mwe_premium_pay`,
+17 `thirteenth_month_and_benefits`, 19 `statutory_contributions_ee`,
+22 `total_taxable_compensation`, 23 `exempt_250k_compensation` and
+25 `total_taxes_withheld`. Only items that differ are listed, in that order;
+`[]` means the employees add up to the form. `difference` is the form's value less
+the employees' total, so a positive one means the form shows more. A blank item is
+listed with `form_value` and `difference` null. Items can differ because someone
+overrode a figure, because item 20 was answered (it lowers item 22, which the
+employees' rows don't include), or by ₱0.01 when rounding each row differs from
+rounding the month.
+
+### PUT /bir/switch/password
+
+Sets or changes the company password that guards the switch (§1). Admin only;
+works while BIR is off.
+
+```json
+{ "password": "new password", "password_confirmation": "new password", "current_password": "old password" }
+```
+
+`password` is required, at least 8 characters, and must match
+`password_confirmation`. `current_password` is needed only when a password is
+already set (`switch_password_set` in config); the first time it is left out.
+
+| Code | When |
+|---|---|
+| 403 | The caller is not an admin. Checked first, by the route. |
+| 429 | More than 5 tries in a minute, counted together with `PUT /bir/switch`. Laravel's own body, `{ "message": "Too Many Attempts." }`, with a `Retry-After` header in seconds. |
+| 422 | `password` missing, shorter than 8 characters, or not confirmed: the usual Laravel `{ "message", "errors": { "password": [...] } }`. Nothing changes. |
+| 422 | A password is already set and `current_password` is missing or wrong: `{ "success": false, "message": "The current company password is incorrect" }`. Nothing changes. |
+| 200 | `{ "success": true, "data": { "switch_password_set": true }, "message": "Company password saved" }` |
+
+Only the bcrypt hash is stored. The audit log gets a `BIR_SWITCH_PASSWORD` row,
+"<name> set the company password for the BIR switch" (or "changed"), with no old
+or new values: the password and its hash are never logged.
+
+### PUT /bir/switch
+
+Turns the BIR Form Assistant on or off. Admin only; works while BIR is off. This
+is the only way to change `bir_forms_enabled` (§1).
+
+```json
+{ "enabled": true, "password": "the company password" }
+```
+
+Both required; `enabled` is a boolean.
+
+| Code | When |
+|---|---|
+| 403 | The caller is not an admin. Checked first, by the route. |
+| 429 | More than 5 tries in a minute, counted together with `PUT /bir/switch/password`, as above. |
+| 422 | `enabled` or `password` missing, or `enabled` not a boolean: the usual Laravel `{ "message", "errors" }`. |
+| 422 | No company password has been set: `{ "success": false, "message": "No company password is set up" }`. |
+| 422 | Wrong password: `{ "success": false, "message": "The company password is incorrect" }`. Nothing changes and nothing is logged. |
+| 200 | `{ "success": true, "data": { "enabled": true }, "message": "The BIR Form Assistant is now on" }` ("off" when turned off). |
+
+A 200 is also returned when the switch was already in the requested state. Each
+200 writes a `BIR_SWITCH` audit row, "<name> turned the BIR Form Assistant on"
+(or "off"), with old and new values such as `{ "enabled": false }` and
+`{ "enabled": true }`.
+
+### Forgotten company password
+
+There is no reset in the app. Someone with server access runs
+
+```bash
+php artisan bir:clear-switch-password
+```
+
+It asks "Are you sure?", then deletes the saved hash and turns
+`bir_forms_enabled` off. An admin then sets a new password with
+`PUT /bir/switch/password` (no `current_password` needed) and turns BIR back on.
+
 ---
 
 ## 7. What is not real yet
@@ -550,7 +739,7 @@ registration details.
 **Any finalized version can be revised; a 1601-C at most 5 times a month.** Decided:
 a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Versions never repeat — revising the same filed v1 twice
 gives v2 then v3, both with `parent_id` pointing at v1. Still open with the
-accountant: whether "no limit" means a chain, where only the latest finalized
+accountant: whether "revised" means a chain, where only the latest finalized
 version may be revised. If so, `revise` will refuse older versions; the
 numbering stays as it is.
 

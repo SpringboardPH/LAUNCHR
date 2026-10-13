@@ -7,6 +7,7 @@ use App\Models\BirFormDraft;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -15,6 +16,7 @@ use Tests\TestCase;
  */
 class BirValidateEndpointTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_validate_returns_the_draft_with_its_validation_errors_filled_in(): void

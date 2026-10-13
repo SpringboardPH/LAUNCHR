@@ -8,6 +8,7 @@ use App\Services\BIR\Llm\FakeLlmClient;
 use App\Services\BIR\Llm\LlmClientInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -21,11 +22,14 @@ use Tests\TestCase;
  */
 class BirRoleAccessTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private const ALL = ['admin', 'hr', 'accounting'];
 
     private const ACCOUNTING = ['accounting'];
+
+    private const ADMIN = ['admin'];
 
     /**
      * action => [method, path ({id} is the form), form status before the call, body,
@@ -47,8 +51,13 @@ class BirRoleAccessTest extends TestCase
         'revise' => ['POST', '/api/bir/drafts/{id}/revise', 'finalized', [], self::ALL, 201],
         'validate' => ['POST', '/api/bir/drafts/{id}/validate', 'draft', [], self::ALL, 200],
         'export' => ['GET', '/api/bir/drafts/{id}/export', 'draft', [], self::ALL, 200],
+        'employees' => ['GET', '/api/bir/drafts/{id}/employees', 'draft', [], self::ALL, 200],
         // draft_id with no message only asks the next question; the model is never called.
         'chat' => ['POST', '/api/bir/chat', 'draft', ['draft_id' => '{id}'], self::ALL, 200],
+        // The company password and the switch are admin-only. No password is saved here, so the
+        // first set works and the switch refuses with "No company password is set up".
+        'switch password' => ['PUT', '/api/bir/switch/password', null, ['password' => 'test-company-pass', 'password_confirmation' => 'test-company-pass'], self::ADMIN, 200],
+        'switch' => ['PUT', '/api/bir/switch', null, ['enabled' => false, 'password' => 'test-company-pass'], self::ADMIN, 422],
     ];
 
     private const ROLES = ['admin', 'hr', 'accounting', 'employee'];

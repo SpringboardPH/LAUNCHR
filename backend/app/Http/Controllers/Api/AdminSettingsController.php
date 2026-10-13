@@ -9,9 +9,13 @@ use Illuminate\Http\Request;
 
 class AdminSettingsController extends Controller
 {
+    /** Changed only through PUT /bir/switch and /bir/switch/password, which ask for the company password. */
+    private const BIR_SWITCH_KEYS = [BirSwitchController::PASSWORD_KEY, 'bir_forms_enabled'];
+
     public function index()
     {
-        $settings = SystemSettings::all();
+        // HR and accounting can read every setting, so the password hash is never listed.
+        $settings = SystemSettings::where('key', '!=', BirSwitchController::PASSWORD_KEY)->get();
         
         return response()->json([
             'success' => true,
@@ -79,8 +83,10 @@ class AdminSettingsController extends Controller
     public function show(string $key)
     {
         $setting = SystemSettings::where('key', $key)->first();
-        
-        if (!$setting) {
+
+        // Checked on the stored key: MySQL matches keys ignoring case and trailing spaces.
+        // Same answer as a missing key, so the hash is never returned.
+        if (!$setting || $setting->key === BirSwitchController::PASSWORD_KEY) {
             return response()->json([
                 'success' => false,
                 'message' => 'Setting not found',
@@ -95,6 +101,14 @@ class AdminSettingsController extends Controller
 
     public function update(Request $request, string $key)
     {
+        $stored = SystemSettings::where('key', $key)->value('key');
+        if (in_array(strtolower(trim($key)), self::BIR_SWITCH_KEYS, true) || in_array($stored, self::BIR_SWITCH_KEYS, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Use the BIR switch, which asks for the company password',
+            ], 403);
+        }
+
         $request->validate([
             'value' => 'required',
             'description' => 'nullable|string',

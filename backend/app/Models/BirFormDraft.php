@@ -71,6 +71,25 @@ class BirFormDraft extends Model
             ->max('version') - 1;
     }
 
+    /**
+     * What this form was built from (BirFormController::buildSourceSnapshot). A revision is a copy
+     * of fields only, so it uses the nearest snapshot up its parent chain. Null if there is none.
+     */
+    public function sourceSnapshot(): ?array
+    {
+        $from = $this;
+        $seen = [];
+        while ($from->source_snapshot === null && $from->parent_id !== null && !isset($seen[$from->id])) {
+            $seen[$from->id] = true;
+            $from = self::find($from->parent_id);
+            if ($from === null) {
+                return null;
+            }
+        }
+
+        return $from->source_snapshot;
+    }
+
     public function employee()
     {
         return $this->belongsTo(Employee::class);

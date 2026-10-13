@@ -13,6 +13,7 @@ use App\Services\BIR\Llm\LlmClientInterface;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -24,6 +25,7 @@ use Tests\TestCase;
  */
 class BirChatExplanationTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private User $accounting;

@@ -10,6 +10,7 @@ use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -19,6 +20,7 @@ use Tests\TestCase;
  */
 class BirSubmitTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     public function test_a_draft_with_errors_is_refused_and_keeps_its_errors(): void

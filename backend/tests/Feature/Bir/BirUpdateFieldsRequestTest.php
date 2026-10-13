@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
 
 /**
@@ -17,6 +18,7 @@ use Tests\TestCase;
  */
 class BirUpdateFieldsRequestTest extends TestCase
 {
+    use EnablesBirForms;
     use RefreshDatabase;
 
     private const AMOUNT_MESSAGE = '"Surcharge" must be an amount like 1234.50, without commas or a currency sign.';
