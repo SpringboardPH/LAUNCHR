@@ -18,6 +18,12 @@ All routes are under `/api/bir`, behind `auth:sanctum` and
 `reject` and `finalize` also need `role:accounting`, and only accounting may
 `PUT` to a pending form (§5).
 
+**Feature switch:** while the system setting `bir_forms_enabled` is off (or has
+no row), every route except `GET /bir/config` returns 403
+`{ "success": false, "message": "The BIR Form Assistant is not enabled" }` to
+every role, admin included, and changes nothing. Config stays open so the screen
+can read `enabled` and hide the page (§6).
+
 Every response uses the envelope already used across LAUNCHR:
 
 ```json
@@ -32,7 +38,7 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (approved or finalized) |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form), or the caller prepared the form they are trying to approve |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending form), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config) |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation (§6) |
 
@@ -44,6 +50,11 @@ or admin or HR on `approve`, `reject` or `finalize`, gets 403 "Unauthorized.
 Only accounting users can do this." (employees: "Unauthorized. Admin access
 required.", the app-wide message) even for a draft that doesn't exist. On
 `PUT` the order is 404, then 400 (locked), then 403 (role), then 422 (fields).
+
+The switch is checked right after the employee check and before everything
+else: with it off, admin, HR and accounting get the switch message on every
+route but config, including admin or HR on `approve`, `reject` or `finalize`
+and drafts that don't exist. An employee still gets the role message.
 
 A 422 from `submit` or `approve` is "fix the form", not "bad request": it carries the draft in
 `data`, with `validation_errors` filled in. Tell it apart from a 400, which means
@@ -325,7 +336,9 @@ Employees get 403 on all of them.
 ```
 
 `enabled` reads `bir_forms_enabled` from system settings and is false by
-default — the Week 8 feature switch. `status_flow` is served from the same
+default — the feature switch, enforced since Week 8 (§1). While it is
+false, config is the only `/bir` route that works; every other one returns 403
+"The BIR Form Assistant is not enabled". `status_flow` is served from the same
 constant the controller enforces, so Dev D can drive button visibility from it
 rather than hardcoding the transitions.
 

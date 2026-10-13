@@ -123,22 +123,25 @@ Route::middleware('auth:sanctum')->group(function () {
     // refused everywhere. Approve, reject and finalize are accounting-only
     // (Week 7, confirmed by the supervisor); editing a pending form is also
     // accounting-only, checked in UpdateBirDraftFieldsRequest/update().
+    // With bir_forms_enabled off, everything but GET /config is 403 for every role (bir.enabled).
     Route::prefix('bir')->middleware('role:admin,hr,accounting')->group(function () {
         Route::get('/config', [BirFormController::class, 'config']);
-        Route::get('/drafts', [BirFormController::class, 'index']);
-        Route::post('/drafts', [BirFormController::class, 'store']);
-        Route::get('/drafts/{id}', [BirFormController::class, 'show']);
-        Route::put('/drafts/{id}', [BirFormController::class, 'update']);
-        Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
-        Route::middleware('role:accounting')->group(function () {
-            Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
-            Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
-            Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
+        Route::middleware('bir.enabled')->group(function () {
+            Route::get('/drafts', [BirFormController::class, 'index']);
+            Route::post('/drafts', [BirFormController::class, 'store']);
+            Route::get('/drafts/{id}', [BirFormController::class, 'show']);
+            Route::put('/drafts/{id}', [BirFormController::class, 'update']);
+            Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
+            Route::middleware('role:accounting')->group(function () {
+                Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
+                Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
+                Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
+            });
+            Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
+            Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);
+            Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
+            Route::post('/chat', [BirChatController::class, 'message']);
         });
-        Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
-        Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);
-        Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
-        Route::post('/chat', [BirChatController::class, 'message']);
     });
 
     // Dashboard

@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
+            'bir.enabled' => \App\Http\Middleware\EnsureBirFormsEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
