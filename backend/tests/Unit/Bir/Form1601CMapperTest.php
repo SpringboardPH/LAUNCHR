@@ -32,6 +32,9 @@ class Form1601CMapperTest extends TestCase
         // Payroll: the totals, plus the return period from the draft's month.
         $this->assertSame(['value' => '30000.00', 'origin' => 'payroll'], $this->pick($fields['total_compensation']));
         $this->assertSame(['value' => '08/2026', 'origin' => 'payroll'], $this->pick($fields['return_period']));
+        // Item 13 is fixed at No, so it is filled in rather than asked.
+        $this->assertSame(['value' => false, 'origin' => 'payroll'], $this->pick($fields['has_tax_relief']));
+        $this->assertFalse(Form1601CSchema::byKey()['has_tax_relief']['fixed']);
         // Company settings: the TIN is set, the RDO code is still a seed placeholder.
         $this->assertSame(['value' => '123-456-789-00000', 'origin' => 'settings'], $this->pick($fields['company_tin']));
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['rdo_code']));

@@ -343,7 +343,7 @@ class BirDemoSeeder extends Seeder
 
     private function forms1601C(): void
     {
-        $answers = ['is_amended' => false, 'sheets_attached' => 0, 'has_tax_relief' => false];
+        $answers = ['is_amended' => false, 'sheets_attached' => 0];
 
         // Filed: 12/2025 (13th month pay) and 01/2026 to 05/2026.
         $filed = [];

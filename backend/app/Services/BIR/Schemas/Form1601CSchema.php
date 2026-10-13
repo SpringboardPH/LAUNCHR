@@ -9,8 +9,9 @@ namespace App\Services\BIR\Schemas;
  *
  * Field shape: key, item (as printed), label, type, source, required, rule,
  * pdf_anchor, options (enum only), required_when (conditional fields only),
- * format (text that must follow a FieldFormat, e.g. 'tin'), guidance (help
- * text, from GUIDANCE).
+ * format (text that must follow a FieldFormat, e.g. 'tin'), fixed (the value the
+ * field always has: filled in by the system, never asked or answered), guidance
+ * (help text, from GUIDANCE).
  *
  * required_when is the machine-readable form of a "required when ..." rule,
  * read by BirMissingFields. It replaces 'required' for that field, so a field
@@ -45,8 +46,8 @@ class Form1601CSchema
         'company_contact_number' => 'A phone number where the BIR can reach the company. Optional.',
         'agent_category' => 'Private for a private company; Government for a government office or government-owned corporation.',
         'company_email' => 'An email address where the BIR can reach the company. Optional.',
-        'has_tax_relief' => "Yes only if some employees' pay is tax-exempt under a special law or an international tax treaty. This is rare; usually No.",
-        'tax_relief_details' => 'If you answered Yes above, name the special law or tax treaty.',
+        'has_tax_relief' => "Always No for this company: no employee's pay is tax-exempt under a special law or an international tax treaty. Filled in automatically.",
+        'tax_relief_details' => 'Not used: item 13 is always No, so this stays blank.',
         'total_compensation' => 'Everything paid to all employees this month, taxable and non-taxable, before deductions. Calculated from finalized and paid payroll.',
         'mwe_statutory_wage' => "Basic pay of minimum wage earners, after their SSS/PhilHealth/Pag-IBIG share. It isn't taxed.",
         'mwe_premium_pay' => "Holiday, overtime, night shift differential and hazard pay of minimum wage earners only. It isn't taxed for them; for other employees it's taxable pay.",
@@ -151,8 +152,9 @@ class Form1601CSchema
             [
                 'key' => 'has_tax_relief', 'item' => '13',
                 'label' => 'Are there payees availing of tax relief under Special Law or International Tax Treaty?',
-                'type' => 'boolean', 'source' => 'user', 'required' => false,
-                'rule' => 'defaults false', 'pdf_anchor' => '1601C.13',
+                'type' => 'boolean', 'source' => 'payroll', 'required' => true,
+                'rule' => 'fixed No: the company has no payees under a special law or tax treaty',
+                'pdf_anchor' => '1601C.13', 'fixed' => false,
             ],
             [
                 'key' => 'tax_relief_details', 'item' => '13A', 'label' => 'If yes, specify',

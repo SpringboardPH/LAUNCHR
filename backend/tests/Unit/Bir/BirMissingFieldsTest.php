@@ -253,8 +253,9 @@ class BirMissingFieldsTest extends TestCase
             $systemFilled = in_array($field['source'], ['payroll', 'settings'], true)
                 && !in_array($field['key'], $leaveBlank, true);
 
-            // Any readable value will do; booleans need a real bool or they read as unanswered.
-            $value = $field['type'] === 'boolean' ? true : 'x';
+            // A fixed field has its own value; otherwise any readable value will do, and
+            // booleans need a real bool or they read as unanswered.
+            $value = array_key_exists('fixed', $field) ? $field['fixed'] : ($field['type'] === 'boolean' ? true : 'x');
 
             $fields[$field['key']] = $this->entry($systemFilled ? $value : null, $systemFilled ? $field['source'] : 'pending');
         }
