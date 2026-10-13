@@ -16,7 +16,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * invalid_amount. Text that doesn't follow its field's format (TIN, RDO, ZIP, phone,
  * email, MM/DD) is invalid_format. A total that doesn't add up is total_mismatch. Tax withheld that the
  * payroll the draft was built from doesn't support is payroll_mismatch. A draft built
- * from a period with no counted payroll is empty_period.
+ * from a period with no counted payroll is empty_period. A field with a schema 'fixed'
+ * value (1601-C item 13) that doesn't hold it is fixed_value.
  *
  * severity is "error" (blocks submit) or "warning" (shown, never blocks); see WARNING_CODES.
  */
@@ -90,15 +91,22 @@ class BirDraftValidator
     {
         $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();
 
+        // A fixed field can't be entered, so a missing one is reported as fixed_value only,
+        // not with a missing-field message that says to enter it here.
+        $missing = array_filter(
+            $this->conversation->missingFields($draft),
+            fn (array $missing) => !array_key_exists('fixed', $schema[$missing['key']] ?? []),
+        );
         $errors = array_map(fn (array $missing) => [
             'field' => $missing['key'],
             'code' => $missing['reason'],
             'message' => $this->missingMessage($missing, $schema),
-        ], $this->conversation->missingFields($draft));
+        ], array_values($missing));
 
         $totals = $draft->form_type === Form1601CSchema::FORM_TYPE ? self::TOTALS_1601C : self::TOTALS_2316;
         $errors = [
             ...$errors,
+            ...$this->fixedValueErrors($draft->fields ?? [], $schema),
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
             ...$this->invalidFormatErrors($draft->fields ?? [], $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
@@ -116,6 +124,48 @@ class BirDraftValidator
         // Form order, so the list reads top to bottom like the printed form.
         $position = array_flip(array_keys($schema));
         usort($errors, fn (array $a, array $b) => $position[$a['field']] <=> $position[$b['field']]);
+
+        return $errors;
+    }
+
+    /**
+     * One error per field with a schema 'fixed' value that the draft doesn't hold exactly.
+     * New drafts are filled with it, and PUT refuses any answer to it, so this catches drafts
+     * made before the field was fixed. A missing, pending or blank value is wrong too. A
+     * yes/no value is read the way BirMissingFields reads it, so "yes" counts as true.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function fixedValueErrors(array $fields, array $schema): array
+    {
+        $errors = [];
+
+        foreach ($schema as $key => $field) {
+            if (!array_key_exists('fixed', $field)) {
+                continue;
+            }
+
+            $entry = $fields[$key] ?? null;
+            $value = null;
+            if (is_array($entry) && ($entry['origin'] ?? 'pending') !== 'pending' && !$this->isBlank($entry)) {
+                $value = $entry['value'];
+                if ($field['type'] === 'boolean' && !is_bool($value)) {
+                    $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                }
+            }
+            if ($value === $field['fixed']) {
+                continue;
+            }
+
+            $fixed = is_bool($field['fixed']) ? ($field['fixed'] ? 'Yes' : 'No') : (string) $field['fixed'];
+            $errors[] = [
+                'field' => $key,
+                'code' => 'fixed_value',
+                'message' => "\"{$field['label']}\" must be {$fixed}. Create a new draft for this period to fix it.",
+            ];
+        }
 
         return $errors;
     }

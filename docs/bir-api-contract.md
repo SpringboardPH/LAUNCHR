@@ -229,6 +229,7 @@ printed-form order.
 | `total_mismatch` | error | A total does not equal the sum of its parts on the form as it stands (8 totals per form) |
 | `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words. `PUT` refuses these already (§6); this still catches one held over from older data. |
 | `invalid_format` | error | Text that doesn't follow its field's `format`: a TIN, RDO code, ZIP, phone number, email or MM/DD date. `PUT` refuses these already (§6); this still catches one from older data, or a badly formatted figure from payroll or company settings. |
+| `fixed_value` | error | A field with a schema `fixed` value (§4, 1601-C item 13) doesn't hold it: a different answer, or pending/blank. `PUT` can't change a fixed field, so only a draft made before it was fixed can have this; the message says to create a new draft for the period. A fixed field that is missing gets only this code, not `required`/`record_gap`. |
 | `payroll_mismatch` | warning | Tax withheld (1601-C item 25, 2316 item 25A) differs from the payroll the draft was built from |
 | `empty_period` | warning | The draft was built from a period with no finalized or paid payroll, so every payroll figure is zero |
 
@@ -258,6 +259,17 @@ also has `unverifiedKeys()`. Each field carries `key`, `item`, `label`, `type`,
 that must follow a pattern (Dev A's `FieldFormat`: `tin`, `rdo`, `zip`, `phone`,
 `email`, `mmdd`). Both schemas are
 served on `GET /bir/config` (§6).
+
+A field may also carry `fixed`: the value it always has. The system fills it in
+on every new draft, so it is never `pending`, never asked and never editable:
+`PUT` refuses any answer to it (§6), and `validate` reports a draft that doesn't
+hold it as `fixed_value` (§3). Read it with `array_key_exists`/`"fixed" in field`,
+not a truthiness check, because the value can be `false`.
+
+**1601-C item 13 (`has_tax_relief`) is fixed at No** (`"fixed": false`, origin
+`payroll`): the supervisor's decision, since no employee's pay is tax-exempt
+under a special law or tax treaty. So item 13A (`tax_relief_details`) is never
+required. Dev D shows item 13 read-only as "No".
 
 **Dev D: do not hardcode field keys.** Read them from the draft response and use
 the schema's `label`, `item` and `guidance` for display. The fixtures carry a handful of
@@ -458,7 +470,13 @@ message says what the value should look like: `"ZIP Code" must be a 4-digit ZIP
 code like 1004.` Blank text (`""`) isn't format-checked; whether a field may be
 blank is the missing-fields rule's job.
 
-`null` is always accepted and clears the field. One bad answer refuses the whole
+A field with a schema `fixed` value (§4, 1601-C item 13) can't be answered at
+all: any value, `null` and the fixed value itself included, is refused with
+`"Are there payees availing of tax relief under Special Law or International Tax
+Treaty?" is always No and can't be changed.` (a yes/no field's value is worded
+Yes/No).
+
+`null` is otherwise always accepted and clears the field. One bad answer refuses the whole
 request with 422, and nothing in it is saved:
 
 ```json

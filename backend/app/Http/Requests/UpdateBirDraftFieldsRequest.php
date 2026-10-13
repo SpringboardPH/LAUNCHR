@@ -14,7 +14,9 @@ use Illuminate\Validation\Validator;
  * Checks each answer in PUT /bir/drafts/{id} as it is saved, so a bad answer is refused
  * straight away (422 naming the field) instead of only showing up at validate or submit.
  * Every key must be a field on the draft's form, and each value must suit the field's
- * schema type. null is always allowed: it clears the field.
+ * schema type. null is allowed: it clears the field. A field with a schema 'fixed' value
+ * (1601-C item 13) is the exception: it is filled in by the system and any answer to it,
+ * null included, is refused.
  *
  * This checks single answers only. Whether the draft as a whole is complete and adds up
  * is BirDraftValidator's job.
@@ -94,9 +96,12 @@ class UpdateBirDraftFieldsRequest extends FormRequest
 
                 $schema = $this->schema();
                 foreach ((array) $this->input('fields') as $key => $value) {
-                    $problem = isset($schema[$key])
-                        ? $this->problem($schema[$key], FieldFormat::normalize($schema[$key], $value))
-                        : "\"{$key}\" is not a field on the {$this->draft()->form_type}.";
+                    $problem = match (true) {
+                        !isset($schema[$key]) => "\"{$key}\" is not a field on the {$this->draft()->form_type}.",
+                        // array_key_exists, not isset: the fixed value can be false.
+                        array_key_exists('fixed', $schema[$key]) => self::fixedProblem($schema[$key]),
+                        default => $this->problem($schema[$key], FieldFormat::normalize($schema[$key], $value)),
+                    };
                     if ($problem !== null) {
                         $validator->errors()->add("fields.{$key}", $problem);
                     }
@@ -150,6 +155,19 @@ class UpdateBirDraftFieldsRequest extends FormRequest
         $label = "\"{$field['label']}\"";
 
         return $this->typeProblem($field, $value, $label) ?? $this->formatProblem($field, $value, $label);
+    }
+
+    /**
+     * A fixed field always has its schema value, so no answer is accepted, whatever it is.
+     * A yes/no value is worded Yes or No.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private static function fixedProblem(array $field): string
+    {
+        $fixed = is_bool($field['fixed']) ? ($field['fixed'] ? 'Yes' : 'No') : (string) $field['fixed'];
+
+        return "\"{$field['label']}\" is always {$fixed} and can't be changed.";
     }
 
     /**

@@ -45,17 +45,54 @@ class BirDraftValidatorTest extends TestCase
         $id = $this->create1601C();
         $this->assertArrayNotHasKey('tax_relief_details', $this->errorsByField($id), 'Not before the question is answered.');
 
-        $this->actingAs($this->accounting())
-            ->putJson("/api/bir/drafts/{$id}", ['fields' => ['has_tax_relief' => true]])
-            ->assertOk();
+        // Written straight to the draft: item 13 is fixed at No and PUT refuses it, but a
+        // draft made before that could still hold a yes.
+        $this->storeTaxRelief($id, ['value' => true, 'origin' => 'user']);
 
-        $error = $this->errorsByField($id)['tax_relief_details'];
+        $errors = $this->errorsByField($id);
+        $error = $errors['tax_relief_details'];
         $schema = Form1601CSchema::byKey();
         $this->assertSame('condition', $error['code']);
         $this->assertSame(
             "\"{$schema['tax_relief_details']['label']}\" is required because \"{$schema['has_tax_relief']['label']}\" is yes.",
             $error['message'],
         );
+        $this->assertSame('fixed_value', $errors['has_tax_relief']['code']);
+    }
+
+    public function test_a_new_1601c_has_no_fixed_value_error(): void
+    {
+        $this->assertSame([], $this->errorsWithCode($this->create1601C(), 'fixed_value'));
+    }
+
+    public function test_an_old_draft_with_yes_to_tax_relief_is_a_fixed_value_error_and_cannot_be_submitted(): void
+    {
+        $id = $this->create1601C();
+        $this->storeTaxRelief($id, ['value' => true, 'origin' => 'user']);
+
+        $errors = $this->errorsWithCode($id, 'fixed_value');
+        $label = Form1601CSchema::byKey()['has_tax_relief']['label'];
+        $this->assertCount(1, $errors);
+        $this->assertSame('has_tax_relief', $errors[0]['field']);
+        $this->assertSame('error', $errors[0]['severity']);
+        $this->assertSame("\"{$label}\" must be No. Create a new draft for this period to fix it.", $errors[0]['message']);
+
+        $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/submit")->assertStatus(422);
+        $draft = BirFormDraft::findOrFail($id);
+        $this->assertSame('draft', $draft->status);
+        $this->assertContains('fixed_value', array_column($draft->validation_errors, 'code'));
+    }
+
+    public function test_an_old_draft_with_tax_relief_pending_is_a_fixed_value_error_only(): void
+    {
+        $id = $this->create1601C();
+        $this->storeTaxRelief($id, ['value' => null, 'origin' => 'pending']);
+
+        $errors = array_values(array_filter(
+            app(BirDraftValidator::class)->validate(BirFormDraft::findOrFail($id)),
+            fn (array $error) => $error['field'] === 'has_tax_relief',
+        ));
+        $this->assertSame(['fixed_value'], array_column($errors, 'code'), 'Not also a missing-field error saying to enter it.');
     }
 
     public function test_a_stored_value_in_the_wrong_format_is_an_invalid_format_error(): void
@@ -350,6 +387,16 @@ class BirDraftValidatorTest extends TestCase
     private function answer(int $draftId, array $fields): void
     {
         $this->actingAs($this->accounting())->putJson("/api/bir/drafts/{$draftId}", ['fields' => $fields])->assertOk();
+    }
+
+    /** Writes item 13 straight into the draft, as a draft made before it was fixed could hold it. */
+    private function storeTaxRelief(int $draftId, array $entry): void
+    {
+        $draft = BirFormDraft::findOrFail($draftId);
+        $fields = $draft->fields;
+        $fields['has_tax_relief'] = array_merge($fields['has_tax_relief'], $entry);
+        $draft->fields = $fields;
+        $draft->save();
     }
 
     private function payrollFor(string $start, string $end, array $deductions): void
