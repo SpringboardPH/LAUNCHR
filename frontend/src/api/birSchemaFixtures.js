@@ -37,6 +37,7 @@ const rows = {
     ["net_taxable_compensation","24","Net Taxable Compensation (Item 22 Less Item 23)","decimal","payroll",true,"Item 22 less item 23: the pay that withholding tax was worked out on.",null],
     ["total_taxes_withheld","25","Total Taxes Withheld","decimal","payroll",true,"All income tax withheld from employees' pay this month, from payroll.",null],
     ["prior_month_adjustment","26","Add/(Less): Adjustment of Taxes Withheld from Previous Month/s (from Part IV Schedule 1, Item 4)","decimal","user",false,"A correction to tax withheld in earlier months: positive if too little was withheld, negative if too much. A year-end refund to an employee (from their 2316) goes here as a negative amount. Usually 0.",null],
+    ["taxes_withheld_for_remittance","27","Taxes Withheld for Remittance (Sum of Items 25 and 26)","decimal","payroll",true,"Item 25 plus item 26: the tax to pay to the BIR for this month.",null],
     ["previously_remitted_tax","28","Less: Tax Remitted in Return Previously Filed, if this is an amended return","decimal","user",false,"For an amended return only: the tax already paid with the original return for this month.",null],
     ["other_remittances","29","Other Remittances Made (specify)","decimal","user",false,"Any other payment already made for this month's withholding tax. Usually 0.",null],
     ["other_remittances_desc","29","Other Remittances Made — description","string","user",false,"Describe the payment entered in item 29.",null],

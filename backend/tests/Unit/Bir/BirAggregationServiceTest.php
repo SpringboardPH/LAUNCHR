@@ -347,7 +347,7 @@ class BirAggregationServiceTest extends TestCase
 
         $r = BirAggregationService::annualCompensation($e->id, 2026);
 
-         // Sample: 324,000 taxable and 11,100 tax. Item 39 is before the EE share, which is
+        // Sample: 324,000 taxable and 11,100 tax. Item 39 is before the EE share, which is
         // also shown in item 36 (accountant, 10/2026).
         $this->assertSame('0.00', $r['nontax_mwe_basic']);                    // 29
         $this->assertSame('27000.00', $r['nontax_thirteenth_month']);         // 34
@@ -387,7 +387,7 @@ class BirAggregationServiceTest extends TestCase
         $this->assertSame('228000.00', $r['nontax_mwe_basic']);
         $this->assertSame('260000.00', $r['gross_compensation_present']);
         $this->assertSame('0.00', $r['tax_due']);
-         // Withheld as if all year; it is refunded at year-end, so 25A shows 0 (accountant, 10/2026).
+        // Withheld as if all year; it is refunded at year-end, so 25A shows 0 (accountant, 10/2026).
         $this->assertSame('16851.60', $r['taxes_withheld_payroll']);
         $this->assertSame('16851.60', $r['year_end_refund']);
         $this->assertSame('0.00', $r['taxes_withheld_present']);

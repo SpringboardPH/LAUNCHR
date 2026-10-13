@@ -297,8 +297,8 @@ class BirDemoSeeder extends Seeder
     /**
      * Withholding for one cutoff from payroll's semi-monthly table, which already leaves out
      * anyone earning P250,000 a year or less. The last 2025 cutoff squares the year with the
-     * annual tax table, the way payroll does its year-end adjustment, so the 2316's tax
-     * withheld equals its tax due.
+     * annual tax table, the way payroll does its year-end adjustment, so a taxable employee's
+     * 2316 tax withheld equals its tax due (anything over is refunded on the 2316 itself).
      */
     private function withholding(array $e, int $year, int $month, bool $second, float $taxable, float $withheldSoFar): float
     {
@@ -313,7 +313,7 @@ class BirDemoSeeder extends Seeder
     }
 
     /**
-     * The year's taxable pay at this employer as the 2316 counts it, for t he year-end
+     * The year's taxable pay at this employer as the 2316 counts it, for the year-end
      * adjustment: basic pay before the SSS/PhilHealth/Pag-IBIG share (item 39).
      */
     private function annualTaxable(array $e, int $year): float
