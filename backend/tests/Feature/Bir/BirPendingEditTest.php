@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Bir;
 
+use App\Models\AuditLog;
 use App\Models\BirFormDraft;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -69,6 +70,47 @@ class BirPendingEditTest extends TestCase
 
         // It can't be marked as filed until it is submitted and approved again.
         $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/finalize")->assertStatus(400);
+    }
+
+    public function test_a_save_that_changes_nothing_leaves_an_approved_form_approved(): void
+    {
+        $id = $this->createWithStatus('draft');
+        $this->answer($id, ['surcharge' => '1000.00'])->assertOk();
+        $approver = $this->accounting()->id;
+        BirFormDraft::whereKey($id)->update(['status' => 'approved', 'approved_by' => $approver]);
+        $fieldsBefore = BirFormDraft::findOrFail($id)->fields;
+        $auditsBefore = AuditLog::count();
+
+        $this->answer($id, ['surcharge' => '1000.00'])
+            ->assertOk()
+            ->assertJsonPath('message', 'No changes to save')
+            ->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.approved_by.id', $approver);
+
+        $after = BirFormDraft::findOrFail($id);
+        $this->assertSame('approved', $after->status);
+        $this->assertSame($approver, $after->approved_by);
+        $this->assertEquals($fieldsBefore, $after->fields, 'A save with no change rewrote the fields.');
+        $this->assertSame($auditsBefore, AuditLog::count(), 'A save with no change wrote an audit entry.');
+
+        // A real change still sends it back to draft.
+        $this->answer($id, ['surcharge' => '1500.00'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Draft updated')
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.approved_by', null);
+    }
+
+    public function test_a_save_that_changes_nothing_on_a_draft_is_fine(): void
+    {
+        $id = $this->createWithStatus('draft');
+        $this->answer($id, ['surcharge' => '1000.00'])->assertOk()->assertJsonPath('message', 'Draft updated');
+
+        $this->answer($id, ['surcharge' => '1000.00'])
+            ->assertOk()
+            ->assertJsonPath('message', 'No changes to save')
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.fields.surcharge.value', '1000.00');
     }
 
     /** Pending and approved forms are accounting-only: an approval can't be cancelled by admin or HR. */

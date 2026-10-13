@@ -190,19 +190,53 @@ class BirFormController extends Controller
         $editor = ['id' => $request->user()->id, 'name' => $request->user()->name];
         $now = SystemClock::now()->toIso8601String();
 
-        $fields = $draft->fields ?? [];
+        $before = $draft->fields ?? [];
+        $fields = $before;
         foreach ($request->answers() as $key => $value) {
             $fields[$key] = $this->answeredEntry($fields[$key] ?? [], $value, $schema[$key]['source'], $editor, $now);
         }
         // Totals follow their parts. A total someone typed (edited) is never overwritten, so a
         // hand-typed total that doesn't add up is still left for the validator to flag.
-        $draft->fields = BirFormMapper::recalculate($draft->form_type, $fields);
-        $draft->reopenIfApproved();
-        $draft->save();
+        $fields = BirFormMapper::recalculate($draft->form_type, $fields);
+
+        // A save that changes nothing writes nothing, so a stray Save can't cancel an approval.
+        $changed = !self::sameAnswers($before, $fields);
+        if ($changed) {
+            $draft->fields = $fields;
+            $draft->reopenIfApproved();
+            $draft->save();
+        }
 
         $draft->load('preparer', 'approver', 'employee');
 
-        return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => 'Draft updated']);
+        return response()->json([
+            'success' => true,
+            'data' => new BirFormDraftResource($draft),
+            'message' => $changed ? 'Draft updated' : 'No changes to save',
+        ]);
+    }
+
+    /**
+     * True when every field has the same value, origin and edited flag in both sets. Who and
+     * when (edited_by, edited_at) are left out: they are new on every save. Compared exactly,
+     * so "1000" and "1000.00", or blank and No, count as different.
+     *
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     */
+    private static function sameAnswers(array $before, array $after): bool
+    {
+        foreach (array_keys($before + $after) as $key) {
+            $old = (array) ($before[$key] ?? []);
+            $new = (array) ($after[$key] ?? []);
+            if (($old['value'] ?? null) !== ($new['value'] ?? null)
+                || ($old['origin'] ?? null) !== ($new['origin'] ?? null)
+                || !empty($old['edited']) !== !empty($new['edited'])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

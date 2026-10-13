@@ -445,7 +445,14 @@ can be filed. A finalized form returns 400 "Only draft, pending and approved
 forms can be edited; this form is in finalized status". A pending or approved
 form can be edited by accounting only: admin and HR get 403 "Only accounting can
 edit a form that is under review or approved", whatever the body (checked before
-the answers, so never a 422), and an approved form keeps its approval. Anyone who reaches `/bir` can edit a `draft`.
+the answers, so never a 422), and an approved form keeps its approval. Anyone
+who reaches `/bir` can edit a `draft`.
+
+A save that changes nothing (every field keeps its value, `origin` and
+`edited`) writes nothing: it returns 200 with the draft as it is and message
+"No changes to save", leaves the status alone (an approved form stays
+approved) and adds no audit entry. Values are compared exactly, so `"1000"`
+and `"1000.00"` count as a change. A real change returns "Draft updated".
 
 After merging the answers, `PUT` recalculates the form's totals (Dev A's
 `BirFormMapper::recalculate()`), so entering a surcharge updates items 35 and 36
