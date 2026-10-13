@@ -38,6 +38,7 @@ class BirFormController extends Controller
             'success' => true,
             'data' => [
                 'enabled' => (bool) SystemSettings::get('bir_forms_enabled', false),
+                'switch_password_set' => !empty(SystemSettings::get(BirSwitchController::PASSWORD_KEY)),
                 'form_types' => ['1601-C', '2316'],
                 'status_flow' => self::STATUS_FLOW,
                 'schemas' => ['1601-C' => Form1601CSchema::fields(), '2316' => Form2316Schema::fields()],

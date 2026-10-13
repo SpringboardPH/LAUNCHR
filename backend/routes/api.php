@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\DtrController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\BirFormController;
 use App\Http\Controllers\Api\BirChatController;
+use App\Http\Controllers\Api\BirSwitchController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -123,9 +124,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // refused everywhere. Approve, reject and finalize are accounting-only
     // (Week 7, confirmed by the supervisor); editing a pending form is also
     // accounting-only, checked in UpdateBirDraftFieldsRequest/update().
-    // With bir_forms_enabled off, everything but GET /config is 403 for every role (bir.enabled).
+    // With bir_forms_enabled off, everything but GET /config and the switch routes is 403 for
+    // every role (bir.enabled). The switch routes are admin-only and need the company password.
     Route::prefix('bir')->middleware('role:admin,hr,accounting')->group(function () {
         Route::get('/config', [BirFormController::class, 'config']);
+        Route::middleware(['role:admin', 'throttle:5,1'])->group(function () {
+            Route::put('/switch/password', [BirSwitchController::class, 'setPassword']);
+        });
         Route::middleware('bir.enabled')->group(function () {
             Route::get('/drafts', [BirFormController::class, 'index']);
             Route::post('/drafts', [BirFormController::class, 'store']);
