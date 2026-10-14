@@ -57,8 +57,7 @@ class BirChatUndo
 
         $field = $this->conversation->field($draft->form_type, $change['field']);
         $name = BirConversationService::boxName($field);
-        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true)
-            || ($draft->status === 'pending' && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true))) {
+        if (!in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true) || BirChatCommands::reviewedFor($draft, $user)) {
             return BirChatCommands::result('Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . " now, so the change to {$name} can't be undone here.", stay: true);
         }
 

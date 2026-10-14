@@ -21,11 +21,13 @@ use App\Models\User;
  * - Forms are told apart by their number and details (BirFormFinder): status ("filed",
  *   "pending", "draft"), version ("version 2", "amendment 1") as well as period and person.
  *   When several fit, the chat lists them and asks; it never picks one.
- * - Whether a form can still be changed: draft, or waiting for review (accounting only),
- *   can; approved can't; a filed form can only be corrected in a new version, which the
+ * - Whether a form can still be changed: a draft can; a form waiting for review or approved
+ *   can too, by accounting only, and an approved one goes back to draft to be approved
+ *   again; a filed form can only be corrected in a new version, which the
  *   reply offers two ways: the "Start a correction" button, or "yes" to have the chat start
  *   it and make the change. A 1601-C stops at the workflow's amendment limit for its month.
  * - "done" sends the open form for review (an amendment counts once it is submitted).
+ * - Who is on a 1601-C, and one employee's part of it: BirChatEmployees.
  *
  * Like the rest of the chat, nothing is saved here. A change comes back as an answer for the
  * caller to save through PUT, and starting a correction or submitting comes back as an
@@ -60,6 +62,7 @@ class BirChatCommands
         private readonly BirIntentService $intent,
         private readonly BirChatUndo $undo,
         private readonly BirChatLookup $lookup,
+        private readonly BirChatEmployees $employees,
     ) {}
 
     /** @return ?array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool} */
@@ -94,7 +97,7 @@ class BirChatCommands
             (bool) preg_match(self::DONE, $message) => $this->done($current, $canAct),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
             (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
-            default => $this->lookup->lookup($message, $item, $current, $state),
+            default => $this->employees->answer($message, $current, $state) ?? $this->lookup->lookup($message, $item, $current, $state),
         };
 
         // A reply that asks for a number, an item or a year waits for it: the open question
@@ -190,14 +193,10 @@ class BirChatCommands
                 . ", is still open. Reply \"form {$label}\" to make the change there.", null, null, stay: true);
         }
 
-        // Approved forms can be changed once the workflow allows it (Dev B): they go back to draft.
-        $editable = in_array($target->status, BirFormDraft::EDITABLE_STATUSES, true);
-
-        return match (true) {
-            $editable => $this->changeOpen($target, $message, $value, $current, $state, $user),
-            $target->status === 'approved' => self::result(ucfirst(BirFormNames::describe($target)) . ' (form ' . BirFormNames::name($target) . ") is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.", null, null, stay: true),
-            default => $this->offerCorrection($target, $message, $value, $state, $canAct),
-        };
+        // Draft, pending and approved can be changed (an approved form goes back to draft).
+        return in_array($target->status, BirFormDraft::EDITABLE_STATUSES, true)
+            ? $this->changeOpen($target, $message, $value, $current, $state, $user)
+            : $this->offerCorrection($target, $message, $value, $state, $canAct);
     }
 
     /**
@@ -232,11 +231,19 @@ class BirChatCommands
         return self::result($found['reply'], null, null, null, $found['candidates'], stay: true);
     }
 
-    /** A change on a draft or a form waiting for review. */
+    /** A form under review or approved, and a user who isn't allowed to change it (PUT would say 403). */
+    public static function reviewedFor(BirFormDraft $draft, User $user): bool
+    {
+        return in_array($draft->status, BirFormDraft::REVIEWED_STATUSES, true)
+            && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true);
+    }
+
+    /** A change on a draft, a form waiting for review, or an approved one. */
     private function changeOpen(BirFormDraft $target, string $message, ?string $value, ?BirFormDraft $current, BirConversationState $state, User $user): array
     {
-        if ($target->status === 'pending' && !in_array($user->role, BirFormDraft::PENDING_EDITOR_ROLES, true)) {
-            return self::result(ucfirst(BirFormNames::describe($target)) . ' is waiting for review, and only accounting can change it now. You can still ask what any box holds.', null, null, stay: true);
+        if (self::reviewedFor($target, $user)) {
+            return self::result(ucfirst(BirFormNames::describe($target)) . ' (form ' . BirFormNames::name($target) . ') is ' . BirFormNames::statusWord($target)
+                . ', and only accounting can change it now. You can still ask what any box holds.', null, null, stay: true);
         }
 
         $change = $this->conversation->change($target, $message, $value);

@@ -115,11 +115,7 @@ class BirExplanationService
     private function payrollRecords(BirFormDraft $draft): string
     {
         // A correction is a copy: its rows are the ones saved with the version it came from.
-        $from = $draft;
-        while ($from->source_snapshot === null && $from->parent_id !== null && ($parent = BirFormDraft::find($from->parent_id)) !== null) {
-            $from = $parent;
-        }
-        $rows = collect($from->source_snapshot['rows'] ?? []);
+        $rows = collect($draft->sourceSnapshot()['rows'] ?? []);
 
         if ($rows->isEmpty()) {
             return 'no finalized or paid payroll records were found for this period, so its payroll figures are zero.';

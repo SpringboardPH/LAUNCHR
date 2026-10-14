@@ -20,9 +20,8 @@ use Tests\TestCase;
  *   - a box on any form can be changed without opening it ("edit 2316 item #6 for maria
  *     santos, change it to …"), applied at once, and "undo" puts it back;
  *   - a 2316 can be asked for by TIN ("2316 for 920-919-920-00001 2024");
- *   - the chat knows whether a form can still be changed: a filed form is never changed,
- *     only corrected in a new version (the button, or "yes" in the chat), and "done" sends
- *     a form for review.
+ *   - a filed form is never changed, only corrected in a new version (the button, or
+ *     "yes" in the chat). Who may change which form, and "done": BirChatFormRulesTest.
  * All of it is read in PHP, so these tests also check the model is never asked.
  */
 class BirChatAnyFormTest extends TestCase
@@ -271,27 +270,6 @@ class BirChatAnyFormTest extends TestCase
             ->assertJsonPath('data.reply', '"Item 5, RDO Code" has been changed again since (it is now 050), so I left it as it is.' . "\n\n" . $this->chat($id, null, null)->json('data.reply'));
     }
 
-    public function test_whether_a_form_can_be_changed_follows_its_status_and_role(): void
-    {
-        $id = $this->draft2316($this->maria, '2026');
-        $hr = User::factory()->create(['role' => 'hr']);
-
-        BirFormDraft::whereKey($id)->update(['status' => 'pending']);
-        $this->actingAs($hr)->postJson('/api/bir/chat', ['message' => "change item 5 on form #{$id} to 049", 'reset' => true])
-            ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 is waiting for review, and only accounting can change it now. You can still ask what any box holds.");
-        $this->send("change item 5 on form #{$id} to 049", reset: true)
-            ->assertJsonPath('data.answer.value', '049');
-
-        // Approved: refused until the workflow lets approved forms be changed (then see the approved test below).
-        if (!in_array('approved', BirFormDraft::EDITABLE_STATUSES, true)) {
-            BirFormDraft::whereKey($id)->update(['status' => 'approved']);
-            $this->send("change item 5 on form #{$id} to 049")
-                ->assertJsonPath('data.answer', null)
-                ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 (form #{$id}) is approved and waiting to be filed, so it can't be changed. Once it is marked as filed, a correction can be started.");
-        }
-    }
-
     // ---- A filed form: corrected in a new version, never changed
 
     public function test_a_filed_2316_points_to_the_button_or_offers_to_start_a_correction(): void
@@ -360,26 +338,6 @@ class BirChatAnyFormTest extends TestCase
         $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertStatus(400);
     }
 
-    public function test_done_sends_the_form_for_review_once_nothing_blocks_it(): void
-    {
-        $id = $this->draft2316($this->maria, '2026');
-
-        $reply = $this->chat($id, null, 'done', actions: true)->assertJsonPath('data.action', null)->json('data.reply');
-        $this->assertStringStartsWith("It can't be sent for review yet: ", $reply);
-
-        $this->save($id, ['employee_rdo_code' => '049', 'employee_registered_address' => self::ADDRESS, 'employee_birthdate' => '1990-05-31']);
-        $this->chat($id, null, 'done')
-            ->assertJsonPath('data.action', null)
-            ->assertJsonPath('data.reply', 'Nothing is blocking it. Click "Submit for review" above the preview to send it for review.');
-        $this->chat($id, null, 'tapos na', actions: true)
-            ->assertJsonPath('data.action', ['type' => 'submit', 'draft_id' => $id])
-            ->assertJsonPath('data.reply', "Sent form #{$id} for review.");
-
-        BirFormDraft::whereKey($id)->update(['status' => 'pending']);
-        $this->chat($id, null, 'done', actions: true)
-            ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 is already waiting for review, so there is nothing to submit.");
-    }
-
     // ---- Findings from user-side testing (document 2)
 
     public function test_a_number_that_does_not_fit_the_list_is_answered_not_a_crash(): void
@@ -415,15 +373,6 @@ class BirChatAnyFormTest extends TestCase
         $this->send('item 5')->assertJsonPath('data.draft_id', $id)->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '049']);
     }
 
-    public function test_a_fixed_box_is_never_changed(): void
-    {
-        $id = $this->draft1601C('2026-09');
-
-        $this->send("change item 13 on form #{$id} to yes", reset: true)
-            ->assertJsonPath('data.answer', null)
-            ->assertJsonPath('data.reply', fn (string $r) => str_contains($r, 'is always No on this form, so it can\'t be changed.'));
-    }
-
     public function test_a_forms_versions_are_counted_and_labelled(): void
     {
         $v1 = $this->draft1601C('2026-09');
@@ -447,21 +396,6 @@ class BirChatAnyFormTest extends TestCase
         // A label also answers a list of forms.
         $this->send('what is item 4 on the September 2026 1601-C?');
         $this->assertStringStartsWith("On the September 2026 1601-C (form #{$v1}v2", $this->send("#{$v1}v2")->json('data.reply'));
-    }
-
-    public function test_an_approved_form_can_be_changed_once_the_workflow_allows_it_and_goes_back_to_draft(): void
-    {
-        if (!in_array('approved', BirFormDraft::EDITABLE_STATUSES, true)) {
-            $this->markTestSkipped('Needs approved forms to be editable in BirFormDraft::EDITABLE_STATUSES (Dev B).');
-        }
-        $id = $this->draft2316($this->maria, '2026');
-        BirFormDraft::whereKey($id)->update(['status' => 'approved']);
-
-        $this->send("change item 5 on form #{$id} to 049", reset: true)
-            ->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '049'])
-            ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$id}, original, approved): Changed \"Item 5, RDO Code\" to 049. It was approved, so this sends it back to a draft: submit it for review again to have it approved. Say \"undo\" to put it back.");
-        $this->save($id, ['employee_rdo_code' => '049']);
-        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
     }
 
     // ---- A 2316 by TIN

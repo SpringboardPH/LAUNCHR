@@ -25,16 +25,20 @@ class BirConversationService
     /**
      * Fields this draft still needs from a person, in the order to ask them.
      * Run again after every answer: an answer can make new fields required.
+     * Fixed and system-filled boxes (1601-C items 2, 13, 13A) are never asked, even on an
+     * old draft that left them empty: no answer to them can be saved.
      *
      * @return array<int, array<string, mixed>> see BirMissingFields::detect()
      */
     public function missingFields(BirFormDraft $draft): array
     {
-        return BirMissingFields::detect(
-            $this->schemaFor($draft->form_type),
-            $draft->fields ?? [],
-            $this->context($draft),
-        );
+        $schema = $this->schemaFor($draft->form_type);
+        $byKey = array_column($schema, null, 'key');
+
+        return array_values(array_filter(
+            BirMissingFields::detect($schema, $draft->fields ?? [], $this->context($draft)),
+            fn (array $missing) => self::notChangeable($byKey[$missing['key']]) === null,
+        ));
     }
 
     /**
@@ -184,8 +188,8 @@ class BirConversationService
         }
 
         $name = self::boxName($field);
-        if (array_key_exists('fixed', $field)) {
-            return ['answer' => null, 'reply' => "{$name} is always " . ucfirst(self::display($field['fixed'], $field['type'])) . " on this form, so it can't be changed."];
+        if (($refusal = self::notChangeable($field)) !== null) {
+            return ['answer' => null, 'reply' => $refusal];
         }
         $value ??= self::newValue($message);
         if ($value === null) {
@@ -208,6 +212,24 @@ class BirConversationService
         }
 
         return ['answer' => ['field' => $field['key'], 'value' => $parsed['value']], 'reply' => $reply];
+    }
+
+    /**
+     * Why a box can't be changed at all, or null if it can: a fixed box always holds its
+     * schema value (item 13 No, item 13A blank), and a system-filled one is filled in from
+     * the form itself (item 2). PUT refuses both, so the chat says so instead of trying.
+     */
+    public static function notChangeable(array $field): ?string
+    {
+        $name = self::boxName($field);
+
+        return match (true) {
+            array_key_exists('fixed', $field) => "{$name} is always "
+                . ($field['fixed'] === null ? 'blank' : ucfirst(self::display($field['fixed'], $field['type'])))
+                . " on this form, so it can't be changed.",
+            !empty($field['system_filled']) => "{$name} is filled in automatically: No on the original, Yes on an amended return. It can't be changed.",
+            default => null,
+        };
     }
 
     /** No item number given: say which items the message's words could mean, then how to ask. */

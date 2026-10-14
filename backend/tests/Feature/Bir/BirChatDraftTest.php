@@ -158,7 +158,7 @@ class BirChatDraftTest extends TestCase
 
         $this->ask($id)
             ->assertJsonPath('data.done', true)
-            ->assertJsonPath('data.reply', "This form is finalized, so it can't be changed here. You can still ask what a box means or where its figure came from.");
+            ->assertJsonPath('data.reply', "Form #{$id} is filed, so it can't be changed here. You can still ask what a box means or where its figure came from.");
     }
 
     public function test_an_unknown_draft_is_a_404(): void

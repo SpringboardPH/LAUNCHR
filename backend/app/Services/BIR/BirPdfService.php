@@ -23,6 +23,12 @@ use setasign\Fpdi\Fpdi;
  * A 2316 whose earlier version was already filed, exported before this version is filed
  * itself, also says so in red on every page (supervisor's request), so a correction is never
  * sent out as if it were the first certificate.
+ *
+ * Text never runs out of its box: a long address in a box goes onto two lines, and in
+ * character cells it breaks between words from one row to the next; when it is longer than
+ * all the cells together, it is written small across them instead of being cut off. A box
+ * that repeats another (the TIN and name at the top of the 1601-C's page 2) prints the same
+ * value.
  */
 class BirPdfService
 {
@@ -58,7 +64,7 @@ class BirPdfService
 
             foreach ($layout::BOXES as $anchor => $spec) {
                 if ($spec['page'] === $page) {
-                    $this->draw($pdf, $spec, $spec['kind'] === 'name' ? $values : ($values[$anchor] ?? null));
+                    $this->draw($pdf, $spec, $spec['kind'] === 'name' ? $values : ($values[$spec['same'] ?? $anchor] ?? null));
                 }
             }
 
@@ -84,6 +90,7 @@ class BirPdfService
         return match ($format) {
             'mmddyyyy' => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m) ? $m[2] . $m[3] . $m[1] : '',
             'upper' => mb_strtoupper(trim($value)),
+            'code' => preg_replace('/[^A-Z0-9]/', '', strtoupper($value)), // an RDO code: 049, 21A
             default => preg_replace('/\D/', '', $value), // digits, mmdd, mmyyyy: the digits in order
         };
     }
@@ -128,11 +135,13 @@ class BirPdfService
 
         match ($spec['kind']) {
             'amount' => $this->inBox($pdf, $spec['box'], number_format((float) $value, 2), 'R', 9),
-            'text' => $this->inBox($pdf, $spec['box'], (string) $value, 'L', 8),
+            'text' => $this->inBox($pdf, $spec['box'], (string) $value, 'L', 8, wrap: true),
             'name' => $this->inBox($pdf, $spec['box'], $this->fullName($spec['parts'], $value), 'L', 8),
             'check' => $value === true || $value === 1 || $value === '1' ? $this->inBox($pdf, $spec['box'], 'X', 'C', 9) : null,
             'choice' => $this->choose($pdf, $spec['options'], $value),
-            'cells' => $this->inCells($pdf, $spec['cells'], self::cellText($value, $spec['format']), ($spec['align'] ?? 'left') === 'right' ? 'R' : 'L'),
+            'cells' => $spec['format'] === 'upper'
+                ? $this->wordsInCells($pdf, $spec['cells'], self::cellText($value, $spec['format']))
+                : $this->inCells($pdf, $spec['cells'], self::cellText($value, $spec['format']), ($spec['align'] ?? 'left') === 'right' ? 'R' : 'L'),
             'cell_amount' => $this->cellAmount($pdf, $spec, (float) $value),
             default => null,
         };
@@ -156,8 +165,11 @@ class BirPdfService
         }
     }
 
-    /** Text in a box, vertically centred, shrunk until it fits (never below 5pt). */
-    private function inBox(Fpdi $pdf, array $box, ?string $text, string $align, float $size): void
+    /**
+     * Text in a box, vertically centred, shrunk until it fits (never below 5pt). With wrap,
+     * text that would need to go below 6.5pt on one line goes onto two, split between words.
+     */
+    private function inBox(Fpdi $pdf, array $box, ?string $text, string $align, float $size, bool $wrap = false): void
     {
         if ($text === null || $text === '') {
             return;
@@ -165,13 +177,113 @@ class BirPdfService
         [$x, $y, $w, $h] = $box;
         $text = self::latin1($text);
 
-        $pdf->SetFont(self::FONT, '', $size);
-        while ($size > 5 && $pdf->GetStringWidth($text) > $w - 4) {
-            $pdf->SetFont(self::FONT, '', $size -= 0.5);
+        if ($wrap && $this->fittingSize($pdf, [$text], $w - 4, $size, 6.5) === null && ($lines = self::twoLines($pdf, $text)) !== null) {
+            $size = $this->fittingSize($pdf, $lines, $w - 4, min($size, $h / 2 - 0.5), 4) ?? 4;
+            $pdf->SetFont(self::FONT, '', $size);
+            foreach ($lines as $i => $line) {
+                $pdf->SetXY($x + 1, $y + 0.5 + $i * ($h - 1) / 2);
+                $pdf->Cell($w - 2, ($h - 1) / 2, $line, 0, 0, $align);
+            }
+
+            return;
         }
 
+        $pdf->SetFont(self::FONT, '', $this->fittingSize($pdf, [$text], $w - 4, $size, 5) ?? 5);
         $pdf->SetXY($x + 1, $y);
         $pdf->Cell($w - 2, $h, $text, 0, 0, $align);
+    }
+
+    /** The largest size from $size down to $min, in half points, at which every line fits $width; null if none. */
+    private function fittingSize(Fpdi $pdf, array $lines, float $width, float $size, float $min): ?float
+    {
+        for (; $size >= $min; $size -= 0.5) {
+            $pdf->SetFont(self::FONT, '', $size);
+            if (max(array_map(fn (string $l) => $pdf->GetStringWidth($l), $lines)) <= $width) {
+                return $size;
+            }
+        }
+
+        return null;
+    }
+
+    /** The text split between two words so the longer line is as short as it can be; null for a single word. */
+    private static function twoLines(Fpdi $pdf, string $text): ?array
+    {
+        $words = preg_split('/\s+/', trim($text));
+        if (count($words) < 2) {
+            return null;
+        }
+        $best = null;
+        for ($i = 1; $i < count($words); $i++) {
+            $lines = [implode(' ', array_slice($words, 0, $i)), implode(' ', array_slice($words, $i))];
+            $longer = max($pdf->GetStringWidth($lines[0]), $pdf->GetStringWidth($lines[1]));
+            if ($best === null || $longer < $best[0]) {
+                $best = [$longer, $lines];
+            }
+        }
+
+        return $best[1];
+    }
+
+    /**
+     * Text in cells that run over more than one row (1601-C item 9, the address): a row ends
+     * between two words, never inside one. Text longer than the cells can hold is written
+     * small across their rows instead, so none of it is lost.
+     */
+    private function wordsInCells(Fpdi $pdf, array $cells, string $text): void
+    {
+        $rows = array_values(array_reduce($cells, function (array $rows, array $cell) {
+            $rows[(string) $cell[1]][] = $cell;
+            return $rows;
+        }, []));
+        $placed = [];
+        $words = preg_split('/\s+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+        foreach ($rows as $row) {
+            $line = '';
+            while ($words !== [] && mb_strlen(ltrim($line . ' ' . $words[0])) <= count($row)) {
+                $line = ltrim($line . ' ' . array_shift($words));
+            }
+            if ($line === '' && $words !== []) {
+                $line = mb_substr($words[0], 0, count($row)); // one word longer than a whole row
+                $words[0] = mb_substr($words[0], count($row));
+            }
+            $placed[] = [$row, $line];
+        }
+
+        if ($words !== []) {
+            $this->smallOverRows($pdf, $rows, self::latin1($text));
+
+            return;
+        }
+        foreach ($placed as [$row, $line]) {
+            $this->inCells($pdf, $row, $line, 'L');
+        }
+    }
+
+    /** Text too long for its cells, written small over their rows: as large as fits, each row to its own width. */
+    private function smallOverRows(Fpdi $pdf, array $rows, string $text): void
+    {
+        $words = preg_split('/\s+/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+        for ($size = 8; $size >= 4; $size -= 0.5) {
+            $pdf->SetFont(self::FONT, '', $size);
+            $left = $words;
+            $lines = [];
+            foreach ($rows as $row) {
+                $width = end($row)[0] + end($row)[2] - $row[0][0] - 2;
+                $line = '';
+                while ($left !== [] && $pdf->GetStringWidth(ltrim($line . ' ' . $left[0])) <= $width) {
+                    $line = ltrim($line . ' ' . array_shift($left));
+                }
+                $lines[] = $line;
+            }
+            if ($left === [] || $size === 4.0) {
+                break;
+            }
+        }
+        foreach ($rows as $i => $row) {
+            $pdf->SetXY($row[0][0] + 1, $row[0][1]);
+            $pdf->Cell(end($row)[0] + end($row)[2] - $row[0][0] - 2, $row[0][3], $lines[$i] . ($i === count($rows) - 1 && $left !== [] ? ' ' . implode(' ', $left) : ''), 0, 0, 'L');
+        }
     }
 
     /** One character per cell, centred. Right-aligned text fills the cells from the right. */

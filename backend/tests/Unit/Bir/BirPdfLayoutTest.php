@@ -53,7 +53,8 @@ class BirPdfLayoutTest extends TestCase
 
         foreach ($layout as $anchor => $spec) {
             $base = preg_replace('/\.desc$/', '', $anchor);
-            $known = in_array($anchor, $anchors, true) || in_array($base, $anchors, true) || isset($spec['parts']);
+            $known = in_array($anchor, $anchors, true) || in_array($base, $anchors, true) || isset($spec['parts'])
+                || in_array($spec['same'] ?? null, $anchors, true); // a box repeating another anchor's value
             $this->assertTrue($known, "{$anchor} is in the layout but no field has that anchor.");
         }
     }
@@ -79,5 +80,7 @@ class BirPdfLayoutTest extends TestCase
         $this->assertSame('1231', BirPdfService::cellText('12/31', 'mmdd'));
         $this->assertSame('DELA CRUZ, JUAN PEÑA', BirPdfService::cellText(' Dela Cruz, Juan Peña ', 'upper'), 'Capital letters, as the 1601-C asks.');
         $this->assertSame('', BirPdfService::cellText('31/05/1990', 'mmddyyyy'), 'A date not stored as YYYY-MM-DD is left blank, not guessed.');
+        $this->assertSame('21A', BirPdfService::cellText('21a', 'code'), 'An RDO code keeps its letter.');
+        $this->assertSame('049', BirPdfService::cellText('049', 'code'));
     }
 }

@@ -92,6 +92,34 @@ class BirPdfExportTest extends TestCase
         $this->assertStringNotContainsString('ALREADY BEEN FILED', $this->text($v1));
     }
 
+    public function test_long_text_is_never_cut_off_and_page_2_of_the_1601c_has_the_tin_and_name(): void
+    {
+        $name = 'SPRINGBOARD PHILIPPINES INFORMATION TECHNOLOGY SOLUTIONS INC.';
+        $address = 'UNIT 1203 TOWER ONE, AYALA TRIANGLE GARDENS, PASEO DE ROXAS CORNER MAKATI AVENUE, BRGY. SAN LORENZO, MAKATI CITY';
+        $id = $this->draft('1601-C');
+        $this->setFields($id, ['company_name' => $name, 'company_address' => $address, 'company_tin' => '987-654-321-00000', 'rdo_code' => '21A']);
+        $pdf = $this->text($id);
+        [$page1, $page2] = $this->pageStreams($pdf);
+
+        // Too long for its cells: written small in full, never cut off. The name is on both pages.
+        $this->assertStringContainsString("({$address}) Tj", $page1);
+        $this->assertStringContainsString("({$name}) Tj", $page1);
+        $this->assertStringContainsString("({$name}) Tj", $page2, 'Page 2 repeats the withholding agent\'s name.');
+        foreach (str_split('98765432100000') as $digit) {
+            $this->assertStringContainsString("({$digit}) Tj", $page2, 'Page 2 repeats the TIN.');
+        }
+        $this->assertStringContainsString('(A) Tj', $page1, 'RDO 21A keeps its letter.');
+
+        // A short address breaks between words from one row of cells to the next.
+        $this->setFields($id, ['company_address' => '1 AYALA AVENUE, BRGY. SAN LORENZO, MAKATI CITY, METRO MANILA']);
+        $this->assertStringNotContainsString('AYALA AVENUE', $this->text($id), 'Short enough for the cells: one letter per cell.');
+
+        // A 2316 address too long for one line goes onto two.
+        $two = $this->draft('2316', 'EMP-PDF2');
+        $this->setFields($two, ['employee_registered_address' => '22 MABINI STREET, BRGY. POBLACION, SAN JOSE DEL MONTE CITY, BULACAN PROVINCE']);
+        $this->assertMatchesRegularExpression('/\(22 MABINI STREET, BRGY\. POBLACION, SAN\) Tj.*\(JOSE DEL MONTE CITY, BULACAN PROVINCE\) Tj/s', $this->text($two));
+    }
+
     public function test_an_unknown_draft_is_a_404_and_employees_cannot_export(): void
     {
         $this->actingAs($this->accounting)->getJson('/api/bir/drafts/999/export')->assertNotFound();
@@ -107,16 +135,34 @@ class BirPdfExportTest extends TestCase
         return (new BirPdfService)->render(BirFormDraft::with('employee')->findOrFail($id), compress: false);
     }
 
+    /** Each page's drawing commands, in page order (FPDF writes one content stream per page). */
+    private function pageStreams(string $pdf): array
+    {
+        preg_match_all('/stream\r?\n(.*?)endstream/s', $pdf, $m);
+
+        return array_values(array_filter($m[1], fn (string $s) => str_contains($s, ' Tj')));
+    }
+
+    private function setFields(int $id, array $values): void
+    {
+        $draft = BirFormDraft::findOrFail($id);
+        $fields = $draft->fields;
+        foreach ($values as $key => $value) {
+            $fields[$key] = ['value' => $value, 'origin' => 'user', 'edited' => false];
+        }
+        $draft->update(['fields' => $fields]);
+    }
+
     private function pages(string $pdf): int
     {
         return (new Fpdi)->setSourceFile(StreamReader::createByString($pdf));
     }
 
-    private function draft(string $formType): int
+    private function draft(string $formType, string $code = 'EMP-PDF'): int
     {
         $employee = Employee::create([
-            'employee_id' => 'EMP-PDF', 'first_name' => 'Bir', 'last_name' => 'Tester',
-            'email' => 'pdf@example.com', 'position' => 'Staff', 'hire_date' => '2025-03-01',
+            'employee_id' => $code, 'first_name' => 'Bir', 'last_name' => 'Tester',
+            'email' => strtolower($code) . '@example.com', 'position' => 'Staff', 'hire_date' => '2025-03-01',
             'salary' => 30000, 'status' => 'active', 'rate_type' => 'monthly', 'tin_number' => '123-456-789-000',
         ]);
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Helpers\SystemClock;
 use App\Http\Controllers\Controller;
 use App\Models\BirFormDraft;
+use App\Models\User;
 use App\Services\BIR\BirAnswerParser;
 use App\Services\BIR\BirChatCommands;
 use App\Services\BIR\BirConversationService;
@@ -12,6 +13,7 @@ use App\Services\BIR\BirConversationState;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirEmployeeResolver;
 use App\Services\BIR\BirExplanationService;
+use App\Services\BIR\BirFormNames;
 use App\Services\BIR\BirIntentService;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
@@ -84,7 +86,7 @@ class BirChatController extends Controller
 
         // Reading or changing a box on a saved form, "yes", "done" and "undo": PHP only.
         if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
-            return $this->commandReply($command, null);
+            return $this->commandReply($command, null, $request->user());
         }
 
         // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
@@ -196,6 +198,12 @@ class BirChatController extends Controller
         ));
     }
 
+    /** Whether this user may still change this form: it isn't filed, and it isn't under review or approved unless they are accounting. */
+    private static function editableBy(BirFormDraft $draft, User $user): bool
+    {
+        return in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true) && !BirChatCommands::reviewedFor($draft, $user);
+    }
+
     /**
      * One turn of filling in a draft. Nothing is saved here: an accepted answer comes back
      * as data.answer for the caller to save through PUT /bir/drafts/{id}.
@@ -208,19 +216,22 @@ class BirChatController extends Controller
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
 
-        // A locked form asks nothing and saves nothing, but can still be explained.
-        $editable = in_array($draft->status, BirFormDraft::EDITABLE_STATUSES, true);
-        $locked = "This form is {$draft->status}, so it can't be changed here. You can still ask what a box means or where its figure came from.";
+        // A locked form asks nothing and saves nothing, but can still be explained. So does a
+        // form under review or approved for anyone but accounting: PUT would refuse the answer.
+        $editable = self::editableBy($draft, $request->user());
+        $locked = BirChatCommands::reviewedFor($draft, $request->user())
+            ? 'Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . ', and only accounting can change it now. You can still ask what a box means or where its figure came from.'
+            : 'Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . ", so it can't be changed here. You can still ask what a box means or where its figure came from.";
 
         // "change item 12 to …" (here or on any form), reading a box on another form, "yes",
         // "done", "undo": read in PHP, whatever question is open. Never an answer.
         if ($message !== null && ($command = $this->commands->handle($message, $draft, $state, $request->user(), $canAct)) !== null) {
-            return $this->commandReply($command, $draft);
+            return $this->commandReply($command, $draft, $request->user());
         }
 
         // Just after the chat's "yes" started a correction: the change it was asked for.
         if ($message === null && ($resumed = $this->commands->resume($draft, $state)) !== null) {
-            return $this->commandReply($resumed, $draft);
+            return $this->commandReply($resumed, $draft, $request->user());
         }
 
         // "What is item 12?" / "where did item 25A come from?": the item number picks the box.
@@ -251,7 +262,7 @@ class BirChatController extends Controller
      *
      * @param  array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool}  $command
      */
-    private function commandReply(array $command, ?BirFormDraft $current)
+    private function commandReply(array $command, ?BirFormDraft $current, User $user)
     {
         if ($command['draft'] !== null && $command['answer'] !== null) {
             return $this->draftReply($command['draft'], ['question' => null, 'answer' => $command['answer']], (string) $command['reply']);
@@ -260,8 +271,7 @@ class BirChatController extends Controller
             return $this->reply([], false, $command['reply'], $command['candidates'], $command['action']);
         }
 
-        $editable = in_array($current->status, BirFormDraft::EDITABLE_STATUSES, true);
-        $open = $command['stay'] && $editable ? $this->conversation->turn($current, null, null)['question'] : null;
+        $open = $command['stay'] && self::editableBy($current, $user) ? $this->conversation->turn($current, null, null)['question'] : null;
 
         return $this->draftReply($current, ['question' => $open, 'answer' => null], $command['reply'] === null ? null : self::thenAsk($command['reply'], $open), $command['action'], $command['candidates']);
     }
