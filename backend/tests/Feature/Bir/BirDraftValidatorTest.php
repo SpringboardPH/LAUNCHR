@@ -91,6 +91,30 @@ class BirDraftValidatorTest extends TestCase
         $this->assertSame(['fixed_value'], array_column($errors, 'code'), 'Not also a missing-field error saying to enter it.');
     }
 
+    public function test_an_old_draft_with_text_in_item_13a_is_a_fixed_value_error_saying_blank(): void
+    {
+        $id = $this->create1601C();
+        $this->storeEntry($id, 'tax_relief_details', ['value' => 'TAX TREATY', 'origin' => 'user']);
+
+        $errors = array_values(array_filter(
+            $this->errorsWithCode($id, 'fixed_value'),
+            fn (array $error) => $error['field'] === 'tax_relief_details',
+        ));
+        $label = Form1601CSchema::byKey()['tax_relief_details']['label'];
+        $this->assertCount(1, $errors);
+        $this->assertSame("\"{$label}\" must be blank. Create a new draft for this period to fix it.", $errors[0]['message']);
+    }
+
+    public function test_an_old_draft_with_item_13a_left_empty_is_not_flagged(): void
+    {
+        // Blank is the right answer for 13A, so an old draft where it was never answered is fine.
+        $id = $this->create1601C();
+        $this->storeEntry($id, 'tax_relief_details', ['value' => null, 'origin' => 'pending']);
+
+        $fields = array_column(app(BirDraftValidator::class)->validate(BirFormDraft::findOrFail($id)), 'field');
+        $this->assertNotContains('tax_relief_details', $fields);
+    }
+
     public function test_a_stored_value_in_the_wrong_format_is_an_invalid_format_error(): void
     {
         // Written straight to the draft: PUT now refuses this, but older drafts and figures
@@ -390,9 +414,15 @@ class BirDraftValidatorTest extends TestCase
     /** Writes item 13 straight into the draft, as a draft made before it was fixed could hold it. */
     private function storeTaxRelief(int $draftId, array $entry): void
     {
+        $this->storeEntry($draftId, 'has_tax_relief', $entry);
+    }
+
+    /** Writes a field straight into the draft, skipping PUT, as an old draft could hold it. */
+    private function storeEntry(int $draftId, string $key, array $entry): void
+    {
         $draft = BirFormDraft::findOrFail($draftId);
         $fields = $draft->fields;
-        $fields['has_tax_relief'] = array_merge($fields['has_tax_relief'], $entry);
+        $fields[$key] = array_merge($fields[$key], $entry);
         $draft->fields = $fields;
         $draft->save();
     }

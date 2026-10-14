@@ -160,13 +160,17 @@ class UpdateBirDraftFieldsRequest extends FormRequest
 
     /**
      * A fixed field always has its schema value, so no answer is accepted, whatever it is.
-     * A yes/no value is worded Yes or No.
+     * A yes/no value is worded Yes or No, and a fixed blank (null, item 13A) "blank".
      *
      * @param  array<string, mixed>  $field
      */
     private static function fixedProblem(array $field): string
     {
-        $fixed = is_bool($field['fixed']) ? ($field['fixed'] ? 'Yes' : 'No') : (string) $field['fixed'];
+        $fixed = match (true) {
+            $field['fixed'] === null => 'blank',
+            is_bool($field['fixed']) => $field['fixed'] ? 'Yes' : 'No',
+            default => (string) $field['fixed'],
+        };
 
         return "\"{$field['label']}\" is always {$fixed} and can't be changed.";
     }

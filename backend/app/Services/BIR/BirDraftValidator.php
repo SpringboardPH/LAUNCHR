@@ -131,8 +131,9 @@ class BirDraftValidator
     /**
      * One error per field with a schema 'fixed' value that the draft doesn't hold exactly.
      * New drafts are filled with it, and PUT refuses any answer to it, so this catches drafts
-     * made before the field was fixed. A missing, pending or blank value is wrong too. A
-     * yes/no value is read the way BirMissingFields reads it, so "yes" counts as true.
+     * made before the field was fixed. A missing, pending or blank value is wrong too, except
+     * on a fixed blank (null, item 13A), where it is the right answer and only text is wrong.
+     * A yes/no value is read the way BirMissingFields reads it, so "yes" counts as true.
      *
      * @param  array<string, mixed>  $fields
      * @param  array<string, array<string, mixed>>  $schema
@@ -159,7 +160,11 @@ class BirDraftValidator
                 continue;
             }
 
-            $fixed = is_bool($field['fixed']) ? ($field['fixed'] ? 'Yes' : 'No') : (string) $field['fixed'];
+            $fixed = match (true) {
+                $field['fixed'] === null => 'blank',
+                is_bool($field['fixed']) => $field['fixed'] ? 'Yes' : 'No',
+                default => (string) $field['fixed'],
+            };
             $errors[] = [
                 'field' => $key,
                 'code' => 'fixed_value',
