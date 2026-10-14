@@ -17,7 +17,8 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * email, MM/DD) is invalid_format. A total that doesn't add up is total_mismatch. Tax withheld that the
  * payroll the draft was built from doesn't support is payroll_mismatch. A draft built
  * from a period with no counted payroll is empty_period. A field with a schema 'fixed'
- * value (1601-C item 13) that doesn't hold it is fixed_value.
+ * value (1601-C items 13, 13A) that doesn't hold it is fixed_value. A system_filled field
+ * (1601-C item 2) that doesn't hold the value the draft's version gives it is system_value.
  *
  * severity is "error" (blocks submit) or "warning" (shown, never blocks); see WARNING_CODES.
  */
@@ -91,11 +92,12 @@ class BirDraftValidator
     {
         $schema = $draft->form_type === Form1601CSchema::FORM_TYPE ? Form1601CSchema::byKey() : Form2316Schema::byKey();
 
-        // A fixed field can't be entered, so a missing one is reported as fixed_value only,
-        // not with a missing-field message that says to enter it here.
+        // A fixed or system-filled field can't be entered, so a missing one is reported as
+        // fixed_value or system_value only, not with a missing-field message saying to enter it.
         $missing = array_filter(
             $this->conversation->missingFields($draft),
-            fn (array $missing) => !array_key_exists('fixed', $schema[$missing['key']] ?? []),
+            fn (array $missing) => !array_key_exists('fixed', $schema[$missing['key']] ?? [])
+                && empty($schema[$missing['key']]['system_filled']),
         );
         $errors = array_map(fn (array $missing) => [
             'field' => $missing['key'],
@@ -107,6 +109,7 @@ class BirDraftValidator
         $errors = [
             ...$errors,
             ...$this->fixedValueErrors($draft->fields ?? [], $schema),
+            ...$this->systemValueErrors($draft, $schema),
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
             ...$this->invalidFormatErrors($draft->fields ?? [], $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
@@ -169,6 +172,49 @@ class BirDraftValidator
                 'field' => $key,
                 'code' => 'fixed_value',
                 'message' => "\"{$field['label']}\" must be {$fixed}. Create a new draft for this period to fix it.",
+            ];
+        }
+
+        return $errors;
+    }
+
+    /**
+     * One error per system_filled field that doesn't hold the value the draft itself gives it.
+     * 1601-C item 2 "Amended Return?" is No on version 1 and Yes on every later version. New
+     * drafts and revisions are filled with it, and PUT refuses any answer to it, so this catches
+     * older drafts. A missing, pending or blank value is wrong too. A system_filled field this
+     * check doesn't know the rule for is left alone rather than guessed.
+     *
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function systemValueErrors(BirFormDraft $draft, array $schema): array
+    {
+        $errors = [];
+
+        foreach ($schema as $key => $field) {
+            if (empty($field['system_filled']) || $key !== 'is_amended') {
+                continue;
+            }
+
+            $amended = $draft->version > 1;
+            $entry = ($draft->fields ?? [])[$key] ?? null;
+            $value = null;
+            if (is_array($entry) && ($entry['origin'] ?? 'pending') !== 'pending' && !$this->isBlank($entry)) {
+                $value = is_bool($entry['value'])
+                    ? $entry['value']
+                    : filter_var($entry['value'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
+            if ($value === $amended) {
+                continue;
+            }
+
+            $errors[] = [
+                'field' => $key,
+                'code' => 'system_value',
+                'message' => $amended
+                    ? "\"{$field['label']}\" must be Yes on an amended return (version {$draft->version})."
+                    : "\"{$field['label']}\" must be No on the original return.",
             ];
         }
 

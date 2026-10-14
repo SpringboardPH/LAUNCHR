@@ -101,6 +101,7 @@ class UpdateBirDraftFieldsRequest extends FormRequest
                         !isset($schema[$key]) => "\"{$key}\" is not a field on the {$this->draft()->form_type}.",
                         // array_key_exists, not isset: the fixed value can be false.
                         array_key_exists('fixed', $schema[$key]) => self::fixedProblem($schema[$key]),
+                        !empty($schema[$key]['system_filled']) => self::systemFilledProblem($schema[$key]),
                         default => $this->problem($schema[$key], FieldFormat::normalize($schema[$key], $value)),
                     };
                     if ($problem !== null) {
@@ -173,6 +174,17 @@ class UpdateBirDraftFieldsRequest extends FormRequest
         };
 
         return "\"{$field['label']}\" is always {$fixed} and can't be changed.";
+    }
+
+    /**
+     * A system_filled field is filled in from the draft itself (1601-C item 2: No on the
+     * original, Yes on an amended version), so, like a fixed one, no answer is accepted.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private static function systemFilledProblem(array $field): string
+    {
+        return "\"{$field['label']}\" is filled in automatically: No on the original, Yes on an amended return.";
     }
 
     /**

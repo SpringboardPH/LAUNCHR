@@ -13,7 +13,9 @@ use Tests\TestCase;
 /**
  * A field with a schema 'fixed' value is filled in by the system and can't be answered:
  * PUT /bir/drafts/{id} refuses any value for it, null included. 1601-C item 13
- * (has_tax_relief) is fixed at No, and item 13A (tax_relief_details) is fixed blank.
+ * (has_tax_relief) is fixed at No, and item 13A (tax_relief_details) is fixed blank. A
+ * system_filled field is refused the same way: item 2 (is_amended) is No on the original
+ * and Yes on a correction.
  */
 class BirFixedFieldTest extends TestCase
 {
@@ -88,6 +90,69 @@ class BirFixedFieldTest extends TestCase
         $after = BirFormDraft::findOrFail($id)->fields;
         $this->assertSame($before['has_tax_relief'], $after['has_tax_relief']);
         $this->assertSame($before['interest'], $after['interest'], 'The valid answer was not saved either.');
+    }
+
+    public function test_any_answer_to_item_2_is_refused_on_the_original_and_on_a_correction(): void
+    {
+        $original = $this->create1601C();
+        $label = Form1601CSchema::byKey()['is_amended']['label'];
+        $message = "\"{$label}\" is filled in automatically: No on the original, Yes on an amended return.";
+
+        $before = BirFormDraft::findOrFail($original)->fields['is_amended'];
+        foreach ([true, false, null] as $answer) {
+            $this->answer($original, ['is_amended' => $answer])
+                ->assertStatus(422)
+                ->assertJsonPath('errors', ['fields.is_amended' => [$message]]);
+        }
+        $this->assertSame($before, BirFormDraft::findOrFail($original)->fields['is_amended']);
+
+        $correction = $this->correctionOf($original);
+        $before = BirFormDraft::findOrFail($correction)->fields['is_amended'];
+        foreach ([false, true, null] as $answer) {
+            $this->answer($correction, ['is_amended' => $answer])
+                ->assertStatus(422)
+                ->assertJsonPath('errors', ['fields.is_amended' => [$message]]);
+        }
+        $this->assertSame($before, BirFormDraft::findOrFail($correction)->fields['is_amended']);
+    }
+
+    public function test_item_2_with_a_valid_answer_refuses_both(): void
+    {
+        $id = $this->create1601C();
+        $before = BirFormDraft::findOrFail($id)->fields;
+
+        $this->answer($id, ['is_amended' => true, 'interest' => '500.00'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['fields.is_amended'])
+            ->assertJsonMissingValidationErrors(['fields.interest']);
+
+        $after = BirFormDraft::findOrFail($id)->fields;
+        $this->assertSame($before['is_amended'], $after['is_amended']);
+        $this->assertSame($before['interest'], $after['interest'], 'The valid answer was not saved either.');
+    }
+
+    public function test_item_2_is_no_on_the_original_and_yes_on_a_correction_filled_in_by_the_system(): void
+    {
+        $original = $this->create1601C();
+        $entry = BirFormDraft::findOrFail($original)->fields['is_amended'];
+        $this->assertFalse($entry['value']);
+        $this->assertSame('payroll', $entry['origin']);
+
+        $entry = BirFormDraft::findOrFail($this->correctionOf($original))->fields['is_amended'];
+        $this->assertTrue($entry['value']);
+        $this->assertSame('payroll', $entry['origin'], 'Filled in by the system, not a person\'s answer.');
+        $this->assertFalse($entry['edited']);
+    }
+
+    /** Files the form, then starts a correction of it: version 2. */
+    private function correctionOf(int $draftId): int
+    {
+        BirFormDraft::whereKey($draftId)->update(['status' => 'finalized']);
+
+        return $this->actingAs($this->accounting())
+            ->postJson("/api/bir/drafts/{$draftId}/revise")
+            ->assertCreated()
+            ->json('data.id');
     }
 
     private function answer(int $draftId, array $fields): TestResponse

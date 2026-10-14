@@ -63,14 +63,16 @@ class BirUpdateFieldsRequestTest extends TestCase
 
     public function test_a_yes_is_stored_as_true_and_maybe_is_refused(): void
     {
-        $id = $this->create1601C();
+        // No 1601-C yes/no question is a person's answer any more (items 2 and 13 are filled in
+        // by the system), so this uses the 2316's substituted-filing question.
+        $id = $this->create2316();
 
-        $fields = $this->answer($id, ['is_amended' => 'yes'])->assertOk()->json('data.fields');
-        $this->assertTrue($fields['is_amended']['value']);
+        $fields = $this->answer($id, ['is_substituted_filing' => 'yes'])->assertOk()->json('data.fields');
+        $this->assertTrue($fields['is_substituted_filing']['value']);
 
-        $this->answer($id, ['is_amended' => 'maybe'])
+        $this->answer($id, ['is_substituted_filing' => 'maybe'])
             ->assertStatus(422)
-            ->assertJsonPath('errors', ['fields.is_amended' => ['"Amended Return?" must be yes or no.']]);
+            ->assertJsonPath('errors', ['fields.is_substituted_filing' => ['"Qualified under substituted filing of ITR" must be yes or no.']]);
     }
 
     public function test_options_months_and_dates_are_checked(): void

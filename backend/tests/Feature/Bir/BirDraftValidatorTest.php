@@ -115,6 +115,53 @@ class BirDraftValidatorTest extends TestCase
         $this->assertNotContains('tax_relief_details', $fields);
     }
 
+    public function test_a_new_original_and_its_correction_have_no_system_value_error(): void
+    {
+        $original = $this->create1601C();
+        $this->assertSame([], $this->errorsWithCode($original, 'system_value'));
+
+        $this->assertSame([], $this->errorsWithCode($this->correctionOf($original), 'system_value'));
+    }
+
+    public function test_an_original_with_yes_in_item_2_is_a_system_value_error_and_cannot_be_submitted(): void
+    {
+        $id = $this->create1601C();
+        $this->storeEntry($id, 'is_amended', ['value' => true, 'origin' => 'user']);
+
+        $errors = $this->errorsWithCode($id, 'system_value');
+        $label = Form1601CSchema::byKey()['is_amended']['label'];
+        $this->assertCount(1, $errors);
+        $this->assertSame('is_amended', $errors[0]['field']);
+        $this->assertSame('error', $errors[0]['severity']);
+        $this->assertSame("\"{$label}\" must be No on the original return.", $errors[0]['message']);
+
+        $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/submit")->assertStatus(422);
+        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
+    }
+
+    public function test_a_correction_with_no_in_item_2_is_a_system_value_error(): void
+    {
+        $correction = $this->correctionOf($this->create1601C());
+        $this->storeEntry($correction, 'is_amended', ['value' => false, 'origin' => 'user']);
+
+        $errors = $this->errorsWithCode($correction, 'system_value');
+        $label = Form1601CSchema::byKey()['is_amended']['label'];
+        $this->assertCount(1, $errors);
+        $this->assertSame("\"{$label}\" must be Yes on an amended return (version 2).", $errors[0]['message']);
+    }
+
+    public function test_item_2_pending_is_a_system_value_error_only(): void
+    {
+        $id = $this->create1601C();
+        $this->storeEntry($id, 'is_amended', ['value' => null, 'origin' => 'pending']);
+
+        $errors = array_values(array_filter(
+            app(BirDraftValidator::class)->validate(BirFormDraft::findOrFail($id)),
+            fn (array $error) => $error['field'] === 'is_amended',
+        ));
+        $this->assertSame(['system_value'], array_column($errors, 'code'), 'Not also a missing-field error saying to enter it.');
+    }
+
     public function test_a_stored_value_in_the_wrong_format_is_an_invalid_format_error(): void
     {
         // Written straight to the draft: PUT now refuses this, but older drafts and figures
@@ -415,6 +462,17 @@ class BirDraftValidatorTest extends TestCase
     private function storeTaxRelief(int $draftId, array $entry): void
     {
         $this->storeEntry($draftId, 'has_tax_relief', $entry);
+    }
+
+    /** Files the form, then starts a correction of it: version 2. */
+    private function correctionOf(int $draftId): int
+    {
+        BirFormDraft::whereKey($draftId)->update(['status' => 'finalized']);
+
+        return $this->actingAs($this->accounting())
+            ->postJson("/api/bir/drafts/{$draftId}/revise")
+            ->assertCreated()
+            ->json('data.id');
     }
 
     /** Writes a field straight into the draft, skipping PUT, as an old draft could hold it. */

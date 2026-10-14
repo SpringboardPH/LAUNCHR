@@ -111,7 +111,8 @@ class BirFormDraft extends Model
     {
         $fields = $filed->fields ?? [];
         if ($filed->form_type === '1601-C') {
-            $fields['is_amended'] = ['value' => true, 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null];
+            // Filled in by the system (schema system_filled), not a person's answer.
+            $fields['is_amended'] = ['value' => true, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null];
         }
 
         return $fields;
