@@ -231,7 +231,8 @@ printed-form order.
 | `total_mismatch` | error | A total does not equal the sum of its parts on the form as it stands (8 totals per form) |
 | `invalid_amount` | error | An amount that is not plain decimal text: commas, currency signs or words. `PUT` refuses these already (§6); this still catches one held over from older data. |
 | `invalid_format` | error | Text that doesn't follow its field's `format`: a TIN, RDO code, ZIP, phone number, email or MM/DD date. `PUT` refuses these already (§6); this still catches one from older data, or a badly formatted figure from payroll or company settings. |
-| `fixed_value` | error | A field with a schema `fixed` value (§4, 1601-C item 13) doesn't hold it: a different answer, or pending/blank. `PUT` can't change a fixed field, so only a draft made before it was fixed can have this; the message says to create a new draft for the period. A fixed field that is missing gets only this code, not `required`/`record_gap`. |
+| `fixed_value` | error | A field with a schema `fixed` value (§4, 1601-C items 13 and 13A) doesn't hold it: a different answer, or pending/blank. On a fixed blank (`"fixed": null`, item 13A) blank or pending is right and only text is wrong ("must be blank"). `PUT` can't change a fixed field, so only a draft made before it was fixed can have this; the message says to create a new draft for the period. A fixed field that is missing gets only this code, not `required`/`record_gap`. |
+| `system_value` | error | A `system_filled` field (§4) doesn't hold the value the draft itself gives it: 1601-C item 2 "Amended Return?" must be No on version 1 and Yes on version 2 and up. A different value, pending or blank is wrong. `PUT` can't change it, so only an older draft can have this. A missing one gets only this code, not `required`. |
 | `payroll_mismatch` | warning | Tax withheld (1601-C item 25, 2316 item 25A) differs from the payroll the draft was built from |
 | `empty_period` | warning | The draft was built from a period with no finalized or paid payroll, so every payroll figure is zero |
 
@@ -266,12 +267,23 @@ A field may also carry `fixed`: the value it always has. The system fills it in
 on every new draft, so it is never `pending`, never asked and never editable:
 `PUT` refuses any answer to it (§6), and `validate` reports a draft that doesn't
 hold it as `fixed_value` (§3). Read it with `array_key_exists`/`"fixed" in field`,
-not a truthiness check, because the value can be `false`.
+not a truthiness check, because the value can be `false` or `null`. `"fixed": null`
+means always blank; the field is stored as `""`, not `null`, because `null`
+always means pending (§3).
 
 **1601-C item 13 (`has_tax_relief`) is fixed at No** (`"fixed": false`, origin
 `payroll`): the supervisor's decision, since no employee's pay is tax-exempt
-under a special law or tax treaty. So item 13A (`tax_relief_details`) is never
-required. Dev D shows item 13 read-only as "No".
+under a special law or tax treaty. So **item 13A (`tax_relief_details`) is fixed
+blank** (`"fixed": null`, stored as `""`, origin `payroll`).
+
+A field may instead carry `"system_filled": true`: the system fills it in from
+the draft itself, so it is never `pending`, never asked and never editable, but
+it isn't one fixed value. `PUT` refuses any answer to it (§6), and `validate`
+reports a wrong one as `system_value` (§3). **1601-C item 2 (`is_amended`,
+"Amended Return?") is system-filled**: No (`false`) on the original, Yes (`true`)
+on every version made by `revise` (§6), origin `payroll` on both.
+
+Dev D shows items 2, 13 and 13A read-only.
 
 **Dev D: do not hardcode field keys.** Read them from the draft response and use
 the schema's `label`, `item` and `guidance` for display. The fixtures carry a handful of
@@ -487,7 +499,12 @@ A field with a schema `fixed` value (§4, 1601-C item 13) can't be answered at
 all: any value, `null` and the fixed value itself included, is refused with
 `"Are there payees availing of tax relief under Special Law or International Tax
 Treaty?" is always No and can't be changed.` (a yes/no field's value is worded
-Yes/No).
+Yes/No, and a fixed blank "blank": `"If yes, specify" is always blank and can't
+be changed.` for item 13A).
+
+A `system_filled` field (§4, 1601-C item 2) is refused the same way, any value
+and `null` included: `"Amended Return?" is filled in automatically: No on the
+original, Yes on an amended return.`
 
 `null` is otherwise always accepted and clears the field. One bad answer refuses the whole
 request with 422, and nothing in it is saved:
@@ -574,7 +591,8 @@ Only on a finalized draft, else 400. Returns 201 with a copy in `draft` status,
 same form (form type, period and employee) so two drafts never share a number, `approved_by` and
 `rejection_reason` cleared, `prepared_by` set to the current user. The original
 is untouched. On a 1601-C the copy's item 2 "Amended Return?" (`is_amended`) is
-set to Yes, since every version after the original is an amended return; its
+set to Yes, filled in by the system (origin `payroll`, `system_filled` §4), since
+every version after the original is an amended return; its
 `label` is the original's number with the version, like `"#64v2"`.
 
 A 1601-C can be amended 5 times per month (supervisor's rule,
