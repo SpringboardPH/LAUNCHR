@@ -51,7 +51,7 @@ Every response uses the envelope already used across LAUNCHR:
 | 200 | Success |
 | 201 | Draft or revision created |
 | 400 | Illegal status move, or a form that is locked (finalized) |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the caller prepared the form they are trying to approve, or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
 | 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
@@ -324,15 +324,13 @@ since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
 as filed) are accounting-only, and so is editing a pending form; admin and HR
 get 403. Admin, HR and accounting can all list, view, create, edit a draft,
 submit, validate, revise, export and chat. Employees get 403 on every `/bir`
-route. On top of the role rule, a preparer can't approve their own form:
-`approve` is refused with 403 when the caller is the draft's `prepared_by`, so
-approving takes a second accounting user.
+route. The preparer may approve their own form (supervisor's decision: there
+is one accountant). The approver is still recorded in `approved_by`.
 
 **Workflow, as decided:** a preparer fills in the form and submits it.
 Accounting reviews the submitted form, may edit it, and approves it in the same
-step. There is no send-back just to fix a figure. The supervisor confirmed that
-the approver is never the person who prepares forms, so the self-approval rule
-never leaves a form with no one able to approve it. The approver's edits are
+step. There is no send-back just to fix a figure. The approver may also be the
+person who prepared the form. The approver's edits are
 recorded like any other (`edited_by`, §3), and `approve` validates again, so an
 edit that breaks the form blocks approval until it is fixed.
 
@@ -349,7 +347,7 @@ edit that breaks the form blocks approval until it is fixed.
 | PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending form |
 | POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation | admin, hr, accounting |
-| POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only, not the preparer |
+| POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only |
 | POST | `/bir/drafts/{id}/reject` | pending → draft | accounting only |
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized | accounting only |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
@@ -564,9 +562,8 @@ edited the form since it was submitted, so it is checked again.
 |---|---|
 | 403 | The caller is not accounting: "Unauthorized. Only accounting users can do this." Checked first, by the route. |
 | 400 | The form is not in `pending` status. Nothing is validated or changed. |
-| 403 | The caller prepared this form: "You prepared this form, so someone else must approve it". Checked before validating, so nothing is validated or changed. |
 | 422 | At least one `severity: error` entry. Same shape as `submit`'s 422, with "Draft has 1 error; fix it before approving". The form stays `pending` and `approved_by` stays null. |
-| 200 | Warnings only, or nothing: the form moves to `approved` and `approved_by` is the caller. |
+| 200 | Warnings only, or nothing: the form moves to `approved` and `approved_by` is the caller, who may also be the preparer. |
 
 ### POST /bir/drafts/{id}/reject
 

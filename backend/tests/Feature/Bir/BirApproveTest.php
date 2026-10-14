@@ -16,8 +16,8 @@ use Tests\TestCase;
 /**
  * POST /bir/drafts/{id}/approve validates first, like submit: the approver may have edited the
  * pending form since it was submitted, so it is checked again. Any severity=error entry is a
- * 422 and the form stays pending; warnings never block. The preparer can't approve their own
- * form (403), so the other tests use a separate HR preparer and accounting approver.
+ * 422 and the form stays pending; warnings never block. The preparer may approve their own
+ * form (there is one accountant); most tests use a separate HR preparer and accounting approver.
  */
 class BirApproveTest extends TestCase
 {
@@ -65,29 +65,26 @@ class BirApproveTest extends TestCase
         $this->assertSame(['empty_period'], array_column($draft->validation_errors, 'code'));
     }
 
-    public function test_the_preparer_cannot_approve_their_own_form(): void
+    public function test_the_preparer_can_approve_their_own_form(): void
     {
-        // An accounting preparer, so this is refused for preparing it, not for the role.
+        // The supervisor's decision: there is one accountant, who also prepares forms.
         $preparer = User::factory()->create(['role' => 'accounting']);
         $id = $this->submittedClean1601C($preparer);
-        $errorsBefore = BirFormDraft::findOrFail($id)->validation_errors;
 
         $this->actingAs($preparer)
             ->postJson("/api/bir/drafts/{$id}/approve")
-            ->assertForbidden()
-            ->assertJson(['success' => false, 'message' => 'You prepared this form, so someone else must approve it']);
+            ->assertOk()
+            ->assertJson(['success' => true]);
 
         $draft = BirFormDraft::findOrFail($id);
-        $this->assertSame('pending', $draft->status);
-        $this->assertNull($draft->approved_by);
-        $this->assertEquals($errorsBefore, $draft->validation_errors, 'Refused before validating, so nothing stored.');
+        $this->assertSame('approved', $draft->status);
+        $this->assertSame($preparer->id, $draft->approved_by);
     }
 
-    public function test_someone_else_can_approve_a_form_its_preparer_could_not(): void
+    public function test_another_accountant_can_also_approve(): void
     {
         $preparer = User::factory()->create(['role' => 'accounting']);
         $id = $this->submittedClean1601C($preparer);
-        $this->actingAs($preparer)->postJson("/api/bir/drafts/{$id}/approve")->assertForbidden();
 
         $other = User::factory()->create(['role' => 'accounting']);
         $this->actingAs($other)->postJson("/api/bir/drafts/{$id}/approve")->assertOk();
@@ -251,7 +248,7 @@ class BirApproveTest extends TestCase
             ->json('data.id');
     }
 
-    /** Prepares and submits. HR, since the approver is never the preparer (contract §5). */
+    /** Prepares and submits. HR, so the approver is a different user from the preparer. */
     private function preparer(): User
     {
         return User::firstWhere('role', 'hr') ?? User::factory()->create(['role' => 'hr']);
