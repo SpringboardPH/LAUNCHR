@@ -353,7 +353,7 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/employees` | A 1601-C's employee list, frozen when the draft was made | admin, hr, accounting |
-| POST | `/bir/chat` | Dev C. Controller method is `message`. | admin, hr, accounting |
+| POST | `/bir/chat` | The form assistant's chat: understand a request, fill in a draft, read or change any form (Dev C) | admin, hr, accounting |
 | PUT | `/bir/switch/password` | Set or change the company password for the switch | admin only |
 | PUT | `/bir/switch` | Turn the BIR Form Assistant on or off, with the company password | admin only |
 
@@ -602,7 +602,10 @@ a correction only while `revise` would allow it, and starts it through this endp
 ### GET /bir/drafts/{id}/export
 
 Returns the official BIR form as a PDF (`Content-Type: application/pdf`), filled
-in with the draft's values: two pages for a 1601-C, one for a 2316. Built by Dev C
+in with the draft's values: two pages for a 1601-C, one for a 2316. Page 2 of the
+1601-C carries only the TIN and withholding agent's name at its top. Text never runs
+out of its box: a long address goes onto two lines, and text too long for its
+character cells is written small across them rather than cut off. Built by Dev C
 (`BirPdfService`) on the blank forms in `backend/resources/bir-templates/`.
 
 Any status can be exported, so a draft can be printed and checked. Until the form
@@ -704,6 +707,113 @@ listed with `form_value` and `difference` null. Items can differ because someone
 overrode a figure, because item 20 was answered (it lowers item 22, which the
 employees' rows don't include), or by ₱0.01 when rounding each row differs from
 rounding the month.
+
+### POST /bir/chat
+
+The form assistant's chat (Dev C, `BirChatController::message`). One endpoint does
+three jobs: it understands a request for a form ("the August 2026 1601-C"), it fills
+in an open draft one question at a time, and it reads or changes a box on any saved
+form ("change item 5 on form #12 to 049"). The language model only sorts messages
+into kinds; PHP finds the data and words every reply, so filling in a draft and every
+command below still work with the model switched off.
+
+**Nothing is saved by this endpoint.** An answer comes back in `data.answer` for the
+caller to save through `PUT /bir/drafts/{id}`, and a workflow step comes back in
+`data.action` for the caller to run through `revise` or `submit`. So every role
+rule, check and history entry of those endpoints still applies.
+
+#### Request
+
+```json
+{ "message": "change item 5 on form #12 to 049", "draft_id": 12, "field": "employee_rdo_code", "reset": false, "actions": true }
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `message` | string, at most 500 characters | What the user typed. Required without `draft_id`. With `draft_id`, leave it out (or null) to get the draft's next question. |
+| `draft_id` | integer | The draft the chat is filling in, when one is open. Leave it out before a draft exists. |
+| `field` | string | The key of the question just asked (`data.question.field` of the previous reply), so the message is read as the answer to it. Leave it out when no question is open; the message is then read as a question or command. |
+| `reset` | boolean | `true` on the first message of a new conversation: forgets what earlier messages established, the pending question, and the changes `undo` knows about. |
+| `actions` | boolean | `true` when the caller runs `data.action` (below). Without it the chat never returns an action: it points to the buttons instead ("Click "Submit for review"…", "open it and click "Start a correction""). |
+
+What earlier messages established is remembered per user for 30 minutes, so a
+short follow-up ("2026", "6D", "form #64v2", "yes") finishes the question before it.
+
+#### Reply
+
+Always 200 with the envelope. `data` has these keys:
+
+| Key | Meaning |
+|---|---|
+| `reply` | What to show. Null only with a `revise` action, whose reply comes from the next call (below). |
+| `understood` | `true` when a form request is complete: `intent` then holds everything `POST /bir/drafts` needs. |
+| `intent` | Without `draft_id`: what the request has established so far, `{ form_type, tax_year, tax_month, employee_query, employee_id, period }` (`period` ready for `POST /bir/drafts`, and `employee_name` once a 2316's employee is found). Null with `draft_id`. |
+| `candidates` | People who match a name, when more than one does: `[{ id, employee_id, name, status }]`. Usually `[]`. |
+| `action` | Null, or a workflow step for the caller to run first (below). |
+| `draft_id` | With `draft_id` only: the form the reply is about. It can differ from the one sent when the chat moved to another form (a change on a form that wasn't open, a correction it started); the caller then opens that form. |
+| `question` | With `draft_id` only: the box now being asked about, or null. `{ field, item, label, type, options, format, reason, guidance, text }`; send `field` back with the user's answer. |
+| `answer` | With `draft_id` only: null, or `{ field, value }` to save on form `draft_id` through `PUT /bir/drafts/{draft_id}` with `{ "fields": { field: value } }`. `value` is already in the stored format. Show `reply` once the save succeeds; if the PUT refuses it, show the PUT's message and keep the question open. |
+| `done` | With `draft_id` only: `true` when there is neither a question nor an answer. |
+
+`message` is "Request understood" or "Needs clarification" without a draft, and
+"Answer read", "Question asked" or "Nothing left to ask" with one.
+
+#### Actions
+
+| `action` | When | What the caller does |
+|---|---|---|
+| `{ "type": "submit", "draft_id": 12 }` | The user said "done" (or "tapos na") on an open draft that passes validation. | `POST /bir/drafts/12/submit`, then show `reply` ("Sent form #12 for review."). If the submit is refused, show its message instead. |
+| `{ "type": "revise", "draft_id": 10 }` | The user asked to change a filed form, and answered "yes" to the chat's offer to start a correction. `draft_id` is the **filed** form. `reply` is null. | `POST /bir/drafts/10/revise`, open the new version, then call the chat with `{ "draft_id": <new id> }` and no message. That reply carries the change that was asked for ("Started amendment 1, form #10v2 (#13), from …") as `answer`, saved like any other. |
+
+The chat offers a correction only while `revise` would allow it (a 1601-C stops at
+5 amendments a month), and never returns an action without `actions: true`.
+
+#### What it understands
+
+All read in PHP, on any form whatever its status unless noted:
+
+- **A form request** (no `draft_id`): form type, month or year, and for a 2316 the
+  employee by name, employee ID or TIN ("2316 for 920-919-920-00001 2024").
+- **Reading a box:** "what is item 6 on Maria Santos's 2316 for 2026?", "what is
+  the local home address on form #26?". A box can be named by its item number or by
+  its name; a name that fits several boxes gets "Which one do you mean?".
+- **Naming a form:** its number ("form #72", "#72"), its label ("#64v2", "64v2",
+  "form #64 version 2"), or its details (form type, period, person, status such as
+  "filed" or "draft", version). When several fit, the chat lists them by label and
+  asks; it never picks one. A reply with the number finishes the question.
+- **Versions:** "how many versions does form #10 have?", "what version is form #13?".
+- **A 1601-C's employees** (from `GET /bir/drafts/{id}/employees`, frozen when the
+  draft was made): "who is on form #10?" lists each employee's payrolls, compensation
+  and tax withheld, the totals, and any item where they don't add up to the form;
+  "how much tax was withheld from Maria Santos on the March 2026 1601-C?" (or, on an
+  open 1601-C, "how much was Maria paid?") gives that employee's figures by item.
+- **Changing a box:** "change item 5 on form #12 to 049", or on the open draft
+  "change item 5 to 049". A form that isn't open must be named by its number.
+  Applied at once as `answer`; "undo" (or "undo item 5") puts back the value from
+  before, as another `answer`, unless the box was changed again since.
+  - A draft can be changed by anyone who reaches `/bir`. A pending or approved form
+    by accounting only: anyone else is told "…is waiting for review / approved, and
+    only accounting can change it now", gets no `answer`, and on an open form is asked
+    no questions. An approved form that is changed goes back to draft (§5), and the
+    reply says so.
+  - A filed form is never changed: the chat points to its open correction if there
+    is one, or offers to start one (the button, or "yes" with `actions: true`).
+  - Fixed and system-filled boxes (§4: 1601-C items 2, 13 and 13A) are never asked
+    and never changed; the reply says why.
+- **"done"** on an open draft: says what still blocks submitting, or returns a
+  `submit` action.
+- **Questions about a box** on the open draft ("what does this mean?", "where did
+  item 25 come from?"): explained from the schema's help text and the draft's own
+  records. Tax advice and pay calculations are declined.
+
+#### Errors
+
+| Code | When |
+|---|---|
+| 403 | An employee, or the switch is off, as on every `/bir` route. |
+| 404 | `draft_id` is not a draft: `{ "success": false, "message": "Draft not found" }` |
+| 422 | The body failed validation (no `message` and no `draft_id`, a message over 500 characters, a wrong type). |
+| 503 | Without `draft_id` only: the language model is down while a new request needed it. `{ "success": false, "message": "… You can still pick a form and period manually." }` Everything with `draft_id`, and every command above, keeps working. |
 
 ### PUT /bir/switch/password
 
