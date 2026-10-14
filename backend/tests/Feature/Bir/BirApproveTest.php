@@ -29,7 +29,7 @@ class BirApproveTest extends TestCase
         $this->september2026Payroll();
         $id = $this->submittedClean1601C();
         // Clearing a required answer makes it missing again.
-        $this->actingAs($this->approver())->putJson("/api/bir/drafts/{$id}", ['fields' => ['is_amended' => null]])->assertOk();
+        $this->actingAs($this->approver())->putJson("/api/bir/drafts/{$id}", ['fields' => ['sheets_attached' => null]])->assertOk();
 
         $this->approve($id)
             ->assertStatus(422)
@@ -38,7 +38,7 @@ class BirApproveTest extends TestCase
         $draft = BirFormDraft::findOrFail($id);
         $this->assertSame('pending', $draft->status);
         $this->assertNull($draft->approved_by);
-        $this->assertContains('is_amended', array_column($draft->validation_errors, 'field'));
+        $this->assertContains('sheets_attached', array_column($draft->validation_errors, 'field'));
     }
 
     public function test_a_clean_pending_form_is_approved_by_the_approver(): void

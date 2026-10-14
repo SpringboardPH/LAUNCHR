@@ -26,7 +26,9 @@ class BirDraftValidatorTest extends TestCase
     {
         $errors = $this->errorsByField($this->create1601C());
 
-        foreach (['is_amended', 'sheets_attached'] as $key) {
+        // Item 2 "Amended Return?" is filled in by the system, so it isn't one of them.
+        $this->assertArrayNotHasKey('is_amended', $errors);
+        foreach (['sheets_attached'] as $key) {
             $this->assertSame('required', $errors[$key]['code'], $key);
             $this->assertSame('error', $errors[$key]['severity'], $key);
             $this->assertSame('"' . Form1601CSchema::byKey()[$key]['label'] . '" is required.', $errors[$key]['message']);
@@ -40,23 +42,17 @@ class BirDraftValidatorTest extends TestCase
         }
     }
 
-    public function test_answering_yes_to_tax_relief_makes_its_details_required_and_says_why(): void
+    public function test_yes_to_tax_relief_on_an_old_draft_does_not_ask_for_its_details(): void
     {
         $id = $this->create1601C();
-        $this->assertArrayNotHasKey('tax_relief_details', $this->errorsByField($id), 'Not before the question is answered.');
 
         // Written straight to the draft: item 13 is fixed at No and PUT refuses it, but a
-        // draft made before that could still hold a yes.
+        // draft made before that could still hold a yes. Item 13A is fixed blank, so it
+        // isn't asked for: the item 13 error already says to create a new draft.
         $this->storeTaxRelief($id, ['value' => true, 'origin' => 'user']);
 
         $errors = $this->errorsByField($id);
-        $error = $errors['tax_relief_details'];
-        $schema = Form1601CSchema::byKey();
-        $this->assertSame('condition', $error['code']);
-        $this->assertSame(
-            "\"{$schema['tax_relief_details']['label']}\" is required because \"{$schema['has_tax_relief']['label']}\" is yes.",
-            $error['message'],
-        );
+        $this->assertArrayNotHasKey('tax_relief_details', $errors);
         $this->assertSame('fixed_value', $errors['has_tax_relief']['code']);
     }
 

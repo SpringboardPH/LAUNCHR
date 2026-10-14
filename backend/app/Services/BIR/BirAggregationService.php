@@ -116,7 +116,9 @@ class BirAggregationService
         $v['total_penalties'] = 0.0;                                                          // 35 (+ user items 32-34, Form1601CMapper)
         $v['total_amount_due'] = round($v['tax_still_due'] + $v['total_penalties'], 2);      // 36
         $v['return_period'] = sprintf('%02d/%04d', $month, $year);                           // 1
+        $v['is_amended'] = false;                                                             // 2 — the original; revise sets Yes
         $v['has_tax_relief'] = Form1601CSchema::byKey()['has_tax_relief']['fixed'];          // 13 — always No
+        $v['tax_relief_details'] = '';                                                        // 13A — always blank (fixed)
 
         return self::contractValues(self::onlySchemaKeys($v, Form1601CSchema::payrollDerivedKeys())) + [
             '_meta' => [

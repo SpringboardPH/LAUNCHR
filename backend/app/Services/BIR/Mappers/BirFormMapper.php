@@ -52,7 +52,8 @@ abstract class BirFormMapper
 
     /**
      * Every schema key as a six-key entry. Missing and empty-string values are pending
-     * (contract §3, invariant 1); a filled value takes its schema source as its origin.
+     * (contract §3, invariant 1), except on a fixed field, which always holds its schema
+     * value; a filled value takes its schema source as its origin.
      * Text is stored as FieldFormat::normalize() writes it: capitals, a 14-digit TIN.
      *
      * @param  array<int, array<string, mixed>>  $schema
@@ -63,8 +64,11 @@ abstract class BirFormMapper
     {
         $fields = [];
         foreach ($schema as $field) {
-            $value = FieldFormat::normalize($field, $values[$field['key']] ?? null);
-            $filled = $value !== null && $value !== '';
+            // A fixed field always holds its schema value. A fixed blank (null) is stored as ""
+            // so it counts as filled, not pending: null only ever means pending (invariant 1).
+            $fixed = array_key_exists('fixed', $field);
+            $value = $fixed ? ($field['fixed'] ?? '') : FieldFormat::normalize($field, $values[$field['key']] ?? null);
+            $filled = $fixed || ($value !== null && $value !== '');
 
             $fields[$field['key']] = [
                 'value' => $filled ? $value : null,

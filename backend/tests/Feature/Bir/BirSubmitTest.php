@@ -92,14 +92,14 @@ class BirSubmitTest extends TestCase
             ->assertOk();
         // Clearing a required answer returns it to pending, so it is missing again.
         $this->actingAs($this->accounting())
-            ->putJson("/api/bir/drafts/{$id}", ['fields' => ['is_amended' => null]])
+            ->putJson("/api/bir/drafts/{$id}", ['fields' => ['sheets_attached' => null]])
             ->assertOk();
 
         $this->submit($id)->assertStatus(422);
 
         $draft = BirFormDraft::findOrFail($id);
         $this->assertSame('draft', $draft->status);
-        $this->assertContains('is_amended', array_column($draft->validation_errors, 'field'));
+        $this->assertContains('sheets_attached', array_column($draft->validation_errors, 'field'));
     }
 
     private function submit(int $draftId): TestResponse

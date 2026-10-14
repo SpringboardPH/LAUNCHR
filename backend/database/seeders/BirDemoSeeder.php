@@ -346,7 +346,7 @@ class BirDemoSeeder extends Seeder
 
     private function forms1601C(): void
     {
-        $answers = ['is_amended' => false, 'sheets_attached' => 0];
+        $answers = ['sheets_attached' => 0];
 
         // Filed: 12/2025 (13th month pay) and 01/2026 to 05/2026.
         $filed = [];
@@ -354,10 +354,10 @@ class BirDemoSeeder extends Seeder
             $filed[$period] = $this->filed1601C($period, $answers);
         }
 
-        // 03/2026 amended: a revision of the filed form (version 2), still a draft.
+        // 03/2026 amended: a revision of the filed form (version 2), still a draft. Revise
+        // sets item 2 "Amended Return?" to Yes.
         $revision = $this->api('hr', 'POST', "/bir/drafts/{$filed['2026-03']['id']}/revise");
         $this->api('hr', 'PUT', "/bir/drafts/{$revision['id']}", ['fields' => [
-            'is_amended' => true,
             'previously_remitted_tax' => $filed['2026-03']['fields']['taxes_withheld_for_remittance']['value'],
             'prior_month_adjustment' => '150.00',
         ]]);

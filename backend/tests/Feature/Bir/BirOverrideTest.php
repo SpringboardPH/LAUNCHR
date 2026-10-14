@@ -102,9 +102,9 @@ class BirOverrideTest extends TestCase
     {
         $id = $this->create1601C();
 
-        $entry = $this->answer($id, ['is_amended' => false])->json('data.fields.is_amended');
+        $entry = $this->answer($id, ['sheets_attached' => 0])->json('data.fields.sheets_attached');
 
-        $this->assertFalse($entry['value']);
+        $this->assertSame(0, $entry['value']);
         $this->assertSame('user', $entry['origin']);
         $this->assertFalse($entry['edited']);
         $this->assertNull($entry['system_value']);
@@ -175,13 +175,13 @@ class BirOverrideTest extends TestCase
     public function test_clearing_an_answer_to_a_user_question_leaves_it_pending(): void
     {
         $id = $this->create1601C();
-        $this->answer($id, ['is_amended' => false]);
+        $this->answer($id, ['sheets_attached' => 0]);
 
-        $fields = $this->answer($id, ['is_amended' => null])->json('data.fields');
+        $fields = $this->answer($id, ['sheets_attached' => null])->json('data.fields');
 
-        $this->assertNull($fields['is_amended']['value']);
-        $this->assertSame('pending', $fields['is_amended']['origin']);
-        $this->assertFalse($fields['is_amended']['edited']);
+        $this->assertNull($fields['sheets_attached']['value']);
+        $this->assertSame('pending', $fields['sheets_attached']['origin']);
+        $this->assertFalse($fields['sheets_attached']['edited']);
         $this->assertInvariants($fields);
     }
 

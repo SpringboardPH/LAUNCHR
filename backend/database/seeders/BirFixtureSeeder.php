@@ -124,8 +124,10 @@ class BirFixtureSeeder extends Seeder
                 'rejection_reason' => null,
                 'fields' => [
                     'return_period' => ['value' => '07/2026', 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'is_amended' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'company_tin' => ['value' => '000-000-000-000', 'origin' => 'settings', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'has_tax_relief' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'tax_relief_details' => ['value' => '', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_compensation' => ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_taxes_withheld' => ['value' => null, 'origin' => 'pending', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                 ],

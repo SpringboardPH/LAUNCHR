@@ -99,10 +99,11 @@ const blank = { edited: false, system_value: null, edited_by: null, edited_at: n
 const pending = () => ({ value: null, origin: 'pending', ...blank })
 
 // Every schema field: filled from `values` with the schema's source as origin, else pending.
+// A fixed field always has its schema value; a fixed blank is "" (null only when pending).
 const buildFields = (formType, values) => Object.fromEntries(
-  schemaOf(formType).map(({ key, source }) => {
-    const v = values[key]
-    const filled = v !== undefined && v !== null && v !== ''
+  schemaOf(formType).map(({ key, source, ...field }) => {
+    const v = 'fixed' in field ? (field.fixed ?? '') : values[key]
+    const filled = 'fixed' in field || (v !== undefined && v !== null && v !== '')
     return [key, filled ? { value: v, origin: source, ...blank } : pending()]
   }),
 )
@@ -123,7 +124,8 @@ const draft1601c = (id, period, status, seed, extra = {}) => {
   return {
     ...base, id, status, form_type: '1601-C', period, employee_id: null, employee_name: null, empty_period: empty,
     fields: buildFields('1601-C', {
-      return_period: `${period.slice(5, 7)}/${period.slice(0, 4)}`, ...SETTINGS['1601-C'], ...payroll1601c(seed, empty),
+      return_period: `${period.slice(5, 7)}/${period.slice(0, 4)}`, is_amended: (extra.version ?? 1) > 1,
+      ...SETTINGS['1601-C'], ...payroll1601c(seed, empty)
     }),
     ...extra,
   }
@@ -404,6 +406,8 @@ const revise = async (id) => {
     ...clone(d), id: nextId++, status: 'draft', version: Math.max(...sameForm.map(x => x.version)) + 1, parent_id: d.id,
     approved_by: null, rejection_reason: null, prepared_by: preparer(),
   }
+  // Every version after the original is an amended return: item 2 is Yes.
+  if (d.form_type === '1601-C') revision.fields.is_amended = { value: true, origin: 'payroll', ...blank }
   drafts.push(revision)
   return ok(revision, 'Revision created (mock)')
 }

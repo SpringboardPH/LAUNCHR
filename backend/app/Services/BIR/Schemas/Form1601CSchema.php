@@ -10,13 +10,15 @@ namespace App\Services\BIR\Schemas;
  * Field shape: key, item (as printed), label, type, source, required, rule,
  * pdf_anchor, options (enum only), required_when (conditional fields only),
  * format (text that must follow a FieldFormat, e.g. 'tin'), fixed (the value the
- * field always has: filled in by the system, never asked or answered), guidance
- * (help text, from GUIDANCE).
+ * field always has: filled in by the system, never asked or answered; null means
+ * always blank), system_filled (filled in by the system from the draft itself, never
+ * asked or answered, but not one fixed value: item 2 is No on the original and Yes on
+ * an amended return), guidance (help text, from GUIDANCE).
  *
  * required_when is the machine-readable form of a "required when ..." rule,
  * read by BirMissingFields. It replaces 'required' for that field, so a field
  * carrying it always has 'required' => false. One condition per field:
- *   ['field' => 'has_tax_relief', 'equals' => true]   another field's answer
+ *   ['field' => 'is_amended', 'equals' => true]       another field's answer
  *   ['field' => 'other_remittances', 'gt' => 0]        a number above a limit
  *   ['field' => 'employee_ctc_or_id', 'present' => true] another field filled
  *   ['context' => 'hired_in_year']                     a fact about the draft
@@ -34,7 +36,7 @@ class Form1601CSchema
      */
     private const GUIDANCE = [
         'return_period' => "The month this return covers. Filled in from the draft's period.",
-        'is_amended' => 'Answer Yes only if this corrects a 1601-C already filed for the same month. Otherwise No.',
+        'is_amended' => 'Filled in automatically: No on the original return, Yes on an amended return (a new version of a 1601-C already filed for the same month).',
         'has_taxes_withheld' => 'Yes if any income tax was withheld from employees this month. Filled in from item 25.',
         'sheets_attached' => 'How many extra sheets are attached to the return, such as the DOLE list of hazard pay. Usually 0.',
         'atc_code' => 'The BIR tax code for tax withheld on compensation. Always WW010 on this form.',
@@ -47,7 +49,7 @@ class Form1601CSchema
         'agent_category' => 'Private for a private company; Government for a government office or government-owned corporation.',
         'company_email' => 'An email address where the BIR can reach the company. Optional.',
         'has_tax_relief' => "Always No for this company: no employee's pay is tax-exempt under a special law or an international tax treaty. Filled in automatically.",
-        'tax_relief_details' => 'Not used: item 13 is always No, so this stays blank.',
+        'tax_relief_details' => 'Not used: item 13 is always No, so this is always blank. Filled in automatically.',
         'total_compensation' => 'Everything paid to all employees this month, taxable and non-taxable, before deductions. Calculated from finalized and paid payroll.',
         'mwe_statutory_wage' => "Basic pay of minimum wage earners, after their SSS/PhilHealth/Pag-IBIG share. It isn't taxed.",
         'mwe_premium_pay' => "Holiday, overtime, night shift differential and hazard pay of minimum wage earners only. It isn't taxed for them; for other employees it's taxable pay.",
@@ -89,8 +91,9 @@ class Form1601CSchema
             ],
             [
                 'key' => 'is_amended', 'item' => '2', 'label' => 'Amended Return?',
-                'type' => 'boolean', 'source' => 'user', 'required' => true,
-                'rule' => 'defaults false', 'pdf_anchor' => '1601C.2',
+                'type' => 'boolean', 'source' => 'payroll', 'required' => true,
+                'rule' => 'system-filled: No on the original, Yes on every amended version (revise)',
+                'pdf_anchor' => '1601C.2', 'system_filled' => true,
             ],
             [
                 'key' => 'has_taxes_withheld', 'item' => '3', 'label' => 'Any Taxes Withheld?',
@@ -158,9 +161,9 @@ class Form1601CSchema
             ],
             [
                 'key' => 'tax_relief_details', 'item' => '13A', 'label' => 'If yes, specify',
-                'type' => 'text', 'source' => 'user', 'required' => false,
-                'rule' => 'required when has_tax_relief = true', 'pdf_anchor' => '1601C.13A',
-                'required_when' => ['field' => 'has_tax_relief', 'equals' => true],
+                'type' => 'text', 'source' => 'payroll', 'required' => false,
+                'rule' => 'fixed blank: item 13 is always No',
+                'pdf_anchor' => '1601C.13A', 'fixed' => null,
             ],
 
             // ── Part II — Computation of Tax ─────────────────────────────────

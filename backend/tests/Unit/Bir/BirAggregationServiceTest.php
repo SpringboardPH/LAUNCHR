@@ -249,11 +249,14 @@ class BirAggregationServiceTest extends TestCase
         $this->assertEqualsCanonicalizing(Form1601CSchema::payrollDerivedKeys(), array_keys($fields));
         $this->assertFalse($r['has_taxes_withheld']);
         $this->assertFalse($r['has_tax_relief']);
+        $this->assertFalse($r['is_amended']);
+        $this->assertSame('', $r['tax_relief_details']);
         $this->assertSame('08/2026', $r['return_period']);
         // All zeros reads as a finished form; the warning is what says otherwise.
         $this->assertSame(['No finalized or paid payroll for 2026-08.'], $r['_meta']['warnings']);
         // Contract §3: a payroll-filled value is never null; §7: money is a plain decimal string.
-        foreach (array_diff_key($fields, ['has_taxes_withheld' => true, 'has_tax_relief' => true, 'return_period' => true]) as $key => $value) {
+        $notMoney = ['has_taxes_withheld' => true, 'is_amended' => true, 'has_tax_relief' => true, 'tax_relief_details' => true, 'return_period' => true];
+        foreach (array_diff_key($fields, $notMoney) as $key => $value) {
             $this->assertSame('0.00', $value, $key);
         }
     }

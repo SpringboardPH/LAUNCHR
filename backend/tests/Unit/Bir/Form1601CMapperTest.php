@@ -35,11 +35,15 @@ class Form1601CMapperTest extends TestCase
         // Item 13 is fixed at No, so it is filled in rather than asked.
         $this->assertSame(['value' => false, 'origin' => 'payroll'], $this->pick($fields['has_tax_relief']));
         $this->assertFalse(Form1601CSchema::byKey()['has_tax_relief']['fixed']);
+        // Item 13A is fixed blank: stored as "", so it is filled in, not pending.
+        $this->assertSame(['value' => '', 'origin' => 'payroll'], $this->pick($fields['tax_relief_details']));
+        // Item 2 is filled in by the system: No on the original.
+        $this->assertSame(['value' => false, 'origin' => 'payroll'], $this->pick($fields['is_amended']));
         // Company settings: the TIN is set, the RDO code is still a seed placeholder.
         $this->assertSame(['value' => '123-456-789-00000', 'origin' => 'settings'], $this->pick($fields['company_tin']));
         $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['rdo_code']));
         // Awaiting user input.
-        $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['is_amended']));
+        $this->assertSame(['value' => null, 'origin' => 'pending'], $this->pick($fields['sheets_attached']));
     }
 
     public function test_built_totals_equal_the_aggregation(): void

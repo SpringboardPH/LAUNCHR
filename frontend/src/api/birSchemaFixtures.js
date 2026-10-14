@@ -9,7 +9,7 @@
 const rows = {
   '1601-C': [
     ["return_period","1","For the Month (MM/YYYY)","month","payroll",true,"The month this return covers. Filled in from the draft's period.",null],
-    ["is_amended","2","Amended Return?","boolean","user",true,"Answer Yes only if this corrects a 1601-C already filed for the same month. Otherwise No.",null],
+    ["is_amended","2","Amended Return?","boolean","payroll",true,"Filled in automatically: No on the original return, Yes on an amended return (a new version of a 1601-C already filed for the same month).",null],
     ["has_taxes_withheld","3","Any Taxes Withheld?","boolean","payroll",true,"Yes if any income tax was withheld from employees this month. Filled in from item 25.",null],
     ["sheets_attached","4","Number of Sheet/s Attached","integer","user",true,"How many extra sheets are attached to the return, such as the DOLE list of hazard pay. Usually 0.",null],
     ["atc_code","5","ATC","string","settings",true,"The BIR tax code for tax withheld on compensation. Always WW010 on this form.",null],
@@ -22,7 +22,7 @@ const rows = {
     ["agent_category","11","Category of Withholding Agent","enum","settings",true,"Private for a private company; Government for a government office or government-owned corporation.",["private","government"]],
     ["company_email","12","Email Address","string","settings",false,"An email address where the BIR can reach the company. Optional.",null],
     ["has_tax_relief","13","Are there payees availing of tax relief under Special Law or International Tax Treaty?","boolean","payroll",true,"Always No for this company: no employee's pay is tax-exempt under a special law or an international tax treaty. Filled in automatically.",null],
-    ["tax_relief_details","13A","If yes, specify","text","user",false,"Not used: item 13 is always No, so this stays blank.",null],
+    ["tax_relief_details","13A","If yes, specify","text","payroll",false,"Not used: item 13 is always No, so this is always blank. Filled in automatically.",null],
     ["total_compensation","14","Total Amount of Compensation","decimal","payroll",true,"Everything paid to all employees this month, taxable and non-taxable, before deductions. Calculated from finalized and paid payroll.",null],
     ["mwe_statutory_wage","15","Statutory Minimum Wage for Minimum Wage Earners (MWEs)","decimal","payroll",true,"Basic pay of minimum wage earners, after their SSS/PhilHealth/Pag-IBIG share. It isn't taxed.",null],
     ["mwe_premium_pay","16","Holiday Pay, Overtime Pay, Night Shift Differential Pay, Hazard Pay (for MWEs only)","decimal","payroll",true,"Holiday, overtime, night shift differential and hazard pay of minimum wage earners only. It isn't taxed for them; for other employees it's taxable pay.",null],
@@ -145,12 +145,25 @@ const formats = {
   },
 }
 
+// The schema's 'fixed' (always this value; null = always blank) and 'system_filled'
+// (filled in by the system from the draft): never asked or answered.
+const fixed = {
+  '1601-C': { has_tax_relief: false, tax_relief_details: null },
+  '2316': {},
+}
+const systemFilled = {
+  '1601-C': ['is_amended'],
+  '2316': [],
+}
+
 export const birMockSchemas = Object.fromEntries(
   Object.entries(rows).map(([form, list]) => [
     form,
     list.map(([key, item, label, type, source, required, guidance, options]) => ({
       key, item, label, type, source, required, guidance, ...(options && { options }),
       ...(formats[form][key] && { format: formats[form][key] }),
+      ...(key in fixed[form] && { fixed: fixed[form][key] }),
+      ...(systemFilled[form].includes(key) && { system_filled: true }),
     })),
   ]),
 )

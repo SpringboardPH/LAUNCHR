@@ -150,22 +150,20 @@ class BirMissingFieldsTest extends TestCase
             $this->draftFields(Form1601CSchema::fields(), [], ['company_email', 'company_contact_number']),
         ));
 
-        // return_period is filled from the draft's period by the aggregation.
-        $this->assertSame(['is_amended', 'sheets_attached'], $keys);
+        // return_period and item 2 (No on the original) are filled in by the system.
+        $this->assertSame(['sheets_attached'], $keys);
     }
 
-    public function test_1601c_tax_relief_details_follow_the_answer(): void
+    public function test_1601c_tax_relief_details_are_never_asked(): void
     {
         $schema = Form1601CSchema::fields();
 
-        $yes = BirMissingFields::detect($schema, $this->draftFields($schema, ['has_tax_relief' => true]));
-        $no = BirMissingFields::detect($schema, $this->draftFields($schema, ['has_tax_relief' => false]));
-
-        $details = array_values(array_filter($yes, fn ($m) => $m['key'] === 'tax_relief_details'));
-        $this->assertCount(1, $details);
-        $this->assertSame(BirMissingFields::REASON_CONDITION, $details[0]['reason']);
-        $this->assertSame(['field' => 'has_tax_relief', 'equals' => true], $details[0]['required_when']);
-        $this->assertNotContains('tax_relief_details', $this->keys($no));
+        // Item 13A is fixed blank: not asked even on an old draft with Yes in item 13.
+        foreach ([true, false] as $answer) {
+            $missing = BirMissingFields::detect($schema, $this->draftFields($schema, ['has_tax_relief' => $answer]));
+            $this->assertNotContains('tax_relief_details', $this->keys($missing));
+        }
+        $this->assertNull(Form1601CSchema::byKey()['tax_relief_details']['fixed']);
     }
 
     public function test_an_amended_1601c_asks_for_the_tax_previously_remitted(): void
@@ -253,9 +251,14 @@ class BirMissingFieldsTest extends TestCase
             $systemFilled = in_array($field['source'], ['payroll', 'settings'], true)
                 && !in_array($field['key'], $leaveBlank, true);
 
-            // A fixed field has its own value; otherwise any readable value will do, and
-            // booleans need a real bool or they read as unanswered.
-            $value = array_key_exists('fixed', $field) ? $field['fixed'] : ($field['type'] === 'boolean' ? true : 'x');
+            // A fixed field has its own value ("" when always blank) and item 2 is No, as on
+            // an original; otherwise any readable value will do, and booleans need a real
+            // bool or they read as unanswered.
+            $value = match (true) {
+                array_key_exists('fixed', $field) => $field['fixed'] ?? '',
+                !empty($field['system_filled']) => false,
+                default => $field['type'] === 'boolean' ? true : 'x',
+            };
 
             $fields[$field['key']] = $this->entry($systemFilled ? $value : null, $systemFilled ? $field['source'] : 'pending');
         }
