@@ -68,12 +68,7 @@ class BirPdfService
                 }
             }
 
-            if (!in_array($draft->status, self::FILEABLE_STATUSES, true)) {
-                $this->markAsDraft($pdf, $draft, $size['width']);
-            }
-            if ($filedBefore !== null) {
-                $this->markAsFiledBefore($pdf, $draft, $filedBefore, $size['width']);
-            }
+            $this->markTop($pdf, $draft, $filedBefore, $size['width']);
         }
 
         return $pdf->Output('S');
@@ -309,12 +304,32 @@ class BirPdfService
         $this->inCells($pdf, $spec['dec'], $centavos, 'L');
     }
 
-    private function markAsDraft(Fpdi $pdf, BirFormDraft $draft, float $pageWidth): void
+    /**
+     * The red line across the top of every page: DRAFT until the form is approved, and on a
+     * 2316 whose earlier version was filed, that it was. One line, shrunk to fit if needed, in
+     * the margin above the form: the 2316's seal starts 12pt from the top.
+     */
+    private function markTop(Fpdi $pdf, BirFormDraft $draft, ?BirFormDraft $filed, float $pageWidth): void
     {
-        $pdf->SetFont(self::FONT, 'B', 8);
+        $marks = array_filter([
+            in_array($draft->status, self::FILEABLE_STATUSES, true) ? null : "DRAFT #{$draft->id} ({$draft->status}) — NOT FOR FILING",
+            $filed === null ? null : 'THIS FORM HAS ALREADY BEEN FILED AS FORM ' . BirFormNames::label($filed)
+                . '. THIS IS VERSION ' . $draft->version . ', FORM ' . BirFormNames::label($draft) . '.',
+        ]);
+        if ($marks === []) {
+            return;
+        }
+        $text = self::latin1(implode('  ·  ', $marks));
+
         $pdf->SetTextColor(200, 0, 0);
-        $pdf->SetXY(0, 0);
-        $pdf->Cell($pageWidth, 8, self::latin1("DRAFT #{$draft->id} ({$draft->status}) — NOT FOR FILING"), 0, 0, 'C');
+        for ($size = 8; $size > 5; $size -= 0.5) {
+            $pdf->SetFont(self::FONT, 'B', $size);
+            if ($pdf->GetStringWidth($text) <= $pageWidth - 20) {
+                break;
+            }
+        }
+        $pdf->SetXY(0, 1);
+        $pdf->Cell($pageWidth, 9, $text, 0, 0, 'C');
         $pdf->SetTextColor(0, 0, 0);
     }
 
@@ -337,16 +352,6 @@ class BirPdfService
             ->orderByDesc('version')
             ->get()
             ->first(fn (BirFormDraft $d) => BirFormNames::rootId($d) === $root);
-    }
-
-    private function markAsFiledBefore(Fpdi $pdf, BirFormDraft $draft, BirFormDraft $filed, float $pageWidth): void
-    {
-        $pdf->SetFont(self::FONT, 'B', 8);
-        $pdf->SetTextColor(200, 0, 0);
-        $pdf->SetXY(0, 9);
-        $pdf->Cell($pageWidth, 8, self::latin1('THIS FORM HAS ALREADY BEEN FILED AS FORM ' . BirFormNames::label($filed)
-            . '. THIS IS VERSION ' . $draft->version . ', FORM ' . BirFormNames::label($draft) . '.'), 0, 0, 'C');
-        $pdf->SetTextColor(0, 0, 0);
     }
 
     /** FPDF's built-in fonts are Windows-1252, which covers Ñ and other Filipino letters. */
