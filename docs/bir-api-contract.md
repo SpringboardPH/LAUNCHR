@@ -321,7 +321,7 @@ original as filed.
 
 **Who may approve:** accounting only, confirmed by the supervisor and enforced
 since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
-as filed) are accounting-only, and so is editing a pending form; admin and HR
+as filed) are accounting-only, and so is editing a pending or approved form; admin and HR
 get 403. Admin, HR and accounting can all list, view, create, edit a draft,
 submit, validate, revise, export and chat. Employees get 403 on every `/bir`
 route. The preparer may approve their own form (supervisor's decision: there
@@ -344,7 +344,7 @@ edit that breaks the form blocks approval until it is fixed.
 | GET | `/bir/drafts` | Paginated list, filterable by `status` and `form_type` | admin, hr, accounting |
 | POST | `/bir/drafts` | Create | admin, hr, accounting |
 | GET | `/bir/drafts/{id}` | One draft | admin, hr, accounting |
-| PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending form |
+| PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending or approved form |
 | POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only |
@@ -517,9 +517,8 @@ request with 422, and nothing in it is saved:
 ```
 
 Each key in `errors` is `fields.<field key>`, so the message can be shown on the
-row and Dev C's prompts can re-ask that question. The same checks apply to a
-pending form. A missing draft is still 404, a locked form still 400, and a
-pending form edited by admin or HR still 403, whatever the body.
+row and Dev C's prompts can re-ask that question. The same checks apply to a pending or approved form. A missing draft is still 404, a locked form still 400, and a
+pending or approved form edited by admin or HR still 403, whatever the body.
 
 `PUT` checks single answers only. Whether the draft as a whole is complete and
 adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
