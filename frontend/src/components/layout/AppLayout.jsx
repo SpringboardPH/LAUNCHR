@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
-import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys } from '../../api/queries'
+import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys, birKeys, getBirConfig } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock,
   Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown, HelpCircle,
@@ -38,7 +38,7 @@ const COMMON_NAV = [
       { to: '/hr/payroll', label: 'Payroll Runs' },
       { to: '/hr/thirteenth-month', label: '13th Month' },
       { to: '/hr/loans', label: 'Loans' },
-      { to: '/hr/bir-forms', label: 'BIR Forms' },
+      { to: '/hr/bir-forms', label: 'BIR Forms', birGated: true },
     ],
   },
 ]
@@ -86,6 +86,15 @@ export default function AppLayout() {
     staleTime: 60_000,
   })
 
+  // The BIR link hides while the admin switch is off (GET /bir/config stays open to read it).
+  const { data: birConfig } = useQuery({
+    queryKey: birKeys.config,
+    queryFn: getBirConfig,
+    enabled: !!user && ['admin', 'hr', 'accounting'].includes(user.role),
+    staleTime: 5 * 60_000,
+  })
+  const hidden = (c) => (c.dtrGated && !systemConfig?.dtr_page_enabled) || (c.birGated && birConfig?.enabled === false)
+
   const pendingBadgeCount = (dashboardData?.summary?.pending_leaves ?? 0) + (dashboardData?.summary?.pending_requests ?? 0)
 
   useEffect(() => {
@@ -109,7 +118,7 @@ export default function AppLayout() {
   const renderNavItem = (item) => {
     if (item.dtrGated && !systemConfig?.dtr_page_enabled) return null
     if (item.children) {
-      const visibleChildren = item.children.filter(c => !c.dtrGated || systemConfig?.dtr_page_enabled)
+      const visibleChildren = item.children.filter(c => !hidden(c))
       if (!visibleChildren.length) return null
       const isOpen = openGroups.has(item.label)
       const isGroupActive = visibleChildren.some(c => location.pathname.startsWith(c.to))

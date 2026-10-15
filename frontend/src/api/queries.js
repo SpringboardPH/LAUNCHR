@@ -566,6 +566,17 @@ export const toggleDtrEmployeeAccess = (employeeId, enabled) =>
 export const BIR_USE_MOCKS = import.meta.env.DEV && import.meta.env.VITE_BIR_MOCK !== 'false'
 const bir = (real, mock) => (BIR_USE_MOCKS ? mock : real)
 
+// While the BIR switch is off every /bir route but config answers 403 with this message
+// (contract §1). The BIR page listens for the event to leave when it is turned off mid-session.
+export const BIR_DISABLED_MESSAGE = 'The BIR Form Assistant is not enabled'
+export const BIR_DISABLED_EVENT = 'bir:disabled'
+api.interceptors.response.use(undefined, (err) => {
+  if (err?.response?.status === 403 && err.response.data?.message === BIR_DISABLED_MESSAGE) {
+    window.dispatchEvent(new Event(BIR_DISABLED_EVENT))
+  }
+  return Promise.reject(err)
+})
+
 export const birKeys = {
   all:    ['bir'],
   config: ['bir', 'config'],
@@ -573,6 +584,8 @@ export const birKeys = {
   list:   (params) => ['bir', 'drafts', 'list', params],
   detail: (id) => ['bir', 'drafts', id],
   employees: ['bir', 'employees'],
+  all2316: ['bir', 'drafts', 'all-2316'],
+  formEmployees: (id) => ['bir', 'drafts', id, 'employees'],
 }
 
 // Returns { enabled, form_types, status_flow, schemas? } — schemas is the per-form field
@@ -646,8 +659,42 @@ export const exportBirDraft = bir(
     a.download = name ? decodeURIComponent(name) : `bir-draft-${id}.pdf`
     a.click()
     URL.revokeObjectURL(url)
+  }, async (err) => {
+    // An error comes back as a blob too: read its JSON so the message can be shown.
+    const body = err?.response?.data
+    if (body instanceof Blob) {
+      try { err.response.data = JSON.parse(await body.text()) } catch { /* not JSON: keep the blob */ }
+    }
+    throw err
   }),
   birMockApi.exportDraft,
+)
+
+// A 1601-C's employee rows as frozen when it was made: { employees, totals, differences } (§6).
+export const getBirDraftEmployees = bir(
+  (id) => api.get(`/bir/drafts/${id}/employees`).then(r => r.data),
+  birMockApi.draftEmployees,
+)
+
+// Every 2316, all pages: the BIR employees view groups them by employee.
+export const getAllBir2316 = async () => {
+  const all = []
+  for (let page = 1, last = 1; page <= last; page++) {
+    const res = await getBirDrafts({ form_type: '2316', per_page: 100, page })
+    all.push(...res.data)
+    last = res.pagination?.last_page ?? 1
+  }
+  return all
+}
+
+// Admin only: the BIR on/off switch and its company password (contract §6). 429 after 5 tries a minute.
+export const setBirSwitch = bir(
+  (enabled, password) => api.put('/bir/switch', { enabled, password }).then(r => r.data),
+  birMockApi.setSwitch,
+)
+export const setBirSwitchPassword = bir(
+  (data) => api.put('/bir/switch/password', data).then(r => r.data),
+  birMockApi.setSwitchPassword,
 )
 
 // Returns { understood, intent, candidates, reply }. The server remembers the
@@ -656,12 +703,15 @@ export const exportBirDraft = bir(
 // With { draftId } it fills in that draft instead (Week 5): no message asks the next question,
 // { message, field } has the answer to that field read. Returns { reply, draft_id, question,
 // answer, done }; an answer is { field, value } for the caller to save with updateBirDraft.
+// actions: true says this caller runs the workflow steps the chat asks for (action:
+// { type: 'revise' | 'submit', draft_id }), so it may offer them ("reply yes", "say done").
 export const sendBirChatMessage = bir(
-  (message, { reset = false, draftId, field } = {}) => api.post('/bir/chat', {
+  (message, { reset = false, draftId, field, actions = false } = {}) => api.post('/bir/chat', {
     ...(message != null && { message }),
     ...(reset && { reset: true }),
     ...(draftId && { draft_id: draftId }),
     ...(field && { field }),
+    ...(actions && { actions: true }),
   }).then(r => r.data.data),
   birMockApi.chat,
 )

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle } from 'lucide-react'
+import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle, X } from 'lucide-react'
 import clsx from 'clsx'
-import { birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees } from '../../api/queries'
+import {
+  birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees, reviseBirDraft, submitBirDraft,
+} from '../../api/queries'
+import { useAuth } from '../../store/AuthContext'
 
 // The 2316 example names someone who is really on file, so it works on any database.
 const suggestionsFor = (employee) => [
@@ -21,6 +24,40 @@ const GREETING = {
 
 let seq = 0
 const nextId = () => `m${++seq}`
+
+// The conversation survives leaving the page (Full view and back) for the rest of this tab's
+// session, per user and per login: signing in again starts a fresh chat. Storage can be
+// unavailable (private mode, blocked): then it simply isn't kept.
+const storageKey = (userId) => {
+  let login = ''
+  try {
+    login = (localStorage.getItem('hr_token') ?? '').split('|')[0] // the token's id, not the secret
+  } catch {
+    // No token to tell logins apart; the user id alone keys the chat.
+  }
+  return `bir-chat:${userId ?? 'anon'}:${login}`
+}
+const loadChat = (userId) => {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey(userId)) ?? 'null')
+    if (!Array.isArray(saved?.messages) || !saved.messages.length) return null
+    // Message ids restart after a reload; carry on from the highest one kept.
+    for (const m of saved.messages) seq = Math.max(seq, Number(String(m.id).slice(1)) || 0)
+    // A card that was mid-create when the page was left can't finish now: offer it again.
+    const messages = saved.messages.map(m => (m.intentStatus === 'creating' ? { ...m, intentStatus: 'open' } : m))
+    return { messages, filling: saved.filling ?? null }
+  } catch {
+    return null
+  }
+}
+const saveChat = (userId, chat) => {
+  try {
+    if (chat) sessionStorage.setItem(storageKey(userId), JSON.stringify(chat))
+    else sessionStorage.removeItem(storageKey(userId))
+  } catch {
+    // Not kept; the chat still works for this visit.
+  }
+}
 
 // Official titles, used wherever a form is named on screen.
 export const FORM_NAMES = {
@@ -53,10 +90,10 @@ function IntentCard({ intent, status, onConfirm, onDecline }) {
         <dd className="font-medium">{formName(intent.form_type)}</dd>
         <dt className="text-gray-400">Period</dt>
         <dd className="font-medium">{describePeriod(intent.form_type, intent.period)}</dd>
-        {intent.employee_query && (
+        {(intent.employee_name || intent.employee_query) && (
           <>
             <dt className="text-gray-400">Employee</dt>
-            <dd className="font-medium">{intent.employee_query}</dd>
+            <dd className="font-medium">{intent.employee_name ?? intent.employee_query}</dd>
           </>
         )}
       </dl>
@@ -156,29 +193,64 @@ function TypingIndicator() {
 }
 
 /**
- * Conversation with the BIR assistant. Chat history is UI state for this visit
- * only; drafts it creates are server state and are reported via onDraftCreated.
+ * Conversation with the BIR assistant. Chat history is kept for this tab's session (so
+ * Full view and back doesn't lose it); drafts it creates are server state and are
+ * reported via onDraftCreated.
+ *
+ * openDraftId is the draft open on the page (from Saved forms, "Open with the assistant",
+ * or one this chat created), and openKey counts each time one is opened. When a draft the
+ * chat isn't on is opened, the chat moves to it: it asks that draft's next question, and
+ * changes and questions apply to it.
+ *
+ * The other way round, when the chat moves to another form (a box changed on a form that
+ * wasn't open, a correction it started), that form is opened on the page through
+ * onDraftCreated, so the preview always shows what the chat is working on. When the chat
+ * asks for a workflow step (action: start a correction, or submit for review), it is run
+ * here through the same endpoints as the buttons, and the chat's reply is shown once it
+ * has gone through.
  */
-export default function BirChatPanel({ onDraftCreated, onQuestion }) {
+export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId = null, openKey = 0, onClose, className }) {
   const qc = useQueryClient()
+  const { user } = useAuth()
   const { data: employees } = useQuery({ queryKey: birKeys.employees, queryFn: getBirEmployees, staleTime: 5 * 60_000 })
-  const [messages, setMessages] = useState([GREETING])
+  const [restored] = useState(() => loadChat(user?.id))
+  const [messages, setMessages] = useState(restored?.messages ?? [GREETING])
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
   // The server remembers a conversation for 30 minutes; the first message after
   // opening the page or "New conversation" tells it to start over.
-  const freshRef = useRef(true)
+  const freshRef = useRef(!restored)
   // Once a draft exists, the chat stays on it until "New conversation": which draft, and the
   // field it just asked about (null when nothing is open, so a message is a question about it).
-  const [filling, setFilling] = useState(null)
+  const [filling, setFilling] = useState(restored?.filling ?? null)
+  // A draft this chat just created: the page reports it back as the open draft, and the chat
+  // is already on it.
+  const createdRef = useRef(null)
+
+  useEffect(() => {
+    saveChat(user?.id, messages.length > 1 ? { messages, filling } : null)
+  }, [user?.id, messages, filling])
 
   const push = (msg) => setMessages(prev => [...prev, { id: nextId(), ...msg }])
   const patch = (id, changes) => setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...changes } : m)))
 
+  // Opens on the page the form the chat has moved to, without announcing it in the chat.
+  const follow = (draftId) => {
+    if (!draftId || draftId === openDraftId) return
+    createdRef.current = draftId
+    onDraftCreated?.({ id: draftId })
+  }
+
   const chat = useMutation({
-    mutationFn: ({ message, reset, draftId, field }) => sendBirChatMessage(message, { reset, draftId, field }),
+    mutationFn: ({ message, reset, draftId, field }) => sendBirChatMessage(message, { reset, draftId, field, actions: true }),
     onSuccess: (res) => {
+      // A workflow step the chat asked for runs first; its reply is shown once it has.
+      if (res.action) {
+        act.mutate({ action: res.action, reply: res.reply })
+        return
+      }
+      follow(res.draft_id)
       // An answer the chat read is saved first; "Got it" is only shown once it is.
       if (res.answer) {
         save.mutate({ draftId: res.draft_id, ...res.answer, reply: res.reply })
@@ -220,6 +292,24 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
     onError: (err, { field }) => push({ role: 'assistant', error: true, text: fieldError(err, field) }),
   })
 
+  // "yes" to a correction: start it like the "Start a correction" button, then the chat makes
+  // the change it offered on the new version. "done": submit, like "Submit for review".
+  const act = useMutation({
+    mutationFn: ({ action }) => (action.type === 'revise' ? reviseBirDraft(action.draft_id) : submitBirDraft(action.draft_id)),
+    onSuccess: (res, { action, reply }) => {
+      qc.invalidateQueries({ queryKey: birKeys.lists })
+      qc.invalidateQueries({ queryKey: birKeys.detail(action.draft_id) })
+      if (action.type === 'revise') {
+        setFilling({ draftId: res.data.id, field: null })
+        follow(res.data.id)
+        chat.mutate({ draftId: res.data.id })
+        return
+      }
+      if (reply) push({ role: 'assistant', text: reply })
+    },
+    onError: (err) => push({ role: 'assistant', error: true, text: errorText(err) }),
+  })
+
   const create = useMutation({
     mutationFn: async ({ intent }) => {
       const created = await createBirDraft({
@@ -251,6 +341,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
       })
       qc.invalidateQueries({ queryKey: birKeys.lists })
       qc.invalidateQueries({ queryKey: birKeys.detail(draft.id) })
+      createdRef.current = draft.id
       onDraftCreated?.(draft)
       chat.mutate({ draftId: draft.id }) // first missing question, if any
     },
@@ -260,7 +351,20 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
     },
   })
 
-  const busy = chat.isPending || create.isPending || save.isPending
+  const busy = chat.isPending || create.isPending || save.isPending || act.isPending
+
+  // A draft opened on the page (Saved forms, "Open with the assistant"): move the chat to it.
+  // Each opening is announced once, even when React runs this twice (StrictMode in development).
+  const announcedRef = useRef(null)
+  useEffect(() => {
+    if (!openDraftId || openDraftId === filling?.draftId || openDraftId === createdRef.current) return
+    if (announcedRef.current === `${openDraftId}:${openKey}`) return
+    announcedRef.current = `${openDraftId}:${openKey}`
+    setFilling({ draftId: openDraftId, field: null })
+    push({ role: 'assistant', text: `Now working on draft #${openDraftId}. Ask about any box, or say "change item 12 to …".` })
+    chat.mutate({ draftId: openDraftId }) // its next question, or that nothing is left to ask
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDraftId, openKey])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -299,6 +403,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
     setMessages([GREETING])
     setInput('')
     setFilling(null)
+    createdRef.current = null
     onQuestion?.(null)
     freshRef.current = true
   }
@@ -313,15 +418,22 @@ export default function BirChatPanel({ onDraftCreated, onQuestion }) {
   const showSuggestions = messages.length === 1 && !busy
 
   return (
-    <div className="card flex flex-col h-[calc(100vh-220px)] min-h-[460px] overflow-hidden">
+    <div className={clsx('card flex flex-col overflow-hidden', className ?? 'h-[calc(100vh-220px)] min-h-[460px]')}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <Bot size={16} className="text-brand-600" />
           <h2 className="text-sm font-semibold text-gray-900">Form assistant</h2>
         </div>
-        <button onClick={reset} disabled={busy || messages.length === 1} className="btn-ghost text-xs py-1">
-          <RotateCcw size={12} /> New conversation
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={reset} disabled={busy || messages.length === 1} className="btn-ghost text-xs py-1">
+            <RotateCcw size={12} /> New conversation
+          </button>
+          {onClose && (
+            <button onClick={onClose} className="btn-ghost p-1" aria-label="Close the form assistant" title="Close">
+              <X size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4" role="log" aria-live="polite">

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PageHeader, FormField, ConfirmModal, AlertModal, Spinner } from '../../components/ui/index.jsx'
 import GeofenceMapPreview from '../../components/GeofenceMapPreview.jsx'
+import BirSettingsSection from '../../components/bir/BirSettingsSection'
 import { adminSettingsKeys, getAdminSettings, updateAdminSetting, uploadLogo, deleteLogo, uploadPayrollTemplate, getLogos, getSystemClock, systemClockKeys, attendanceKeys, leaveKeys, employeeLeaveBalanceKeys, themeColorKeys, systemConfigKeys, geofenceConfigKeys } from '../../api/queries'
 import { Clock, Calendar, Save, RotateCcw, Zap, Palette, Monitor, Upload, Image as ImageIcon, Check, FileSpreadsheet, Trash2, FileText, MapPin, Plus, LocateFixed } from 'lucide-react'
 
@@ -1326,6 +1327,8 @@ export default function SystemSettingsPage() {
             </div>
           </div>
         </div>
+
+        <BirSettingsSection />
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex gap-4">
           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-amber-600">

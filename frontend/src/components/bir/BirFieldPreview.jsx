@@ -3,13 +3,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info } from 'lucide-react'
 import clsx from 'clsx'
 import { birKeys, getBirConfig, getBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
+import { useAuth } from '../../store/AuthContext'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
 import { describePeriod, formName } from './BirChatPanel'
+import { formLabel, versionLabel } from './BirDraftList'
 import FieldRow, { KINDS, kindOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
-import BirApprovalBar from './BirApprovalBar'
+import BirApprovalBar, { REVIEWED } from './BirApprovalBar'
+import BirFormEmployees from './BirFormEmployees'
 
-// Boxes can be changed while a form is a draft or waiting for review; after approval it is locked.
-const EDITABLE = ['draft', 'pending']
+// Boxes can be changed until a form is filed: approved too, since it isn't filed yet and a
+// change sends it back to draft (contract §5). Waiting for review or approved, only accounting
+// may change them; anyone else gets 403, so they see the boxes read-only.
+const EDITABLE = ['draft', 'pending', 'approved']
+const canChange = (draft, role) => EDITABLE.includes(draft.status) && (!REVIEWED.includes(draft.status) || role === 'accounting')
 
 const humanize = (key) => key.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())
 
@@ -70,6 +76,7 @@ const forwardRow = (el, key, refs) => { if (el) refs.current[key] = el; else del
  * submit / approve / file steps.
  */
 export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft }) {
+  const { user } = useAuth()
   const qc = useQueryClient()
   const [editing, setEditing] = useState(null)
   const [saveError, setSaveError] = useState(null)
@@ -171,7 +178,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   const errorTotal = (draft.validation_errors ?? []).filter(e => e.severity !== 'warning').length
   const warningTotal = (draft.validation_errors ?? []).length - errorTotal
   const nonTaxable = nonTaxableReason(draft)
-  const editable = EDITABLE.includes(draft.status)
+  const editable = canChange(draft, user?.role)
   const startEdit = (key) => { setEditing(key); setSaveError(null) }
   const counts = rows.reduce((acc, { entry }) => ({ ...acc, [kindOf(entry)]: (acc[kindOf(entry)] ?? 0) + 1 }), {})
   const fillable = rows.filter(({ field }) => field.type !== 'manual')
@@ -208,7 +215,9 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
       <div className="px-4 pt-4 pb-3 space-y-3 border-b border-gray-100">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-gray-400">Draft #{draft.id} · version {draft.version}{isFetching && ' · updating…'}</p>
+            <p className="text-xs text-gray-400">
+              Form {formLabel(draft)}{formLabel(draft) !== `#${draft.id}` && ` (#${draft.id})`} · {versionLabel(draft)}{isFetching && ' · updating…'}
+            </p>
             <p className="text-base font-semibold text-gray-900 leading-snug">{formName(draft.form_type)}</p>
             <p className="text-sm text-gray-600">
               {describePeriod(draft.form_type, draft.period)}{draft.employee_name && ` · ${draft.employee_name}`}
@@ -216,6 +225,11 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
           </div>
           <StatusBadge status={draft.status} />
         </div>
+        {draft.form_type === '2316' && draft.version > 1 && draft.status !== 'finalized' && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">
+            An earlier version of this certificate has already been filed. Check before filing this one; its PDF says so too.
+          </p>
+        )}
 
         <div>
           <div className="flex justify-between text-[11px] text-gray-500">
@@ -289,6 +303,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
 
       <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft}
         edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
+      {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
 
       <ul className="divide-y divide-gray-100 max-h-[calc(100vh-420px)] min-h-[200px] overflow-y-auto">
         {visible.map(({ field, entry }) => (

@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine } from 'lucide-react'
+import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  birKeys, getBirConfig, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
+  birKeys, getBirConfig, exportBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
 } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { formatValue, formatWhen } from './BirDraftEditor'
 
 const DONE = {
   submit: 'Submitted for review.',
-  approve: 'Approved. The form is now locked.',
+  approve: 'Approved. Mark it as filed once it is filed with the BIR.',
   reject: 'Returned to the preparer with your note.',
   finalize: 'Marked as filed.',
 }
@@ -21,17 +21,20 @@ const FALLBACK_FLOW = { draft: ['pending'], pending: ['approved', 'draft'], appr
 const STATUS_NOTE = {
   draft: 'Draft: fill in and check the boxes, then submit it for review.',
   pending: 'Waiting for review. The reviewer may correct boxes before approving.',
-  approved: 'Approved and locked: boxes can no longer be changed. Mark it as filed once it is filed with the BIR.',
+  approved: 'Approved, not filed yet. Mark it as filed once it is filed with the BIR. Boxes can still be changed, but a change sends it back to draft to be submitted and approved again.',
   finalized: 'Filed. This is the record of what was filed and can never be changed. To correct it, start a new version.',
 }
 
-// Only accounting reviews: approves or returns a submitted form (contract §5).
+// Only accounting reviews: approves or returns a submitted form (contract §5). The preparer
+// may approve their own form (the company has one accountant).
 const REVIEWER_ROLES = ['accounting']
+
+// Statuses whose boxes only accounting may change: waiting for review, or approved (contract §5).
+export const REVIEWED = ['pending', 'approved']
 
 /**
  * The form's next steps, driven by `status_flow` from /bir/config rather than a hardcoded list.
- * Approve and Return show only to accounting, and never on a form the user prepared
- * (the server refuses both).
+ * Approve and Return show only to accounting (the server refuses anyone else).
  */
 export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowEdits }) {
   const qc = useQueryClient()
@@ -44,7 +47,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig, staleTime: Infinity })
   const next = (config?.status_flow ?? FALLBACK_FLOW)[draft.status] ?? []
   const isPreparer = user?.id != null && draft.prepared_by?.id === user.id
-  const canReview = REVIEWER_ROLES.includes(user?.role) && !isPreparer
+  const canReview = REVIEWER_ROLES.includes(user?.role)
 
   const run = useMutation({
     mutationFn: ({ action }) => ({
@@ -77,10 +80,18 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
       setNotice({ tone: 'error', text: body?.message || 'That did not go through. Please try again.' })
     },
   })
+  // The official PDF, any status: until approved the server stamps it "DRAFT — NOT FOR FILING".
+  const download = useMutation({
+    mutationFn: () => exportBirDraft(draft.id),
+    onMutate: () => setNotice(null),
+    onError: (err) => setNotice({ tone: 'error', text: err?.response?.data?.message || 'Could not download the PDF. Please try again.' }),
+  })
   const busy = run.isPending
   const doing = busy ? run.variables?.action : null
 
   const errorCount = (draft.validation_errors ?? []).filter(e => e.severity !== 'warning').length
+  // A 1601-C's month can be amended a limited number of times (contract §6, revise).
+  const amendmentsLeft = draft.amendments ? draft.amendments.limit - draft.amendments.made : null
   const people = [
     draft.prepared_by && `Prepared by ${draft.prepared_by.name}${isPreparer ? ' (you)' : ''}`,
     draft.approved_by && `approved by ${draft.approved_by.name}`,
@@ -89,11 +100,12 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
   return (
     <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 space-y-2">
       <p className="flex gap-2 text-xs text-gray-600">
-        {['approved', 'finalized'].includes(draft.status)
+        {draft.status === 'finalized'
           ? <Lock size={13} className="mt-0.5 shrink-0 text-gray-400" />
           : <Clock size={13} className="mt-0.5 shrink-0 text-gray-400" />}
         <span>
           {STATUS_NOTE[draft.status] ?? `Status: ${draft.status}.`}
+          {REVIEWED.includes(draft.status) && !REVIEWER_ROLES.includes(user?.role) && ' Only accounting can change its boxes now.'}
           {people && <span className="block text-[11px] text-gray-400">{people}</span>}
         </span>
       </p>
@@ -115,7 +127,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
             <Undo2 size={12} /> Return to preparer
           </button>
         )}
-        {next.includes('finalized') && (
+        {next.includes('finalized') && canReview && (
           confirmFinalize ? (
             <span className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
               Filed with the BIR? This can't be undone.
@@ -130,10 +142,21 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
             </button>
           )
         )}
-        {draft.status === 'finalized' && (
+        {draft.status === 'finalized' && (amendmentsLeft === 0 ? (
+          <span className="text-xs text-gray-500">All {draft.amendments.limit} amendments for this month are used, so it can't be amended again.</span>
+        ) : (
           <button onClick={() => run.mutate({ action: 'revise' })} disabled={busy} className="btn-secondary py-1.5 text-xs">
             <GitBranch size={12} /> {doing === 'revise' ? 'Creating…' : 'Start a correction (new version)'}
           </button>
+        ))}
+        <button onClick={() => download.mutate()} disabled={download.isPending} className="btn-ghost py-1.5 text-xs"
+          title={['approved', 'finalized'].includes(draft.status) ? 'The official BIR form' : 'Marked DRAFT until the form is approved'}>
+          <Download size={12} /> {download.isPending ? 'Preparing PDF…' : 'Download PDF'}
+        </button>
+        {draft.amendments && (
+          <span className="ml-auto text-[11px] text-gray-500" title="A 1601-C can be amended 5 times per month">
+            {draft.version > 1 ? `Amendment ${draft.version - 1} · ` : ''}{draft.amendments.made} of {draft.amendments.limit} amendments used
+          </span>
         )}
       </div>
 
@@ -164,7 +187,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
 
       {draft.status === 'pending' && !canReview && (
         <p className="text-[11px] text-gray-500">
-          {isPreparer ? 'You prepared this form, so someone else must approve it.' : 'Accounting reviews and approves submitted forms.'}
+          Accounting reviews and approves submitted forms.
         </p>
       )}
 

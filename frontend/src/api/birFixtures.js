@@ -24,13 +24,13 @@ const JANE = { id: 5, name: 'Jane Dela Cruz' }
 const MARK = { id: 2, name: 'Mark Santos' }
 
 const EMPLOYEES = [
-  { id: 11, employee_id: 'EMP011', first_name: 'Ana', last_name: 'Reyes', tin: '111-222-333-00000' },
+  { id: 11, employee_id: 'EMP011', first_name: 'Ana', last_name: 'Reyes', tin: '111-222-333-00000' , group: 'Lazada' },
   // A phone recorded without enough digits: his 2316 reports it as invalid_format.
-  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-00000', phone: '0917-55' },
-  { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-00000' },
-  { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-00000' },
+  { id: 12, employee_id: 'EMP012', first_name: 'Paolo', last_name: 'Garcia', tin: '444-555-666-00000', phone: '0917-55' , group: 'Shopee' },
+  { id: 13, employee_id: 'EMP013', first_name: 'Maria', last_name: 'Santos', tin: '222-333-444-00000' , group: 'Lazada' },
+  { id: 14, employee_id: 'EMP014', first_name: 'Maria', last_name: 'Santos', tin: '555-666-777-00000' , group: 'Shopee' },
   // Paid at minimum wage: nothing taxable, so the 2316's taxable section does not apply.
-  { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-00000', annual: 168000 },
+  { id: 15, employee_id: 'EMP015', first_name: 'Jose', last_name: 'Dizon', tin: '666-777-888-00000', annual: 168000 , group: 'Lazada' },
 ]
 
 const SETTINGS = {
@@ -265,20 +265,35 @@ const fail = (status, message, extra = {}) => {
   err.response = { status, data: { success: false, message, ...extra } }
   return Promise.reject(err)
 }
-const ok = (data, message) => ({ success: true, data: clone(data), message })
+// Keys the server works out for every draft (contract §2): label, root_id and the 1601-C amendment count.
+const rootOf = (d) => (d.parent_id ? rootOf(find(d.parent_id) ?? { id: d.parent_id }) : d.id)
+const decorate = (d) => {
+  const root = rootOf(d)
+  const top = Math.max(...drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
+  return {
+    ...d, root_id: root, label: `#${root}${d.version > 1 ? `v${d.version}` : ''}`,
+    amendments: d.form_type === '1601-C' ? { made: top - 1, limit: AMENDMENT_LIMIT } : null,
+  }
+}
+const AMENDMENT_LIMIT = 5
+const ok = (data, message) => ({ success: true, data: clone(data?.fields ? decorate(data) : data), message })
 const find = (id) => drafts.find(d => d.id === Number(id))
 
 // The logged-in user, as the real API takes them from the session (set by setBirMockUser).
 // Seeded drafts stay Jane's, so the signed-in user can review and approve them.
 let caller = null
-const actAs = (user) => { caller = user?.id != null ? { id: user.id, name: user.name } : null }
+const actAs = (user) => { caller = user?.id != null ? { id: user.id, name: user.name, role: user.role } : null }
+// Approve, return, mark as filed and changing a pending or approved form are accounting-only (§5).
+const isAccounting = () => (caller?.role ?? 'accounting') === 'accounting'
+const ACCOUNTING_ONLY = 'Unauthorized. Only accounting users can do this.'
 const preparer = () => caller ?? JANE
 const approver = () => caller ?? MARK
 
 const getConfig = async () => {
   await delay(150)
   return {
-    enabled: true, form_types: ['1601-C', '2316'], status_flow: clone(STATUS_FLOW),
+    enabled: switchState.enabled, switch_password_set: !!switchState.password,
+    form_types: ['1601-C', '2316'], status_flow: clone(STATUS_FLOW),
     schemas: clone(birMockSchemas),
   }
 }
@@ -292,7 +307,7 @@ const getDrafts = async ({ status, form_type, per_page = 15, page = 1 } = {}) =>
   const start = (page - 1) * perPage
   const data = matching.slice(start, start + perPage)
   return {
-    data: clone(data),
+    data: clone(data.map(decorate)),
     pagination: {
       total: matching.length, count: data.length, per_page: perPage,
       current_page: Number(page), last_page: Math.max(1, Math.ceil(matching.length / perPage)),
@@ -302,7 +317,7 @@ const getDrafts = async ({ status, form_type, per_page = 15, page = 1 } = {}) =>
 const getDraft = async (id) => {
   await delay()
   const d = find(id)
-  return d ? clone(d) : fail(404, 'Draft not found')
+  return d ? clone(decorate(d)) : fail(404, 'Draft not found')
 }
 
 const createDraft = async ({ form_type, period, employee_id = null }) => {
@@ -326,12 +341,15 @@ const updateDraft = async (id, fields = {}) => {
   await delay()
   const d = find(id)
   if (!d) return fail(404, 'Draft not found')
-  if (!['draft', 'pending'].includes(d.status)) {
-    return fail(400, `Only draft and pending forms can be edited; this form is in ${d.status} status`)
+  if (d.status === 'finalized') {
+    return fail(400, 'Only draft, pending and approved forms can be edited; this form is in finalized status')
   }
+  if (d.status !== 'draft' && !isAccounting()) return fail(403, 'Only accounting can edit a form that is under review or approved')
   const errors = {}
   Object.entries(fields).forEach(([key, value]) => {
-    const problem = value == null ? null : answerProblem(fieldOf(d.form_type, key), value)
+    const f = fieldOf(d.form_type, key)
+    const problem = f && ('fixed' in f || f.system_filled) ? `${quoted(f)} is filled in automatically and can't be changed.`
+      : value == null ? null : answerProblem(f, value)
     if (problem) errors[`fields.${key}`] = [problem.startsWith('is not') ? `"${key}" ${problem}` : problem]
   })
   if (Object.keys(errors).length) return fail(422, Object.values(errors)[0][0], { errors })
@@ -353,6 +371,8 @@ const updateDraft = async (id, fields = {}) => {
       d.fields[key] = { value: stored(f, value), origin: 'user', ...blank }
     }
   })
+  // A change to an approved form sends it back to draft, to be submitted and approved again.
+  if (d.status === 'approved') { d.status = 'draft'; d.approved_by = null }
   return ok(d, 'Draft updated (mock)')
 }
 const validate = async (id) => {
@@ -373,8 +393,8 @@ const transition = async (id, to, reason = null) => {
   if (!(STATUS_FLOW[d.status] ?? []).includes(to)) {
     return fail(400, `Cannot move a form in ${d.status} status to ${to}`)
   }
-  if (to === 'approved' && d.prepared_by?.id === preparer().id) {
-    return fail(403, 'You prepared this form, so someone else must approve it')
+  if (['approved', 'finalized'].includes(to) || (d.status === 'pending' && to === 'draft')) {
+    if (!isAccounting()) return fail(403, ACCOUNTING_ONLY)
   }
   if (d.status === 'pending' && to === 'draft' && !reason?.trim()) {
     return fail(422, 'A reason is required to return a form.')
@@ -402,6 +422,9 @@ const revise = async (id) => {
     return fail(400, `Only finalized forms can be revised; this one is in ${d.status} status`)
   }
   const sameForm = drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
+  if (d.form_type === '1601-C' && Math.max(...sameForm.map(x => x.version)) > AMENDMENT_LIMIT) {
+    return fail(400, `This 1601-C has already been amended ${AMENDMENT_LIMIT} times for ${d.period}, the most allowed for one month`)
+  }
   const revision = {
     ...clone(d), id: nextId++, status: 'draft', version: Math.max(...sameForm.map(x => x.version)) + 1, parent_id: d.id,
     approved_by: null, rejection_reason: null, prepared_by: preparer(),
@@ -417,6 +440,46 @@ const exportDraft = async () => {
   return fail(501, 'PDF export is not available in mock mode. Set VITE_BIR_MOCK=false to download the official PDF.')
 }
 
+// A 1601-C's employee rows (contract §6): items 14, 19, 22 and 25 shared out, so the totals add up.
+const draftEmployees = async (id) => {
+  await delay(300)
+  const d = find(id)
+  if (!d) return fail(404, 'Draft not found')
+  if (d.form_type !== '1601-C') return fail(422, 'The employee list is only for a 1601-C')
+  const keys = { compensation: 'total_compensation', ee: 'statutory_contributions_ee', taxable: 'total_taxable_compensation', tax_withheld: 'total_taxes_withheld' }
+  const share = (key, i) => money(Number(d.fields[keys[key]]?.system_value ?? d.fields[keys[key]]?.value ?? 0) / EMPLOYEES.length)
+  const employees = EMPLOYEES.map((e, i) => ({
+    employee_id: e.id, name: `${e.last_name}, ${e.first_name}`.toUpperCase(), tin: e.tin, category: e.annual ? 'mwe' : 'taxable',
+    payroll_count: 2, compensation: share('compensation', i), mwe_basic: '0.00', mwe_premium: '0.00', thirteenth: '0.00',
+    ee: share('ee', i), taxable: share('taxable', i), exempt_250k: '0.00', tax_withheld: share('tax_withheld', i),
+  }))
+  const totals = Object.fromEntries(['compensation', 'mwe_basic', 'mwe_premium', 'thirteenth', 'ee', 'taxable', 'exempt_250k', 'tax_withheld']
+    .map(k => [k, money(employees.reduce((sum, r) => sum + Number(r[k]), 0))]))
+  const differences = Object.entries(keys).map(([k, key]) => ({ k, key, form: d.fields[key]?.value }))
+    .filter(({ k, form }) => Math.abs(Number(form) - Number(totals[k])) >= 0.005)
+    .map(({ k, key, form }) => ({ item: fieldOf('1601-C', key).item, key, employees_total: totals[k], form_value: form, difference: money(Number(form) - Number(totals[k])) }))
+  return ok({ draft_id: d.id, form_type: '1601-C', period: d.period, version: d.version, employees, totals, differences }, 'Employee list retrieved')
+}
+
+// The admin switch and its company password (contract §6). The mock starts on, with the password "password".
+let switchState = { enabled: true, password: 'password' }
+const setSwitch = async (enabled, password) => {
+  await delay(300)
+  if (!switchState.password) return fail(422, 'No company password is set up')
+  if (password !== switchState.password) return fail(422, 'The company password is incorrect')
+  switchState.enabled = !!enabled
+  return ok({ enabled: switchState.enabled }, `The BIR Form Assistant is now ${enabled ? 'on' : 'off'}`)
+}
+const setSwitchPassword = async ({ password, password_confirmation, current_password }) => {
+  await delay(300)
+  if (!password || password.length < 8 || password !== password_confirmation) {
+    return fail(422, 'The password must be at least 8 characters and match its confirmation.')
+  }
+  if (switchState.password && current_password !== switchState.password) return fail(422, 'The current company password is incorrect')
+  switchState.password = password
+  return ok({ switch_password_set: true }, 'Company password saved')
+}
+
 const getEmployees = async () => {
   await delay(200)
   return { data: clone(EMPLOYEES), pagination: { total: EMPLOYEES.length } }
@@ -428,4 +491,5 @@ const chat = mockChat({
 
 export const birMockApi = {
   getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees, actAs,
+  draftEmployees, setSwitch, setSwitchPassword,
 }

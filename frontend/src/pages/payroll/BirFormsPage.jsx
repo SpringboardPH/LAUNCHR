@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, FlaskConical, ListChecks, FolderOpen, Maximize2 } from 'lucide-react'
-import { birKeys, getBirConfig, getBirEmployees, createBirDraft, setBirMockUser, BIR_USE_MOCKS } from '../../api/queries'
+import { FileText, FlaskConical, ListChecks, FolderOpen, Maximize2, MessageCircle, X, Power, Users } from 'lucide-react'
+import clsx from 'clsx'
+import {
+  birKeys, getBirConfig, getBirEmployees, createBirDraft, setBirMockUser, BIR_USE_MOCKS, BIR_DISABLED_EVENT, BIR_DISABLED_MESSAGE,
+} from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
-import { PageHeader } from '../../components/ui/index.jsx'
+import { PageHeader, EmptyState, AlertModal } from '../../components/ui/index.jsx'
 import BirChatPanel, { formName } from '../../components/bir/BirChatPanel'
 import BirFieldPreview from '../../components/bir/BirFieldPreview'
 import BirDraftList from '../../components/bir/BirDraftList'
+import BirEmployeesView from '../../components/bir/BirEmployeesView'
 
 const CY = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -97,9 +101,16 @@ export default function BirFormsPage() {
   const draftId = Number(params.get('draft')) || null
   // The box the chat is asking about, highlighted in the preview.
   const [askingField, setAskingField] = useState(null)
+  const [tab, setTab] = useState('forms')
+  // The assistant opens like a Messenger chat; it stays mounted while closed so the conversation is kept.
+  const [chatOpen, setChatOpen] = useState(false)
+  const [unread, setUnread] = useState(false)
+  const [turnedOff, setTurnedOff] = useState(false)
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
 
-  // Mock mode only: drafts you create are prepared by you, so the self-approval rule can be tried.
+  // Mock mode only: drafts you create are prepared by you, and the role rules follow your login.
   useEffect(() => { setBirMockUser(user) }, [user])
 
   const { data: config } = useQuery({
@@ -108,13 +119,53 @@ export default function BirFormsPage() {
     staleTime: Infinity,
   })
 
+  // The switch was turned off while this page was open: every BIR call now answers 403.
+  useEffect(() => {
+    const onDisabled = () => setTurnedOff(true)
+    window.addEventListener(BIR_DISABLED_EVENT, onDisabled)
+    return () => window.removeEventListener(BIR_DISABLED_EVENT, onDisabled)
+  }, [])
+  const leave = () => {
+    qc.invalidateQueries({ queryKey: birKeys.config })
+    navigate('/hr')
+  }
+
+  // Counts every time a form is opened, so reopening the one already in the URL (after
+  // "New conversation", say) still moves the chat to it.
+  const [opened, setOpened] = useState(0)
   const onDraft = (draft) => {
     setAskingField(null)
     setParams({ draft: String(draft.id) })
+    setOpened(n => n + 1)
+  }
+  const onQuestion = (field) => {
+    setAskingField(field)
+    if (field && !chatOpen) setUnread(true)
+  }
+  const toggleChat = () => { setChatOpen(o => !o); setUnread(false) }
+
+  const formTypes = config?.form_types ?? ['1601-C', '2316']
+
+  if (config && config.enabled === false) {
+    return (
+      <div>
+        <PageHeader title="BIR Forms" />
+        <div className="card">
+          <EmptyState
+            icon={Power}
+            title="The BIR Form Assistant is turned off"
+            description={user?.role === 'admin'
+              ? 'Turn it on in System Settings, under BIR Forms, with the company password.'
+              : 'An administrator can turn it on in System Settings.'}
+            action={user?.role === 'admin' && <Link to="/admin/system-settings" className="btn-primary text-sm">Open System Settings</Link>}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div>
+    <div className="pb-20">{/* room for the chat bubble */}
       <PageHeader
         title="BIR Forms"
         description="Prepare the Monthly Remittance Return of Income Taxes Withheld on Compensation and each employee's Certificate of Compensation Payment/Tax Withheld from payroll data."
@@ -126,38 +177,72 @@ export default function BirFormsPage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <BirChatPanel onDraftCreated={onDraft} onQuestion={setAskingField} />
-        </div>
+        <section className="card overflow-hidden lg:col-span-3 self-start">
+          <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
+            <FileText size={15} className="text-brand-600" /> Form preview
+            {draftId && (
+              <Link to={`/hr/bir-forms/${draftId}`} className="ml-auto inline-flex items-center gap-1 text-xs font-normal text-gray-500 hover:text-brand-600">
+                <Maximize2 size={12} /> Full view
+              </Link>
+            )}
+          </h2>
+          <BirFieldPreview draftId={draftId} askingField={askingField} onOpenDraft={onDraft} />
+        </section>
 
-        <div className="lg:col-span-3 space-y-5">
+        <div className="lg:col-span-2 space-y-5">
           <section className="card overflow-hidden">
-            <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <FileText size={15} className="text-brand-600" /> Form preview
-              {draftId && (
-                <Link to={`/hr/bir-forms/${draftId}`} className="ml-auto inline-flex items-center gap-1 text-xs font-normal text-gray-500 hover:text-brand-600">
-                  <Maximize2 size={12} /> Full view
-                </Link>
-              )}
-            </h2>
-            <BirFieldPreview draftId={draftId} askingField={askingField} onOpenDraft={onDraft} />
-          </section>
-
-          <section className="card overflow-hidden">
-            <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <FolderOpen size={15} className="text-brand-600" /> Saved forms
-            </h2>
-            <BirDraftList formTypes={config?.form_types ?? ['1601-C', '2316']} activeId={draftId} onOpen={onDraft} />
+            <div className="flex border-b border-gray-100" role="tablist">
+              {[['forms', FolderOpen, 'Saved forms'], ['employees', Users, 'Employees']].map(([key, Icon, label]) => (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={tab === key}
+                  onClick={() => setTab(key)}
+                  className={clsx('flex-1 px-4 py-3 text-sm font-semibold flex items-center justify-center gap-2 border-b-2 -mb-px',
+                    tab === key ? 'border-brand-600 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700')}
+                >
+                  <Icon size={15} className={tab === key ? 'text-brand-600' : 'text-gray-400'} /> {label}
+                </button>
+              ))}
+            </div>
+            {tab === 'forms'
+              ? <BirDraftList formTypes={formTypes} activeId={draftId} onOpen={onDraft} />
+              : <BirEmployeesView activeId={draftId} onOpen={onDraft} />}
           </section>
 
           <section className="card">
             <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
               <ListChecks size={15} className="text-brand-600" /> Pick a form manually
             </h2>
-            <ManualPicker formTypes={config?.form_types ?? ['1601-C', '2316']} onCreated={onDraft} />
+            <ManualPicker formTypes={formTypes} onCreated={onDraft} />
           </section>
         </div>
       </div>
+
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
+        <div className={chatOpen ? 'block' : 'hidden'}>
+          <BirChatPanel
+            className="w-[min(400px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-7rem))] shadow-2xl"
+            onClose={toggleChat}
+            onDraftCreated={onDraft}
+            onQuestion={onQuestion}
+            openDraftId={draftId}
+            openKey={opened}
+          />
+        </div>
+        <button
+          onClick={toggleChat}
+          className="relative w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 flex items-center justify-center transition-colors"
+          aria-label={chatOpen ? 'Close the form assistant' : 'Open the form assistant'}
+          aria-expanded={chatOpen}
+          title="Form assistant"
+        >
+          {chatOpen ? <X size={22} /> : <MessageCircle size={24} />}
+          {unread && !chatOpen && <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-red-500 ring-2 ring-white" />}
+        </button>
+      </div>
+
+      <AlertModal open={turnedOff} onClose={leave} title="BIR Forms turned off" message={`${BIR_DISABLED_MESSAGE}. An administrator turned it off.`} type="error" />
     </div>
   )
 }

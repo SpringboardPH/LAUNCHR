@@ -19,6 +19,16 @@ export const isNumeric = (v) => v !== null && v !== '' && !Number.isNaN(Number(v
 
 const isYes = (v) => v === true || v === 'true' || v === '1'
 
+// A box no one can change (PUT refuses it with 422): a schema 'fixed' value, checked by key
+// since it can be false or null (1601-C item 13 No, item 13A blank), or 'system_filled'
+// (item 2, No on the original and Yes on an amended return). Null for any other box.
+export const lockedNote = (field) => {
+  if ('fixed' in field) {
+    return `Always ${field.fixed === null ? 'blank' : formatValue(field.fixed, field.type)} on this form.`
+  }
+  return field.system_filled ? 'Filled in automatically: No on the original, Yes on an amended return.' : null
+}
+
 export const formatValue = (value, type) => {
   if (value === null || value === undefined || value === '') return null
   if (type === 'boolean' || typeof value === 'boolean') return isYes(value) ? 'Yes' : 'No'
@@ -97,7 +107,8 @@ export default function FieldRow({
   const compared = compare && isCompared(field)
   const diff = compared && isNumeric(filed) && isNumeric(entry.value) ? Number(entry.value) - Number(filed) : null
   const matches = diff !== null && Math.abs(diff) < TOLERANCE
-  const editable = !!onSave && field.type !== 'manual'
+  const locked = lockedNote(field)
+  const editable = !!onSave && field.type !== 'manual' && !locked
   const restorable = editable && entry.edited && entry.system_value != null
 
   useEffect(() => {
@@ -162,8 +173,9 @@ export default function FieldRow({
           ) : shown !== null ? (
             <p className={clsx('text-sm font-medium text-gray-900 break-words', field.type === 'decimal' && 'tabular-nums')}>{shown}</p>
           ) : (
-            <p className="text-sm italic text-gray-400">{kind === 'manual' ? 'Signed by hand after printing' : 'Not filled yet'}</p>
+            <p className="text-sm italic text-gray-400">{kind === 'manual' ? 'Signed by hand after printing' : locked ? 'Blank' : 'Not filled yet'}</p>
           )}
+          {locked && !editing && <p className="mt-0.5 text-[11px] text-gray-500">{locked}</p>}
           {/* An override carries the figure it replaced and who changed it; an older edit may
               have neither, so show only what is actually known. */}
           {entry.edited && !editing && (
