@@ -125,7 +125,7 @@ const draft1601c = (id, period, status, seed, extra = {}) => {
     ...base, id, status, form_type: '1601-C', period, employee_id: null, employee_name: null, empty_period: empty,
     fields: buildFields('1601-C', {
       return_period: `${period.slice(5, 7)}/${period.slice(0, 4)}`, is_amended: (extra.version ?? 1) > 1,
-      ...SETTINGS['1601-C'], ...payroll1601c(seed, empty)
+      ...SETTINGS['1601-C'], ...payroll1601c(seed, empty),
     }),
     ...extra,
   }

@@ -57,9 +57,9 @@ class BirDemoSeeder extends Seeder
         // Left in May 2026: the 2026 2316 runs 01/01 to 05/31.
         'BIR-006' => ['first' => 'Fiona', 'last' => 'Cruz', 'position' => 'HR Assistant', 'hired' => '2022-06-01', 'monthly' => 28000,
             'tin' => '206-890-123-00000', 'phone' => '09171230006', 'left' => '2026-05-31'],
-        // No TIN and no phone on the employee record: the 2316 shows what's missing.
+        // Taxable, all year; files under substituted filing with a valid ID instead of a CTC.
         'BIR-007' => ['first' => 'Gino', 'last' => 'Bautista', 'position' => 'Driver', 'hired' => '2024-01-15', 'monthly' => 25000,
-            'tin' => null, 'phone' => null],
+            'tin' => '207-901-234-00000', 'phone' => '09171230007'],
         // Hired 03/16/2025 after another employer; TIN saved the old 12-digit way (printed with 14).
         'BIR-008' => ['first' => 'Hazel', 'last' => 'Navarro', 'position' => 'Developer', 'hired' => '2025-03-16', 'monthly' => 40000,
             'tin' => '987654321000', 'phone' => '09171230008'],
@@ -70,6 +70,12 @@ class BirDemoSeeder extends Seeder
         'holiday' => ['Special Holiday', 0.10],
         'overtime' => ['Overtime Pay', 0.10],
         'night' => ['Night Differential', 0.05],
+    ];
+
+    /** 2316 amounts with nothing to report, entered as 0.00 so every amount box on the form is filled. */
+    private const ZERO_2316 = [
+        'taxable_income_previous_employer' => '0.00', 'taxes_withheld_previous' => '0.00', 'pera_tax_credit' => '0.00',
+        'tax_others_44a_amount' => '0.00', 'tax_others_44b_amount' => '0.00', 'tax_others_51a_amount' => '0.00', 'tax_others_51b_amount' => '0.00',
     ];
 
     /** @var array<string, string> role => API token */
@@ -346,12 +352,23 @@ class BirDemoSeeder extends Seeder
 
     private function forms1601C(): void
     {
-        $answers = ['sheets_attached' => 0];
+        // Every question answered, so each box on the printed form has a value.
+        $answers = [
+            'sheets_attached' => 0, 'other_nontaxable_compensation' => '0.00', 'prior_month_adjustment' => '0.00',
+            'other_remittances' => '0.00', 'surcharge' => '0.00', 'interest' => '0.00', 'compromise' => '0.00',
+        ];
+        // Months that also fill the less common boxes (items 4, 20, 26, 32 to 34).
+        $extra = [
+            '2026-01' => ['prior_month_adjustment' => '-150.00'],                                   // 26: a refund of tax withheld in 2025
+            '2026-02' => ['surcharge' => '1250.00', 'interest' => '310.50', 'compromise' => '1000.00'], // 32-34: filed late
+            '2026-04' => ['sheets_attached' => 1,                                                   // 4, 20
+                'other_nontaxable_compensation' => '1500.00', 'other_nontaxable_compensation_desc' => 'RICE SUBSIDY'],
+        ];
 
         // Filed: 12/2025 (13th month pay) and 01/2026 to 05/2026.
         $filed = [];
         foreach (['2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'] as $period) {
-            $filed[$period] = $this->filed1601C($period, $answers);
+            $filed[$period] = $this->filed1601C($period, ($extra[$period] ?? []) + $answers);
         }
 
         // 03/2026 amended: a revision of the filed form (version 2), still a draft. Revise
@@ -368,7 +385,7 @@ class BirDemoSeeder extends Seeder
         $this->api('accounting', 'POST', "/bir/drafts/{$june['id']}/approve");
 
         // 07/2026 submitted, waiting for accounting.
-        $july = $this->create1601C('2026-07', $answers + ['other_remittances' => '500.00', 'other_remittances_desc' => 'ADVANCE PAYMENT 07/20/2026']);
+        $july = $this->create1601C('2026-07', ['other_remittances' => '500.00', 'other_remittances_desc' => 'ADVANCE PAYMENT 07/20/2026'] + $answers);
         $this->api('hr', 'POST', "/bir/drafts/{$july['id']}/submit");
 
         // 08/2026 returned by accounting with a reason.
@@ -404,55 +421,80 @@ class BirDemoSeeder extends Seeder
 
     private function forms2316(): void
     {
-        $person = fn (string $rdo, string $address, string $zip, string $born) => [
-            'employee_rdo_code' => $rdo, 'employee_registered_address' => $address,
+        $person = fn (string $middle, string $rdo, string $address, string $zip, string $born) => [
+            'employee_middle_name' => $middle, 'employee_rdo_code' => $rdo, 'employee_registered_address' => $address,
             'employee_registered_zip' => $zip, 'employee_birthdate' => $born,
         ];
-        $signed = ['employer_signature_date' => '2026-01-30', 'employee_signature_date' => '2026-01-30'];
+        $signed = fn (string $date) => ['employer_signature_date' => $date, 'employee_signature_date' => $date];
+        // Substituted filing (no box on the form): with a CTC (amount paid) or a valid ID (no amount).
+        $substituted = fn (string $id, string $place, string $issued, ?string $paid = null) => [
+            'is_substituted_filing' => true, 'employee_ctc_or_id' => $id, 'ctc_place_of_issue' => $place, 'ctc_date_issued' => $issued,
+        ] + ($paid === null ? [] : ['ctc_amount_paid' => $paid]);
+        $notSubstituted = ['is_substituted_filing' => false];
 
-        // 2025, filed, under substituted filing (tax withheld equals tax due), with the CTC block.
-        $this->filed2316('BIR-001', '2025', $person('047', 'BLK 5 LOT 12 SAMPAGUITA ST., BRGY. SANTOLAN, PASIG CITY', '1610', '1990-04-12')
-            + $signed + ['is_substituted_filing' => true, 'employee_ctc_or_id' => 'CTC 2026-0012345', 'ctc_place_of_issue' => 'PASIG CITY',
-                'ctc_date_issued' => '2026-01-08', 'ctc_amount_paid' => '55.00']);
+        // 2025, filed, under substituted filing (tax withheld equals tax due), with a CTC.
+        $this->filed2316('BIR-001', '2025', $person('REYES', '047', 'BLK 5 LOT 12 SAMPAGUITA ST., BRGY. SANTOLAN, PASIG CITY', '1610', '1990-04-12')
+            + $signed('2026-01-30') + $substituted('CTC 2026-0012345', 'PASIG CITY', '2026-01-08', '55.00'));
 
-        // 2025, filed: minimum wage earner (rates per day and month).
-        $this->filed2316('BIR-004', '2025', $person('043', '27 KAMIAS RD., BRGY. PINYAHAN, QUEZON CITY', '1100', '1998-09-03')
-            + $signed + ['mwe_daily_rate' => '645.00', 'mwe_monthly_rate' => '16823.75']);
+        // 2025, filed: minimum wage earner (rates per day and month; items 30-32), valid ID.
+        $this->filed2316('BIR-004', '2025', $person('GARCIA', '043', '27 KAMIAS RD., BRGY. PINYAHAN, QUEZON CITY', '1100', '1998-09-03')
+            + $signed('2026-01-30') + ['mwe_daily_rate' => '645.00', 'mwe_monthly_rate' => '16823.75']
+            + $substituted('UMID 0111-2233445-6', 'QUEZON CITY', '2024-06-17'));
 
-        // 2025, filed: the employee who later left (full year in 2025).
-        $this->filed2316('BIR-006', '2025', $person('048', '14 MABINI ST., BRGY. POBLACION, MAKATI CITY', '1210', '1992-11-21') + $signed);
+        // 2025, filed: the employee who later left (full year in 2025); lives away from the registered address.
+        $this->filed2316('BIR-006', '2025', $person('DELA PAZ', '048', '14 MABINI ST., BRGY. POBLACION, MAKATI CITY', '1210', '1992-11-21')
+            + ['employee_home_address' => '22 SAMPLE ST., BRGY. MALAMIG, MANDALUYONG CITY', 'employee_home_zip' => '1550']
+            + $signed('2026-01-30') + $substituted('CTC 2026-0012346', 'MAKATI CITY', '2026-01-09', '120.00'));
 
-        // 2025, approved, not filed yet: 13th month over P90,000 (item 48).
-        $bea = $this->create2316('BIR-002', '2025', $person('050', '3 ACACIA LANE, BRGY. FORBES PARK, MAKATI CITY', '1219', '1985-02-14')
-            + ['employee_home_address' => 'UNIT 9B THE GROVE, BRGY. UGONG, PASIG CITY', 'employee_home_zip' => '1604']);
+        // 2025, approved, not filed yet: 13th month over P90,000 (item 48), a PERA tax credit (item 27),
+        // a home address and a foreign address; files her own return, so not substituted.
+        $bea = $this->create2316('BIR-002', '2025', $person('LIM', '050', '3 ACACIA LANE, BRGY. FORBES PARK, MAKATI CITY', '1219', '1985-02-14')
+            + ['employee_home_address' => 'UNIT 9B THE GROVE, BRGY. UGONG, PASIG CITY', 'employee_home_zip' => '1604',
+                'employee_foreign_address' => '10 SAMPLE ROAD #08-01, SINGAPORE 123456', 'pera_tax_credit' => '250.00']
+            + $signed('2026-02-02') + $notSubstituted);
         $this->api('hr', 'POST', "/bir/drafts/{$bea['id']}/submit");
         $this->api('accounting', 'POST', "/bir/drafts/{$bea['id']}/approve");
 
-        // 2025, submitted: P250,000 and below, no tax.
-        $carlo = $this->create2316('BIR-003', '2025', $person('044', '8 RIZAL AVE., BRGY. 123, CALOOCAN CITY', '1400', '2001-07-30'));
+        // 2025, submitted: P250,000 and below, no tax (items 29, 37).
+        $carlo = $this->create2316('BIR-003', '2025', $person('AQUINO', '044', '8 RIZAL AVE., BRGY. 123, CALOOCAN CITY', '1400', '2001-07-30')
+            + $signed('2026-01-30') + $substituted('CTC 2026-0012347', 'CALOOCAN CITY', '2026-01-12', '15.00'));
         $this->api('hr', 'POST', "/bir/drafts/{$carlo['id']}/submit");
 
-        // 2025, draft: hired 03/16/2025 after another employer, previous employer filled in.
-        $this->create2316('BIR-008', '2025', $person('039', '45 P. GOMEZ ST., BRGY. PLAINVIEW, MANDALUYONG CITY', '1550', '1995-05-05') + [
+        // 2025, draft: hired 03/16/2025 after another employer (items 16-18A, 22, 25B), and a foreign address.
+        $this->create2316('BIR-008', '2025', $person('TAN', '039', '45 P. GOMEZ ST., BRGY. PLAINVIEW, MANDALUYONG CITY', '1550', '1995-05-05') + [
+            'employee_foreign_address' => '200 SAMPLE AVE., UNIT 4, TORONTO, ON M5V 2T6, CANADA',
             'has_previous_employer' => true, 'previous_employer_tin' => '301-222-333-00000', 'previous_employer_name' => 'NORTHWIND TRADING CORP.',
             'previous_employer_address' => '100 SAMPLE BLVD., BRGY. BEL-AIR, MAKATI CITY', 'previous_employer_zip' => '1209',
             'taxable_income_previous_employer' => '95000.00', 'taxes_withheld_previous' => '0.00',
-        ]);
+        ] + $signed('2026-02-05') + $notSubstituted);
 
-        // 2025, draft with nothing answered and no TIN on the employee record: the check lists what's missing.
-        $gino = $this->create2316('BIR-007', '2025', []);
+        // 2025, draft: substituted filing with a driver's licence as the valid ID.
+        $gino = $this->create2316('BIR-007', '2025', $person('SORIANO', '045', '9 IBA ST., BRGY. TATALON, QUEZON CITY', '1113', '1988-03-25')
+            + $signed('2026-01-30') + $substituted("DRIVER'S LICENSE N01-23-456789", 'QUEZON CITY', '2023-08-01'));
         $this->api('hr', 'POST', "/bir/drafts/{$gino['id']}/validate");
 
-        // 2026 so far: the leaver (period to 05/31) and the July hire (previous employer not answered yet).
-        $this->create2316('BIR-006', '2026', $person('048', '14 MABINI ST., BRGY. POBLACION, MAKATI CITY', '1210', '1992-11-21'));
-        $this->create2316('BIR-005', '2026', []);
+        // 2026 so far: the leaver (period to 05/31), with taxable pay outside payroll in the
+        // "Others" rows (items 44A/44B, 51A/51B).
+        $this->create2316('BIR-006', '2026', $person('DELA PAZ', '048', '14 MABINI ST., BRGY. POBLACION, MAKATI CITY', '1210', '1992-11-21') + [
+            'tax_others_44a_desc' => 'LEAVE CONVERSION', 'tax_others_44a_amount' => '9333.33',
+            'tax_others_44b_desc' => 'RICE SUBSIDY (EXCESS)', 'tax_others_44b_amount' => '600.00',
+            'tax_others_51a_desc' => 'PERFORMANCE INCENTIVE', 'tax_others_51a_amount' => '5000.00',
+            'tax_others_51b_desc' => 'GIFT CERTIFICATE (EXCESS)', 'tax_others_51b_amount' => '1500.00',
+        ] + $signed('2026-06-15') + $notSubstituted);
+
+        // 2026 so far: the July hire, after another employer that withheld tax (items 16-18A, 22, 25B).
+        $this->create2316('BIR-005', '2026', $person('CASTRO', '049', '31 SAMPLE ST., BRGY. KAPITOLYO, PASIG CITY', '1603', '1994-12-01') + [
+            'has_previous_employer' => true, 'previous_employer_tin' => '302-333-444-00000', 'previous_employer_name' => 'BLUE HARBOR LOGISTICS INC.',
+            'previous_employer_address' => '7 SAMPLE PIER RD., BRGY. 650, PORT AREA, MANILA', 'previous_employer_zip' => '1018',
+            'taxable_income_previous_employer' => '180000.00', 'taxes_withheld_previous' => '4500.00',
+        ] + $signed('2026-10-01') + $notSubstituted);
     }
 
     private function create2316(string $code, string $year, array $answers): array
     {
         $draft = $this->api('hr', 'POST', '/bir/drafts', ['form_type' => '2316', 'period' => $year, 'employee_id' => $this->ids[$code]]);
 
-        return $answers ? $this->api('hr', 'PUT', "/bir/drafts/{$draft['id']}", ['fields' => $answers]) : $draft;
+        return $this->api('hr', 'PUT', "/bir/drafts/{$draft['id']}", ['fields' => $answers + self::ZERO_2316]);
     }
 
     private function filed2316(string $code, string $year, array $answers): array

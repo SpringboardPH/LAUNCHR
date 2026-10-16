@@ -144,8 +144,10 @@ class BirFixtureSeeder extends Seeder
                 'rejection_reason' => null,
                 'fields' => [
                     'return_period' => ['value' => '06/2026', 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'is_amended' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'company_tin' => ['value' => '000-000-000-000', 'origin' => 'settings', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'has_tax_relief' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'tax_relief_details' => ['value' => '', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_compensation' => ['value' => '842300.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_taxes_withheld' => ['value' => '61204.15', 'origin' => 'user', 'edited' => true, 'system_value' => '61024.15', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-07-08T10:22:00+08:00'],
                 ],
@@ -196,8 +198,10 @@ class BirFixtureSeeder extends Seeder
                 'rejection_reason' => 'Item 25 total tax withheld does not match the payroll register — please recheck May.',
                 'fields' => [
                     'return_period' => ['value' => '05/2026', 'origin' => 'user', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'is_amended' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'company_tin' => ['value' => '000-000-000-000', 'origin' => 'settings', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'has_tax_relief' => ['value' => false, 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
+                    'tax_relief_details' => ['value' => '', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_compensation' => ['value' => '795150.00', 'origin' => 'payroll', 'edited' => false, 'system_value' => null, 'edited_by' => null, 'edited_at' => null],
                     'total_taxes_withheld' => ['value' => '55010.00', 'origin' => 'user', 'edited' => true, 'system_value' => '54872.50', 'edited_by' => ['id' => 5, 'name' => 'Jane Dela Cruz'], 'edited_at' => '2026-06-08T09:47:00+08:00'],
                 ],
