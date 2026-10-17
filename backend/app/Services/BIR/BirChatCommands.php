@@ -29,6 +29,9 @@ use App\Models\User;
  * - Sending a form for review only when asked in so many words ("submit it for review"), and
  *   "done" leaves it a draft: BirChatSubmit.
  * - Who is on a 1601-C, and one employee's part of it: BirChatEmployees.
+ * - Tax advice and pay calculations are declined before anything is looked up
+ *   (BirExplanationService::asksForTaxAdvice()), so "how much tax should Bea pay?" is never
+ *   read as a request for a box.
  *
  * Like the rest of the chat, nothing is saved here. A change comes back as an answer for the
  * caller to save through PUT, and starting a correction or submitting comes back as an
@@ -94,6 +97,7 @@ class BirChatCommands
         $result = match (true) {
             (bool) preg_match(self::UNDO, $message) => $this->undo->undo($item, $current, $state, $user),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
+            BirExplanationService::asksForTaxAdvice($message) => self::result(BirExplanationService::DECLINE, stay: true),
             BirChatSubmit::asksToSubmit($message) => $this->submit->submit($message, $current, $state, $canAct),
             (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
             default => $this->submit->done($message, $current)

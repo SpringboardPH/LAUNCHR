@@ -24,6 +24,42 @@ class BirExplanationService
     /** A tax, rate or salary question: declined, and pointed to what the chat can do instead. */
     public const DECLINE = "I can't give tax advice or work out pay; please check with accounting. I can read any box on a saved form by its item number, for example \"what is item 21 on Maria Santos's 2316 for 2026?\", and explain what a box means or where its figure came from.";
 
+    /** Words about tax or pay. */
+    private const TAX_WORDS = '(?:tax|taxes|withh?old\\w*|buwis|deduct\\w*|kaltas\\w*|ikakaltas|kakaltasin|salary|sweldo|sahod|pay|paid|owe|refund)';
+
+    /**
+     * Asking for advice or a calculation rather than for what a saved form holds: "how much tax
+     * should Bea pay?", "should we withhold more from Bea?", "compute her tax", "magkano ang
+     * babayaran ni Bea?". Reading a figure that is already on a form ("how much tax was withheld
+     * from Bea on the September 1601-C?") is not one of these.
+     */
+    private const TAX_ADVICE = [
+        '/\\b(?:should|shall|ought|dapat|kailangan ba)\\b.*\\b' . self::TAX_WORDS . '\\b|\\b' . self::TAX_WORDS . '\\b.*\\b(?:should|ought|dapat)\\b/i',
+        '/\\bhow much\\b.*\\b(?:will|would|does|do|is going to|has to|have to|needs? to)\\b.*\\b(?:pay|owe|withhold|deduct|be withheld|get back|refund)\\b/i',
+        '/\\bmagkano\\b.*\\b(?:babayaran|bayaran|dapat|ikakaltas|kakaltasin|ibabalik)\\b/i',
+        '/\\b(?:compute|calculate|work out|figure out|estimate|kwentahin|kuwentahin|i-?compute)\\b/i',
+        '/\\b(?:avoid|lower|reduce|minimi[sz]e|save on|bawasan|iwasan)\\b.*\\b(?:tax|taxes|buwis)\\b/i',
+        '/\\btax (?:advice|planning|bracket|rate|rates|table)\\b|\\b(?:is it legal|legal ba)\\b/i',
+    ];
+
+    /**
+     * True when the message asks for tax advice or a pay calculation, which the chat declines.
+     * A message about a box ("what should go in item 28?") is a question about the form instead.
+     */
+    public static function asksForTaxAdvice(string $message): bool
+    {
+        if (BirAnswerParser::itemMentioned($message) !== null) {
+            return false;
+        }
+        foreach (self::TAX_ADVICE as $pattern) {
+            if (preg_match($pattern, $message)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** A request for a different form while a draft is being filled in. */
     public const NEW_REQUEST = 'That sounds like a different form. Click "New conversation" to start it.';
 

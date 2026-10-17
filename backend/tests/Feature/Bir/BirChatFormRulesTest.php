@@ -252,6 +252,26 @@ class BirChatFormRulesTest extends TestCase
             ->assertJsonPath('data.reply', 'Which form should I send for review? Open it, or give its number, for example "submit form #11 for review".');
     }
 
+    // ---- Tax advice
+
+    public function test_tax_advice_is_declined_before_anything_is_looked_up(): void
+    {
+        $id = $this->draft2316();
+        $decline = \App\Services\BIR\BirExplanationService::DECLINE;
+
+        // With no form open, and on the open form: never read as a request for a box or a form.
+        foreach (['how much tax should Maria Santos pay this year?', 'should we withhold more tax from Maria?',
+            'compute her tax', 'magkano ang babayaran ni Maria na tax?', 'how do I lower our taxes?'] as $asked) {
+            $this->send($asked, reset: true)->assertJsonPath('data.reply', $decline);
+            $this->chat($id, null, $asked)->assertJsonPath('data.answer', null)
+                ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, $decline));
+        }
+
+        // Reading what a form holds is still a lookup, not advice.
+        $this->assertStringStartsWith("On Maria Santos' 2316 for 2026 (form #{$id}", $this->send("how much tax was withheld from Maria Santos on form #{$id}?", reset: true)->json('data.reply'));
+        $this->assertStringStartsWith("On Maria Santos' 2316 for 2026 (form #{$id}", $this->send("what is item 5 on form #{$id}?", reset: true)->json('data.reply'));
+    }
+
     // ---- helpers
 
     private function send(string $message, bool $reset = false, ?User $as = null, bool $actions = false): TestResponse
