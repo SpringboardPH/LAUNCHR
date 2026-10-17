@@ -45,7 +45,7 @@ use RuntimeException;
  *
  * Supervisor's changes (BirChatCommands): a box on any saved form can be read or changed
  * without opening it; a filed form says how it can be corrected (the button, or "yes");
- * "done" sends the open form for review; "undo" takes back a change made here. A TIN finds
+ * asking to submit sends a form for review (BirChatSubmit); "undo" takes back a change made here. A TIN finds
  * the employee for a 2316. A caller that can run the workflow's revise and submit for the
  * chat sends actions: true; without it, the chat only points to the buttons.
  *
@@ -84,7 +84,7 @@ class BirChatController extends Controller
 
         $message = $validated['message'];
 
-        // Reading or changing a box on a saved form, "yes", "done" and "undo": PHP only.
+        // Reading or changing a box on a saved form, "yes", "submit it for review" and "undo": PHP only.
         if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
             return $this->commandReply($command, null, $request->user());
         }
@@ -224,7 +224,7 @@ class BirChatController extends Controller
             : 'Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . ", so it can't be changed here. You can still ask what a box means or where its figure came from.";
 
         // "change item 12 to …" (here or on any form), reading a box on another form, "yes",
-        // "done", "undo": read in PHP, whatever question is open. Never an answer.
+        // "submit it for review", "done", "undo": read in PHP, whatever question is open. Never an answer.
         if ($message !== null && ($command = $this->commands->handle($message, $draft, $state, $request->user(), $canAct)) !== null) {
             return $this->commandReply($command, $draft, $request->user());
         }
@@ -322,7 +322,7 @@ class BirChatController extends Controller
         $errors = count(array_filter($this->validator->validate($draft), fn (array $entry) => $entry['severity'] === 'error'));
 
         return $errors === 0
-            ? 'That is everything this form needs from you. Check the preview, then ' . ($canAct ? 'say done or use Submit' : 'use Submit') . ' to send it for review.'
+            ? 'That is everything this form needs from you. Check the preview, then ' . ($canAct ? 'say "submit it for review" or click Submit for review' : 'click Submit for review') . ' when it is ready. Until then it stays a draft.'
             : "That is everything I can ask here, but {$errors} " . ($errors === 1 ? 'issue still needs' : 'issues still need')
                 . ' fixing before it can be submitted. They are listed on the draft.';
     }

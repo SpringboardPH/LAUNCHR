@@ -26,7 +26,8 @@ use App\Models\User;
  *   again; a filed form can only be corrected in a new version, which the
  *   reply offers two ways: the "Start a correction" button, or "yes" to have the chat start
  *   it and make the change. A 1601-C stops at the workflow's amendment limit for its month.
- * - "done" sends the open form for review (an amendment counts once it is submitted).
+ * - Sending a form for review only when asked in so many words ("submit it for review"), and
+ *   "done" leaves it a draft: BirChatSubmit.
  * - Who is on a 1601-C, and one employee's part of it: BirChatEmployees.
  *
  * Like the rest of the chat, nothing is saved here. A change comes back as an answer for the
@@ -45,8 +46,6 @@ class BirChatCommands
 
     private const NO = '/^\s*(no|n|hindi|huwag|wag|cancel|never ?mind)\s*[.!]*\s*$/i';
 
-    private const DONE = '/^\s*(done|i\'?m done|tapos na?|finished|that\'?s all|submit( it)?( for review)?)\s*[.!]*\s*$/i';
-
     private const UNDO = '/^\s*(undo|i-?undo|ibalik|bawiin)\b/i';
 
     private const NEEDS_NUMBER = "To change a form that isn't open here, I need its number.";
@@ -58,11 +57,11 @@ class BirChatCommands
         private readonly BirFormFinder $finder,
         private readonly BirConversationService $conversation,
         private readonly BirExplanationService $explanations,
-        private readonly BirDraftValidator $validator,
         private readonly BirIntentService $intent,
         private readonly BirChatUndo $undo,
         private readonly BirChatLookup $lookup,
         private readonly BirChatEmployees $employees,
+        private readonly BirChatSubmit $submit,
     ) {}
 
     /** @return ?array{reply: ?string, draft: ?BirFormDraft, answer: ?array, action: ?array, candidates: array, stay: bool} */
@@ -94,10 +93,12 @@ class BirChatCommands
 
         $result = match (true) {
             (bool) preg_match(self::UNDO, $message) => $this->undo->undo($item, $current, $state, $user),
-            (bool) preg_match(self::DONE, $message) => $this->done($current, $canAct),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
+            BirChatSubmit::asksToSubmit($message) => $this->submit->submit($message, $current, $state, $canAct),
             (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
-            default => $this->employees->answer($message, $current, $state) ?? $this->lookup->lookup($message, $item, $current, $state),
+            default => $this->submit->done($message, $current)
+                ?? $this->employees->answer($message, $current, $state)
+                ?? $this->lookup->lookup($message, $item, $current, $state),
         };
 
         // A reply that asks for a number, an item or a year waits for it: the open question
@@ -124,7 +125,7 @@ class BirChatCommands
         $change = $this->conversation->change($draft, $offer['message'], $offer['value']);
         $started = 'Started ' . BirFormNames::correctionName($draft) . ', form ' . BirFormNames::name($draft) . ', from ' . BirFormNames::describe($draft)
             . '. The filed version stays as it is.';
-        $finish = ' Tell me any other changes, and say done when the ' . (BirFormNames::isAmendment($draft) ? 'amendment' : 'correction') . ' is finished.';
+        $finish = ' Tell me any other changes. When the ' . (BirFormNames::isAmendment($draft) ? 'amendment' : 'correction') . ' is ready, say "submit it for review".';
 
         if ($change['answer'] === null) {
             return self::result("{$started} {$change['reply']}{$finish}", $draft);
@@ -319,41 +320,6 @@ class BirChatCommands
         $state->setOffer($offer + ['accepted' => true]);
 
         return self::result(null, null, null, ['type' => 'revise', 'draft_id' => $filed->id]);
-    }
-
-    /** "done": the open form goes for review, through the workflow's submit. */
-    private function done(?BirFormDraft $current, bool $canAct): array
-    {
-        if ($current === null) {
-            return self::result('There is no form open here to send for review. Open one, or ask for a new one.');
-        }
-
-        $name = ucfirst(BirFormNames::describe($current));
-        if ($current->status !== 'draft') {
-            return self::result("{$name} is already " . BirFormNames::STATUS_WORDS[$current->status] . ', so there is nothing to submit.', null, null, stay: true);
-        }
-
-        $errors = array_values(array_filter($this->validator->validate($current), fn (array $e) => $e['severity'] === 'error'));
-        if ($errors !== []) {
-            $count = count($errors);
-            $list = implode("\n", array_map(fn (array $e) => "- {$e['message']}", array_slice($errors, 0, 5)));
-
-            return self::result("It can't be sent for review yet: {$count} " . ($count === 1 ? 'issue needs' : 'issues need') . " fixing first.\n{$list}", null, null, stay: true);
-        }
-
-        if (!$canAct) {
-            return self::result('Nothing is blocking it. Click "Submit for review" above the preview to send it for review.', null, null, stay: true);
-        }
-
-        $note = '';
-        if ($current->version > 1) {
-            $limit = BirFormFinder::amendmentLimit($current->form_type);
-            $note = $limit !== null
-                ? ' This is amendment ' . ($current->version - 1) . ': ' . BirFormNames::monthName($current->period) . ' has now used ' . ($current->version - 1) . " of its {$limit} amendments."
-                : " This is correction version {$current->version}.";
-        }
-
-        return self::result('Sent form ' . BirFormNames::name($current) . " for review.{$note}", null, null, ['type' => 'submit', 'draft_id' => $current->id]);
     }
 
     /**

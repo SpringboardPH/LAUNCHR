@@ -64,7 +64,7 @@ class BirChatDraftTest extends TestCase
         $this->ask($id)
             ->assertJsonPath('data.done', true)
             ->assertJsonPath('data.question', null)
-            ->assertJsonPath('data.reply', 'That is everything this form needs from you. Check the preview, then use Submit to send it for review.');
+            ->assertJsonPath('data.reply', 'That is everything this form needs from you. Check the preview, then click Submit for review when it is ready. Until then it stays a draft.');
 
         $fields = BirFormDraft::findOrFail($id)->fields;
         $this->assertSame('049', $fields['employee_rdo_code']['value']);

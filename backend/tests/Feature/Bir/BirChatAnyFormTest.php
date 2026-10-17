@@ -21,7 +21,7 @@ use Tests\TestCase;
  *     santos, change it to …"), applied at once, and "undo" puts it back;
  *   - a 2316 can be asked for by TIN ("2316 for 920-919-920-00001 2024");
  *   - a filed form is never changed, only corrected in a new version (the button, or
- *     "yes" in the chat). Who may change which form, and "done": BirChatFormRulesTest.
+ *     "yes" in the chat). Who may change which form, and sending it for review: BirChatFormRulesTest.
  * All of it is read in PHP, so these tests also check the model is never asked.
  */
 class BirChatAnyFormTest extends TestCase
@@ -296,7 +296,7 @@ class BirChatAnyFormTest extends TestCase
         $this->chat($v2, null, null, actions: true)
             ->assertJsonPath('data.draft_id', $v2)
             ->assertJsonPath('data.answer', ['field' => 'employee_registered_address', 'value' => self::STORED])
-            ->assertJsonPath('data.reply', "Started version 2, form #{$id}v2 (#{$v2}), from Maria Santos' 2316 for 2026. The filed version stays as it is. Changed \"Item 6, Registered Address\" to " . self::STORED . '. Tell me any other changes, and say done when the correction is finished.');
+            ->assertJsonPath('data.reply', "Started version 2, form #{$id}v2 (#{$v2}), from Maria Santos' 2316 for 2026. The filed version stays as it is. Changed \"Item 6, Registered Address\" to " . self::STORED . '. Tell me any other changes. When the correction is ready, say "submit it for review".');
         $this->save($v2, ['employee_registered_address' => self::ADDRESS]);
         $this->assertNull(BirFormDraft::findOrFail($id)->fields['employee_registered_address']['value'], 'The filed version is untouched.');
 
@@ -327,7 +327,7 @@ class BirChatAnyFormTest extends TestCase
         $v2 = $this->actingAs($this->accounting)->postJson("/api/bir/drafts/{$v1}/revise")->assertCreated()->json('data.id');
         $this->chat($v2, null, null, actions: true)
             ->assertJsonPath('data.answer', ['field' => 'sheets_attached', 'value' => 2])
-            ->assertJsonPath('data.reply', "Started amendment 1, form #{$v1}v2 (#{$v2}), from the September 2026 1601-C. The filed version stays as it is. Changed \"Item 4, Number of Sheet/s Attached\" to 2. Tell me any other changes, and say done when the amendment is finished.");
+            ->assertJsonPath('data.reply', "Started amendment 1, form #{$v1}v2 (#{$v2}), from the September 2026 1601-C. The filed version stays as it is. Changed \"Item 4, Number of Sheet/s Attached\" to 2. Tell me any other changes. When the amendment is ready, say \"submit it for review\".");
 
         // Amendment 5 filed: nothing more can be offered, and revise refuses a sixth.
         BirFormDraft::whereKey($v2)->delete();

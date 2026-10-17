@@ -21,7 +21,8 @@ use Tests\TestCase;
  *   - an approved form that is changed goes back to draft, to be approved again;
  *   - a fixed box (1601-C item 13 No, item 13A blank) and a system-filled one (item 2) are
  *     never asked and never changed: the chat says why (PUT would say 422);
- *   - "done" sends the open form for review.
+ *   - a form goes for review only when the user asks for it directly ("submit it for review",
+ *     "pakisubmit"); "done" leaves it a draft (supervisor's rule).
  */
 class BirChatFormRulesTest extends TestCase
 {
@@ -182,34 +183,81 @@ class BirChatFormRulesTest extends TestCase
         $this->chat($id, null, null)->assertJsonPath('data.question', null);
     }
 
-    // ---- "done"
+    // ---- Sending for review: only when asked directly
 
-    public function test_done_sends_the_form_for_review_once_nothing_blocks_it(): void
+    public function test_done_leaves_the_form_a_draft_and_is_never_saved_as_an_answer(): void
     {
         $id = $this->draft2316();
+        $this->chat($id, null, null)->assertJsonPath('data.question.field', 'employee_rdo_code');
 
-        $reply = $this->chat($id, null, 'done', actions: true)->assertJsonPath('data.action', null)->json('data.reply');
-        $this->assertStringStartsWith("It can't be sent for review yet: ", $reply);
+        foreach (['done', 'tapos na', "I'm done", 'finished'] as $said) {
+            $this->chat($id, 'employee_rdo_code', $said, actions: true)
+                ->assertJsonPath('data.action', null)
+                ->assertJsonPath('data.answer', null)
+                ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "Okay. Form #{$id} stays a draft until you send it for review. When it is ready, say \"submit it for review\" or click \"Submit for review\"."));
+        }
+        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
+    }
+
+    public function test_a_direct_request_sends_the_form_for_review_once_nothing_blocks_it(): void
+    {
+        $id = $this->draft2316();
+        $name = "Form #{$id} (Maria Santos' 2316 for 2026)";
+
+        $reply = $this->chat($id, null, 'submit it for review', actions: true)->assertJsonPath('data.action', null)->json('data.reply');
+        $this->assertStringStartsWith("{$name} can't be sent for review yet: ", $reply);
+        $this->assertStringContainsString('It stays a draft.', $reply);
 
         $this->save($id, ['employee_rdo_code' => '049', 'employee_registered_address' => self::ADDRESS, 'employee_birthdate' => '1990-05-31']);
-        $this->chat($id, null, 'done')
+        $this->chat($id, null, 'submit it for review')
             ->assertJsonPath('data.action', null)
-            ->assertJsonPath('data.reply', 'Nothing is blocking it. Click "Submit for review" above the preview to send it for review.');
-        $this->chat($id, null, 'tapos na', actions: true)
-            ->assertJsonPath('data.action', ['type' => 'submit', 'draft_id' => $id])
-            ->assertJsonPath('data.reply', "Sent form #{$id} for review.");
+            ->assertJsonPath('data.reply', "Nothing is blocking {$name}. Click \"Submit for review\" above the preview to send it for review.");
+
+        // Any wording that asks for it directly, English or Filipino.
+        foreach (['submit it for review', 'Please submit this form.', 'send this to accounting for approval', 'can you submit it?',
+            'pakisubmit', 'i-submit mo na po', 'ipasa mo na for review', 'resubmit it'] as $said) {
+            $this->chat($id, null, $said, actions: true)
+                ->assertJsonPath('data.action', ['type' => 'submit', 'draft_id' => $id])
+                ->assertJsonPath('data.reply', "Sent form #{$id} for review.");
+        }
 
         BirFormDraft::whereKey($id)->update(['status' => 'pending']);
-        $this->chat($id, null, 'done', actions: true)
-            ->assertJsonPath('data.reply', "Maria Santos' 2316 for 2026 is already waiting for review, so there is nothing to submit.");
+        $this->chat($id, null, 'submit it for review', actions: true)
+            ->assertJsonPath('data.action', null)
+            ->assertJsonPath('data.reply', "{$name} is already waiting for review, so there is nothing to submit.");
+    }
+
+    public function test_questions_and_not_yet_never_send_a_form_for_review(): void
+    {
+        $id = $this->draft2316();
+        $this->save($id, ['employee_rdo_code' => '049', 'employee_registered_address' => self::ADDRESS, 'employee_birthdate' => '1990-05-31']);
+
+        foreach (['how do I submit this?', "don't submit it yet", 'not yet, hold off on submitting', 'has it been submitted?',
+            'is it ready for review?', 'show me the submitted forms', 'huwag mo munang i-submit'] as $said) {
+            $this->chat($id, null, $said, actions: true)->assertJsonPath('data.action', null);
+        }
+        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
+    }
+
+    public function test_a_form_that_is_not_open_is_sent_for_review_by_its_number(): void
+    {
+        $id = $this->draft2316();
+        $this->save($id, ['employee_rdo_code' => '049', 'employee_registered_address' => self::ADDRESS, 'employee_birthdate' => '1990-05-31']);
+
+        $this->send("submit form #{$id} for review", reset: true, actions: true)
+            ->assertJsonPath('data.action', ['type' => 'submit', 'draft_id' => $id])
+            ->assertJsonPath('data.reply', "Sent form #{$id} for review.");
+        $this->send('submit it for review', actions: true)
+            ->assertJsonPath('data.action', null)
+            ->assertJsonPath('data.reply', 'Which form should I send for review? Open it, or give its number, for example "submit form #11 for review".');
     }
 
     // ---- helpers
 
-    private function send(string $message, bool $reset = false, ?User $as = null): TestResponse
+    private function send(string $message, bool $reset = false, ?User $as = null, bool $actions = false): TestResponse
     {
         return $this->actingAs($as ?? $this->accounting)
-            ->postJson('/api/bir/chat', array_filter(['message' => $message, 'reset' => $reset ?: null]))
+            ->postJson('/api/bir/chat', array_filter(['message' => $message, 'reset' => $reset ?: null, 'actions' => $actions ?: null]))
             ->assertOk();
     }
 
