@@ -98,6 +98,8 @@ class BirChatCommands
             (bool) preg_match(self::UNDO, $message) => $this->undo->undo($item, $current, $state, $user),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
             BirExplanationService::asksForTaxAdvice($message) => self::result(BirExplanationService::DECLINE, stay: true),
+            BirChatSubmit::asksForWorkflow($message) => $this->submit->workflow($message, $current, $state),
+            BirChatSubmit::asksForStatus($message) => $this->submit->status($message, $current, $state),
             BirChatSubmit::asksToSubmit($message) => $this->submit->submit($message, $current, $state, $canAct),
             (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
             default => $this->submit->done($message, $current)

@@ -43,9 +43,6 @@ class BirIntentService
     /** The earliest year a form can be prepared for. The latest is next year. */
     public const FIRST_YEAR = 2000;
 
-    /** Words that name one of the two forms. A form_type is kept only if one was used, now or earlier. */
-    private const FORM_NAMES = '/1601|2316|remittance|certificate|sertipiko/i';
-
     /** Month names, English and Filipino, and the words for month and year ("last month"). */
     private const PERIOD_WORDS = [
         'month', 'year', 'buwan', 'taon',
@@ -270,15 +267,26 @@ class BirIntentService
             Form2316Schema::FORM_TYPE,
         ], true) ? $raw['form_type'] : null;
 
-        // The prompt says never to work out the form from a month; this makes it hold even
-        // when the model does. "September 2026" alone must ask which form, not assume the
-        // 1601-C because it is the only monthly one.
-        if ($formType !== null && $formType !== ($known['form_type'] ?? null) && !preg_match(self::FORM_NAMES, $message)) {
+        // The message wins over the model: when it names exactly one form, that is the form,
+        // whatever the model said. The prompt says never to work out the form from a month;
+        // this makes it hold even when the model does. "September 2026" alone must ask which
+        // form, not assume the 1601-C because it is the only monthly one.
+        $formsSaid = BirMessageFacts::formsSaid($message);
+        if (count($formsSaid) === 1) {
+            $formType = $formsSaid[0];
+        } elseif ($formType !== null && $formType !== ($known['form_type'] ?? null) && !in_array($formType, $formsSaid, true)) {
             $formType = null;
         }
 
-        $year = is_int($raw['tax_year'] ?? null) ? $raw['tax_year'] : null;
-        $month = is_int($raw['tax_month'] ?? null) ? $raw['tax_month'] : null;
+        // Same for the period: a year or month the model gives must be one the message says.
+        // A model that invents one ("1899" for "the August 2026 1601-C") is overruled by the
+        // message, and one the model missed is taken from it when it says exactly one.
+        $year = BirMessageFacts::agreed(is_int($raw['tax_year'] ?? null) ? $raw['tax_year'] : null, BirMessageFacts::yearsSaid($message));
+        $month = BirMessageFacts::agreed(is_int($raw['tax_month'] ?? null) ? $raw['tax_month'] : null, BirMessageFacts::monthsSaid($message));
+        if ($year !== null && BirMessageFacts::yearsSaid($message) === [] && preg_match(self::RELATIVE_PERIOD, $message)
+            && abs($year - SystemClock::now()->year) > 1) {
+            $year = null; // "last year" is never 1899
+        }
 
         // Same rule for the period: kept only if this message gives it (or one relative to
         // today), or an earlier message did. A model filling in the current year is a guess.
@@ -291,6 +299,11 @@ class BirIntentService
         $employee = is_string($raw['employee_query'] ?? null) && trim($raw['employee_query']) !== ''
             ? trim($raw['employee_query'])
             : null;
+        // A name the model gives must be in the message (small typos allowed): a name it
+        // made up is never repeated back as if the user had typed it.
+        if ($employee !== null && !BirMessageFacts::inMessage($employee, $message)) {
+            $employee = null;
+        }
 
         // A year no form can be prepared for is dropped, and kept aside so the reply can
         // say why the year is asked again instead of acting as if none was given.

@@ -40,9 +40,10 @@ class BirEmployeeResolver
      * A TIN as people type it: 3-3-3 digits with the same dash or space between and an
      * optional 3-5 digit branch code, nine digits then the branch code, or all of it run
      * together (12-14 digits). A bare 9-digit number is not taken as a TIN, since it reads
-     * as an amount just as well.
+     * as an amount just as well, unless a year follows it ("2316 for 201345678 2025"). A year
+     * after a space is never read as the branch code.
      */
-    public const TIN_PATTERN = '/(?<![\d-])(?:\d{3}([- ])\d{3}\1\d{3}(?:\1\d{3,5})?|\d{9}[- ]\d{3,5}|\d{12,14})(?![\d-])/';
+    public const TIN_PATTERN = '/(?<![\d-])(?:\d{3}([- ])\d{3}\1\d{3}(?:\1(?!(?<= )(?:19|20)\d{2}(?!\d))\d{3,5})?|\d{9}(?:-\d{3,5}| (?!(?:19|20)\d{2}(?!\d))\d{3,5}|(?= (?:19|20)\d{2}(?!\d)))|\d{12,14})(?![\d-])/';
 
     /** Words that look like a first or last name but name a month, a form or a command. */
     private const NOT_NAMES = [
@@ -71,6 +72,10 @@ class BirEmployeeResolver
 
         if (preg_match(self::TIN_PATTERN, $query, $m) && strlen(preg_replace('/\D/', '', $query)) === strlen(preg_replace('/\D/', '', $m[0]))) {
             return $this->byTin($m[0]);
+        }
+        // A lookup that is nothing but nine digits can only be a TIN without its branch code.
+        if (preg_match('/^\d{3}([- ]?)\d{3}\1\d{3}$/', $query)) {
+            return $this->byTin($query);
         }
 
         $employees = $this->employees();
@@ -169,6 +174,33 @@ class BirEmployeeResolver
             $query = trim($m[1], " .'-");
             if ($query !== '' && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
                 return $this->resolve($query) + ['query' => $query];
+            }
+        }
+
+        return $this->result(self::NOT_NAMED) + ['query' => null];
+    }
+
+    /**
+     * Whoever a capitalised first or last name in the text names ("how much was Gino paid on
+     * form #11?"), for questions about pay where the name has no "for" or "ni" before it.
+     * Only capitalised words count, so "hope" or "grace" in a sentence never pick anyone, and
+     * a full name or an employee ID is found by mentionedIn() first.
+     *
+     * @return array{status:string, employee:?Employee, candidates:array<int,array<string,mixed>>, query:?string}
+     */
+    public function capitalisedName(string $text): array
+    {
+        preg_match_all('/\b\p{Lu}[\p{L}.-]+/u', preg_replace("/['’]s\b/u", '', $text), $m);
+        $words = array_diff(array_map(fn (string $w) => $this->normalize($w), $m[0]), self::NOT_NAMES);
+        $is = fn (string $name) => count($parts = explode(' ', $this->normalize($name))) === 1 && in_array($parts[0], $words, true);
+
+        foreach ([fn (Employee $e) => $is($e->first_name), fn (Employee $e) => $is($e->last_name)] as $tier) {
+            $hits = $this->employees()->filter($tier)->values();
+            if ($hits->count() === 1) {
+                return $this->result(self::MATCHED, $hits->first()) + ['query' => null];
+            }
+            if ($hits->count() > 1) {
+                return $this->result(self::AMBIGUOUS, null, $hits) + ['query' => null];
             }
         }
 

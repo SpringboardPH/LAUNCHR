@@ -26,7 +26,7 @@ use Illuminate\Support\Collection;
 class BirFormFinder
 {
     /** Month names and short forms, English and Filipino. "may" counts only before a year. */
-    private const MONTHS = [
+    public const MONTHS = [
         'january' => 1, 'jan' => 1, 'enero' => 1, 'february' => 2, 'feb' => 2, 'pebrero' => 2,
         'march' => 3, 'marso' => 3, 'april' => 4, 'apr' => 4, 'abril' => 4, 'may' => 5, 'mayo' => 5,
         'june' => 6, 'jun' => 6, 'hunyo' => 6, 'july' => 7, 'jul' => 7, 'hulyo' => 7,
@@ -194,6 +194,11 @@ class BirFormFinder
         if ($ref['latest']) {
             $highest = $forms->groupBy(fn (BirFormDraft $d) => "{$d->period}|{$d->employee_id}")->map(fn (Collection $g) => $g->max('version'));
             $forms = $forms->filter(fn (BirFormDraft $d) => $d->version === $highest["{$d->period}|{$d->employee_id}"])->values();
+            // With no period given, "the latest 1601-C" is the newest month's (a person's newest year).
+            if ($ref['year'] === null && $ref['month'] === null && $forms->isNotEmpty()) {
+                $newest = $forms->first()->period;
+                $forms = $forms->where('period', $newest)->values();
+            }
         }
 
         return $forms;

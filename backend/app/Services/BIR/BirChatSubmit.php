@@ -25,6 +25,12 @@ class BirChatSubmit
     /** A question about submitting, or a "not yet": never a request to submit. */
     private const NOT_A_REQUEST = '/^\s*(?:how|paano|pano|what|ano|when|kailan|why|bakit|where|saan|which|who|is|are|was|were|has|have|did|does|can i|should i|do i|show|list)\b|\b(?:don\'?t|do not|not yet|hindi pa|huwag|wag|hold off|before)\b/i';
 
+    /** Approving, returning, filing or deleting: done with the buttons by accounting, never by the chat. */
+    private const WORKFLOW = '/^\s*(?:(?:please|pls|kindly|paki-?|can you|could you|would you|pwede bang?)\s*)?(?<verb>approve|aprubahan|i-?approve|reject|return|i-?return|mark|file|i-?file|finali[sz]e|delete|remove|burahin|i-?delete|cancel)\b/i';
+
+    /** Asking where a form stands: "is it submitted?", "did you submit it?", "status of form #11". */
+    private const STATUS = '/\b(?:status|estado)\b|\b(?:na-?submit|naisubmit|submitted|na-?approve|approved|na-?file|filed|naibalik|returned)\s+na\b|^\s*(?:is|was|were|has|have|did|does|nasaan)\b.*\b(?:submit\w*|approv\w*|filed?|returned|review\w*|pending|draft)\b/i';
+
     /** Being finished with the boxes, which is not a request to submit. */
     private const DONE = '/^\s*(?:done|i\'?m done|all done|tapos na?|finished|that\'?s all|ok(?:ay)? done)\s*[.!]*\s*$/i';
 
@@ -33,6 +39,70 @@ class BirChatSubmit
         private readonly BirChatLookup $lookup,
         private readonly BirDraftValidator $validator,
     ) {}
+
+    /** True when the message asks the chat to approve, return, file or delete a form. */
+    public static function asksForWorkflow(string $message): bool
+    {
+        return preg_match(self::WORKFLOW, $message) === 1 && BirAnswerParser::itemMentioned($message) === null;
+    }
+
+    /** True when the message asks where a form stands: submitted, approved, filed. */
+    public static function asksForStatus(string $message): bool
+    {
+        return preg_match(self::STATUS, $message) === 1 && BirAnswerParser::itemMentioned($message) === null;
+    }
+
+    /** "approve form #9": the chat can't; says who can, and with which button. */
+    public function workflow(string $message, ?BirFormDraft $current, BirConversationState $state): array
+    {
+        preg_match(self::WORKFLOW, $message, $m);
+        $verb = strtolower(preg_replace('/^i-?/i', '', $m['verb']));
+        $form = $this->named($message, $current, $state);
+        $lead = $form instanceof BirFormDraft ? 'Form ' . BirFormNames::name($form) . ' (' . BirFormNames::describe($form) . ') is ' . BirFormNames::statusWord($form) . '. ' : '';
+
+        $reply = match (true) {
+            in_array($verb, ['approve', 'aprubahan', 'reject', 'return'], true) => 'I can\'t approve or return forms from the chat. Accounting does that with the "Approve" and "Return to preparer" buttons above the form, once it is submitted for review.',
+            in_array($verb, ['mark', 'file', 'finalize', 'finalise'], true) => 'I can\'t mark forms as filed from the chat. Accounting does that with the "Mark as filed" button above the form, once it is approved and filed with the BIR.',
+            default => 'Forms aren\'t deleted in the BIR Form Assistant. A draft you don\'t need can be left as it is, and a filed form stays as the record of what was filed.',
+        };
+
+        return BirChatCommands::result($lead . $reply, stay: true);
+    }
+
+    /** "is it submitted?": where the form named (or the open one) stands, and what comes next. */
+    public function status(string $message, ?BirFormDraft $current, BirConversationState $state): array
+    {
+        $form = $this->named($message, $current, $state);
+        if (is_array($form)) {
+            return $form;
+        }
+        if ($form === null) {
+            return BirChatCommands::result('Which form do you mean? Give its number, for example "what is the status of form #11?"');
+        }
+
+        $name = 'Form ' . BirFormNames::name($form) . ' (' . BirFormNames::describe($form) . ')';
+        $next = match (true) {
+            $form->status === 'draft' && $form->rejection_reason !== null => " The reviewer sent it back: \"{$form->rejection_reason}\" Make the changes, then submit it again.",
+            $form->status === 'draft' => ' It hasn\'t been sent for review yet. Say "submit it for review" when it is ready.',
+            $form->status === 'pending' => ' Accounting reviews it next, and approves it or returns it.',
+            $form->status === 'approved' => ' It is approved but not filed yet. Accounting marks it as filed once it is filed with the BIR.',
+            default => ' It is the record of what was filed; a change goes in a new version.',
+        };
+
+        return BirChatCommands::result("{$name} is " . BirFormNames::statusWord($form) . ".{$next}", stay: true);
+    }
+
+    /**
+     * The form the message names, or the open one; null when neither. A reply array when the
+     * reference needs a question. "approved" or "filed" here is what is asked or wanted
+     * ("has form #9 been approved?", "mark form #8 as filed"), not which form, so it is ignored.
+     */
+    private function named(string $message, ?BirFormDraft $current, BirConversationState $state): BirFormDraft|array|null
+    {
+        $ref = ['status' => null] + $this->finder->reference(preg_replace('/\b(?:for (?:review|approval|checking)|to (?:accounting|the reviewer|review))\b/i', ' ', $message));
+
+        return BirFormFinder::specific($ref) || $ref['form_type'] !== null ? $this->lookup->target($ref, $current, $message, $state) : $current;
+    }
 
     /** True when the message asks, directly, for a form to be sent for review. */
     public static function asksToSubmit(string $message): bool

@@ -5,6 +5,7 @@ namespace App\Services\BIR;
 use App\Models\BirFormDraft;
 use App\Models\Employee;
 use App\Services\BIR\Schemas\Form1601CSchema;
+use App\Services\BIR\Schemas\Form2316Schema;
 
 /**
  * The 1601-C employee list in the chat (BirChatCommands sends questions here):
@@ -22,6 +23,9 @@ class BirChatEmployees
 {
     /** A question about the employees on a 1601-C as a whole. */
     public const LIST = '/\b(employee list|list of (?:the )?employees|(?:list|show)(?: me)?(?: all)?(?: the)? employees|employees? (?:on|in|of|for|covered)\b|(?:which|what) employees|who(?: is|\'s| are)? (?:on|in|covered)|per employee|each employee|by employee|sino(?: ang)?(?: mga)? (?:empleyado|kasama)|mga empleyado)/i';
+
+    /** A question about an amount, with or without a question mark. */
+    private const HOW_MUCH = '/\\b(?:how much|magkano|ilan)\\b/i';
 
     /** At most this many employees are listed in one reply. */
     private const LISTED = 15;
@@ -47,6 +51,7 @@ class BirChatEmployees
     public function __construct(
         private readonly BirFormFinder $finder,
         private readonly BirChatLookup $lookup,
+        private readonly BirEmployeeResolver $employees,
     ) {}
 
     /** The reply, or null when the message isn't about a 1601-C's employees. */
@@ -54,16 +59,29 @@ class BirChatEmployees
     {
         $ref = $this->finder->reference($message);
         $asksList = preg_match(self::LIST, $message) === 1;
+        $asks = BirAnswerParser::looksLikeQuestion($message) || preg_match(self::HOW_MUCH, $message) === 1;
+        // "how much was Gino paid on form #11?": a capitalised first or last name counts in a question.
+        if ($ref['person'] === BirEmployeeResolver::NOT_NAMED && $asks) {
+            $named = $this->employees->capitalisedName($message);
+            if ($named['status'] !== BirEmployeeResolver::NOT_NAMED) {
+                [$ref['person'], $ref['employee'], $ref['candidates']] = [$named['status'], $named['employee'], $named['candidates']];
+            }
+        }
         $person = $ref['person'] !== BirEmployeeResolver::NOT_NAMED;
 
-        // Which form type the message is about: said outright, the form its number names, or the open one.
+        // Which form type the message is about: said outright, the form its number names, a month
+        // (only a 1601-C has one), or the open one.
         $type = match (true) {
             (bool) preg_match('/1601/', $message) => Form1601CSchema::FORM_TYPE,
-            (bool) preg_match('/2316/', $message) => 'other',
-            $ref['number'] !== null => BirFormDraft::whereKey($ref['number'])->value('form_type') ?? 'other',
+            (bool) preg_match('/2316/', $message) => Form2316Schema::FORM_TYPE,
+            $ref['number'] !== null => BirFormDraft::whereKey($ref['number'])->value('form_type'),
+            $ref['month'] !== null => Form1601CSchema::FORM_TYPE,
             default => $current?->form_type,
         };
-        if ($type !== Form1601CSchema::FORM_TYPE || !($asksList || ($person && BirAnswerParser::looksLikeQuestion($message)))) {
+        if ($asksList && $type !== Form1601CSchema::FORM_TYPE) {
+            return $this->notAList($type, $ref, $current);
+        }
+        if ($type !== Form1601CSchema::FORM_TYPE || !($asksList || ($person && $asks))) {
             return null;
         }
 
@@ -83,6 +101,19 @@ class BirChatEmployees
         }
 
         return $person ? $this->row($ref, $list, $on, $message, $state) : $this->everyone($list, $on);
+    }
+
+    /** An employee list asked for with no 1601-C to read it from: say which form has one. */
+    private function notAList(?string $type, array $ref, ?BirFormDraft $current): array
+    {
+        $form = $ref['number'] !== null ? BirFormDraft::with('employee')->find($ref['number']) : ($type === Form2316Schema::FORM_TYPE ? $current : null);
+        if ($type === Form2316Schema::FORM_TYPE) {
+            $which = $form !== null ? 'Form ' . BirFormNames::name($form) . ' is ' . BirFormNames::describe($form) . ', one employee\'s certificate' : 'A 2316 is one employee\'s certificate';
+
+            return BirChatCommands::result("{$which}, so it has no employee list. A 1601-C has one, for example \"who is on the September 2026 1601-C?\"", stay: true);
+        }
+
+        return BirChatCommands::result('Which 1601-C? Give its number or its month, for example "who is on form #11?" or "who is on the September 2026 1601-C?"', stay: true);
     }
 
     /** One employee's part of the form. */

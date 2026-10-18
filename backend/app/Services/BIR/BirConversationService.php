@@ -288,7 +288,9 @@ class BirConversationService
             (bool) preg_match('/(?:item|box|#)\s*\d{1,2}[a-z]?\b.*?(?:\s(?:to|ng|into)\s|\s*[:=]\s*)(.+)$/iu', $message, $m) => $m[1],
             default => null,
         };
-        $value = $value === null ? null : trim($value, " \t\"'“”‘’");
+        // Quotes are trimmed as characters (/u): trim() works byte by byte and would cut the
+        // first byte off "₱", which shares it with “ ” ‘ ’.
+        $value = $value === null ? null : preg_replace('/^[\s"\'“”‘’]+|[\s"\'“”‘’]+$/u', '', $value);
 
         return $value === '' ? null : $value;
     }
