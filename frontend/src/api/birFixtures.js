@@ -325,6 +325,14 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
   if (!['1601-C', '2316'].includes(form_type) || !period) {
     return fail(422, 'The form type and period are required.')
   }
+  // One return per period (contract §6): the latest version of an existing form answers 409.
+  const same = drafts.filter(d => d.form_type === form_type && d.period === period && (form_type === '1601-C' || d.employee_id === Number(employee_id)))
+  if (same.length) {
+    const e = decorate(same.reduce((a, b) => (b.version > a.version ? b : a)))
+    const filed = e.status === 'finalized'
+    return fail(409, `A ${form_type} for ${period}${e.employee_name ? ` (${e.employee_name})` : ''} ${filed ? 'was already filed' : 'already exists'} (form ${e.label}${filed ? '' : `, ${e.status}`}). ${filed ? 'Start a correction' : 'Open it'} instead.`,
+      { data: { existing: { id: e.id, label: e.label, status: e.status, version: e.version } } })
+  }
   let draft
   if (form_type === '1601-C') {
     draft = draft1601c(nextId++, period, 'draft', Number(period.slice(5, 7)) % 5)
@@ -435,10 +443,7 @@ const revise = async (id) => {
   return ok(revision, 'Revision created (mock)')
 }
 
-const exportDraft = async () => {
-  await delay()
-  return fail(501, 'PDF export is not available in mock mode. Set VITE_BIR_MOCK=false to download the official PDF.')
-}
+const exportDraft = async () => delay().then(() => fail(501, 'PDF export is not available in mock mode. Set VITE_BIR_MOCK=false to download the official PDF.'))
 
 // A 1601-C's employee rows (contract §6): items 14, 19, 22 and 25 shared out, so the totals add up.
 const draftEmployees = async (id) => {
