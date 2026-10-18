@@ -61,6 +61,45 @@ final class BirMessageFacts
         return array_values(array_unique($months));
     }
 
+    /**
+     * True when a word in the message is this month's name typed with a slip ("novmber", "agust",
+     * "decmber"): one in a word of 5 letters or more, two from 8. It only confirms the model's
+     * month, never finds one on its own, so a name like "Marco" is never read as March.
+     */
+    public static function spellsMonth(string $message, int $month): bool
+    {
+        $names = array_keys(array_filter(BirFormFinder::MONTHS, fn (int $m, string $name) => $m === $month && strlen($name) >= 4, ARRAY_FILTER_USE_BOTH));
+        foreach (preg_split('/[^a-z]+/', mb_strtolower($message), -1, PREG_SPLIT_NO_EMPTY) as $word) {
+            foreach ($names as $name) {
+                if (strlen($word) >= 5 && self::slips($word, $name) <= (strlen($word) >= 8 ? 2 : 1)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Typing slips between two words: letters added, dropped, changed, or two swapped ("opne"). */
+    public static function slips(string $a, string $b): int
+    {
+        $d = [];
+        for ($i = 0; $i <= strlen($a); $i++) {
+            for ($j = 0; $j <= strlen($b); $j++) {
+                $d[$i][$j] = match (true) {
+                    $i === 0 => $j,
+                    $j === 0 => $i,
+                    default => min($d[$i - 1][$j] + 1, $d[$i][$j - 1] + 1, $d[$i - 1][$j - 1] + ($a[$i - 1] === $b[$j - 1] ? 0 : 1)),
+                };
+                if ($i > 1 && $j > 1 && $a[$i - 1] === $b[$j - 2] && $a[$i - 2] === $b[$j - 1]) {
+                    $d[$i][$j] = min($d[$i][$j], $d[$i - 2][$j - 2] + 1);
+                }
+            }
+        }
+
+        return $d[strlen($a)][strlen($b)];
+    }
+
     /** True when every word of a name is in the message, allowing a typo or two in longer words. */
     public static function inMessage(string $name, string $message): bool
     {

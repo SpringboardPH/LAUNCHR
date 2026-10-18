@@ -172,7 +172,8 @@ class BirEmployeeResolver
         // "for mariaa santos": the words after "for" / "ni" / "kay", up to the next keyword.
         if (preg_match('/\b(?:for|ni|kay)\s+([\p{L}][\p{L} .\'-]*?)(?=\s*(?:[,;:?!]|\'s\b|\b(?:item|box|to|ng|for|on|in|sa|of|change|from|na)\b|\d|$))/iu', $text, $m)) {
             $query = trim($m[1], " .'-");
-            if ($query !== '' && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
+            // A lone letter is no name: the "Q" of "for Q1 2025".
+            if (mb_strlen($query) > 1 && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
                 return $this->resolve($query) + ['query' => $query];
             }
         }
@@ -306,7 +307,27 @@ class BirEmployeeResolver
 
         similar_text($needle, $candidate, $percent);
 
-        return $percent >= self::SIMILARITY_THRESHOLD;
+        return $percent >= self::SIMILARITY_THRESHOLD || $this->eachWordClose($needle, $candidate);
+    }
+
+    /**
+     * One slip in each word, word by word: "karlo mendosa" is Carlo Mendoza though the whole
+     * name is two edits off. Words under 5 letters must match exactly, so "Dina" stays not "Dana".
+     */
+    private function eachWordClose(string $needle, string $candidate): bool
+    {
+        $typed = explode(' ', $needle);
+        $name = explode(' ', $candidate);
+        if (count($typed) !== count($name)) {
+            return false;
+        }
+        foreach ($typed as $i => $word) {
+            if ($word !== $name[$i] && (strlen($word) < 5 || BirMessageFacts::slips($word, $name[$i]) > 1)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** One edit allowed per eight characters, never more than three. */

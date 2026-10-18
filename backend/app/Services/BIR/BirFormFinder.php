@@ -31,7 +31,7 @@ class BirFormFinder
         'march' => 3, 'marso' => 3, 'april' => 4, 'apr' => 4, 'abril' => 4, 'may' => 5, 'mayo' => 5,
         'june' => 6, 'jun' => 6, 'hunyo' => 6, 'july' => 7, 'jul' => 7, 'hulyo' => 7,
         'august' => 8, 'aug' => 8, 'agosto' => 8, 'september' => 9, 'sep' => 9, 'sept' => 9, 'setyembre' => 9,
-        'october' => 10, 'oct' => 10, 'oktubre' => 10, 'november' => 11, 'nov' => 11, 'nobyembre' => 11,
+        'october' => 10, 'oct' => 10, 'okt' => 10, 'oktubre' => 10, 'november' => 11, 'nov' => 11, 'nobyembre' => 11,
         'december' => 12, 'dec' => 12, 'disyembre' => 12,
     ];
 

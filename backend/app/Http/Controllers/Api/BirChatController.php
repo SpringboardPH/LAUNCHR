@@ -88,6 +88,7 @@ class BirChatController extends Controller
         }
 
         $message = $validated['message'];
+        $card = $state->takeCard(); // the request understood last, for this message only
 
         // Reading or changing a box on a saved form, "yes", "submit it for review" and "undo": PHP only.
         if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
@@ -97,6 +98,11 @@ class BirChatController extends Controller
         // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
         if (($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
             return $this->reply($state->get(), false, $this->aboutItem($message, $item, $state->get()['form_type'] ?? null));
+        }
+
+        // "no, September pala" right after a request was understood: it corrects that request.
+        if ($card !== null && $state->get() === [] && BirIntentService::corrects($message)) {
+            $state->merge($card);
         }
 
         try {
@@ -326,7 +332,7 @@ class BirChatController extends Controller
         // "around 150k" is a muddled answer whatever the label, and the parser's own message
         // says what to type instead.
         if (in_array($sorted['kind'], ['explain_meaning', 'explain_source'], true) && $box === $open
-            && !BirAnswerParser::looksLikeQuestion($message)) {
+            && !BirAnswerParser::asksForExplanation($message)) {
             return null;
         }
 

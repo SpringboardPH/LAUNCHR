@@ -23,6 +23,8 @@ use Illuminate\Support\Facades\Cache;
  * clears them: the changes made in the chat, newest last, for "undo"; an offer to start a
  * correction of a filed form, for "yes"; a command still missing a year or a person,
  * so "2026" can finish it; and the form to go back to after a change to another one.
+ * From the cloud-model tests: the request last understood, for one message, so "no,
+ * September pala" corrects it instead of starting over.
  */
 class BirConversationState
 {
@@ -74,17 +76,29 @@ class BirConversationState
         return $merged;
     }
 
-    /** Called once a request is fully understood, so the next one starts clean. */
+    /**
+     * Called once a request is fully understood, so the next one starts clean. What was
+     * understood is kept aside for one message, in case it corrects it ("no, September pala").
+     */
     public function forget(): void
     {
+        $this->get() === [] ? Cache::forget($this->key() . ':card') : $this->put('card', $this->get());
         Cache::forget($this->key());
+    }
+
+    /** The request understood last, once: the message after it may correct it. */
+    public function takeCard(): ?array
+    {
+        $card = Cache::pull($this->key() . ':card');
+
+        return is_array($card) ? $card : null;
     }
 
     /** New conversation: everything is forgotten, the changes "undo" knows about included. */
     public function reset(): void
     {
         $this->forget();
-        foreach (['undo', 'offer', 'pending', 'return'] as $part) {
+        foreach (['undo', 'offer', 'pending', 'return', 'card'] as $part) {
             Cache::forget($this->key() . ":{$part}");
         }
     }

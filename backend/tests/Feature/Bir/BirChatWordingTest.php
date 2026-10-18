@@ -284,7 +284,92 @@ class BirChatWordingTest extends TestCase
         $this->send('2316 for Maria Santos 2025')->assertJsonPath('data.reply', 'Understood: a 2316 for Maria Santos (EMP001), covering 2025.');
     }
 
+    public function test_a_misspelled_month_the_model_read_is_kept(): void
+    {
+        $intent = fn (int $month) => ['form_type' => '1601-C', 'tax_year' => 2025, 'tax_month' => $month, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null];
+
+        foreach ([['genrate the 1601c for novmber 2025', 11], ['pls gnerate 1601 c for agust 2025', 8], ['1601-c for decmber 2025', 12], ['1601-C for Okt 2025', 10]] as [$message, $month]) {
+            $this->model->willReturn($intent($month));
+            $this->send($message)->assertJsonPath('data.reply', sprintf('Understood: a 1601-C covering 2025-%02d.', $month));
+        }
+        // The slip only confirms the model's month; a month the message doesn't spell is still dropped.
+        $this->model->willReturn($intent(3));
+        $this->send('genrate the 1601c for novmber 2025')->assertJsonPath('data.reply', 'Could you tell me the month? I prepare one 1601-C at a time.');
+    }
+
+    public function test_a_correction_right_after_a_request_was_understood_builds_on_it(): void
+    {
+        $intent = fn (?string $form, ?int $year, ?int $month, ?string $who = null) => ['form_type' => $form, 'tax_year' => $year, 'tax_month' => $month, 'employee_query' => $who, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null];
+
+        $this->model->willReturn($intent('1601-C', 2026, 8));
+        $this->send('Generate the August 2026 1601-C')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-08.');
+        $this->model->willReturn($intent('1601-C', 2026, 9));
+        $this->next('no, September pala')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-09.');
+        $this->assertStringContainsString("- Form: 1601-C\n- Year: 2026\n- Month: 8", $this->model->calls()[1]['system']);
+
+        // Anything else after a request starts over, as before.
+        $this->model->willReturn($intent('2316', null, null, 'Maria Santos'));
+        $this->next('2316 for Maria Santos')->assertJsonPath('data.reply', 'Could you tell me the year?');
+    }
+
+    public function test_words_asking_what_a_box_means_get_its_meaning_without_a_question_mark(): void
+    {
+        $id = $this->draft1601C('2026-09');
+        $this->assertSame('sheets_attached', $this->chat($id, null)->json('data.question.field'));
+
+        $this->model->willReturn(['kind' => 'explain_meaning', 'field' => 'sheets_attached']);
+        $reply = $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $id, 'field' => 'sheets_attached', 'message' => 'wat dos this mean'])->json('data.reply');
+        $this->assertStringStartsWith('"Item 4, Number of Sheet/s Attached":', $reply);
+
+        // A muddled answer the model calls a question still gets the question again.
+        $this->model->willReturn(['kind' => 'explain_meaning', 'field' => 'sheets_attached']);
+        $reply = $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $id, 'field' => 'sheets_attached', 'message' => 'hmm not sure'])->json('data.reply');
+        $this->assertStringStartsNotWith('"Item 4, Number of Sheet/s Attached":', $reply);
+    }
+
+    public function test_a_request_for_a_form_not_saved_is_not_read_as_a_search(): void
+    {
+        $this->model->willReturn(['form_type' => '1601-C', 'tax_year' => 2025, 'tax_month' => 8, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]);
+        $this->send('Do the 1601-C for August 2025')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2025-08.');
+        $this->model->willReturn(['form_type' => '2316', 'tax_year' => 2026, 'tax_month' => null, 'employee_query' => 'Maria Santos', 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]);
+        $this->send('Can I get the 2316 for Maria Santos for 2026?')->assertJsonPath('data.reply', 'Understood: a 2316 for Maria Santos (EMP001), covering 2026.');
+        $this->draft1601C('2026-08');
+        $this->draft1601C('2026-09');
+        $this->model->willReturn(['form_type' => '1601-C', 'tax_year' => 2026, 'tax_month' => null, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'low', 'clarification' => null]);
+        $this->send('Do the 1601-C for Q3 2026')->assertJsonPath('data.reply', 'Could you tell me the month? I prepare one 1601-C at a time.');
+
+        // Asking for a box on a form that isn't saved still says so.
+        $this->assertStringStartsWith('There is no 1601-C for August 2025 saved.', $this->send('what is the total taxes withheld on the August 2025 1601-C?')->json('data.reply'));
+    }
+
+    public function test_more_ways_to_ask_for_a_command_are_read_without_the_model(): void
+    {
+        $id = $this->draft1601C('2026-09');
+
+        $this->send("chnage item 4 on form #{$id} to 2")->assertJsonPath('data.answer', ['field' => 'sheets_attached', 'value' => 2]);
+        $this->assertStringStartsWith("Now on form #{$id}", $this->send("opne form #{$id}")->json('data.reply'));
+        $this->assertStringStartsWith("Now on form #{$id}", $this->send('pakita ang latest na 1601-C')->json('data.reply'));
+        $this->assertStringStartsWith("The September 2026 1601-C (form #{$id}, original, a draft) covers 2 employees:", $this->send("sino ang nasa form #{$id}?")->json('data.reply'));
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_pay_asked_by_word_on_a_2316_shows_the_box_that_holds_it(): void
+    {
+        $id = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $this->maria->id])->assertCreated()->json('data.id');
+
+        // Under P250,000 a year the pay is in item 29, so item 39 (taxable basic salary) is 0.
+        $reply = $this->send("magkano ang sahod ni Maria sa form #{$id}?")->json('data.reply');
+        $this->assertStringContainsString('"Item 39, Basic Salary" is ₱0.00', $reply);
+        $this->assertStringContainsString('"Item 29, Basic Salary (including the exempt P250,000 & below) or the Statutory Minimum Wage of the MWE" is ₱', $reply);
+    }
+
     // ---- helpers
+
+    /** A message in the same conversation (no reset). */
+    private function next(string $message): TestResponse
+    {
+        return $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['message' => $message])->assertOk();
+    }
 
     private function send(string $message, bool $actions = false): TestResponse
     {

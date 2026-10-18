@@ -96,7 +96,7 @@ class BirChatCommands
             }
         }
 
-        $message = self::bareFormNumber($message);
+        $message = self::bareFormNumber(BirAnswerParser::withCommandSpelled($message)); // "chnage item 4 to 2"
         $state->setReturnTo(null); // only the message that changes another form sets it
         $item = BirAnswerParser::itemMentioned($message);
 

@@ -32,8 +32,8 @@ class BirChatLookup
     /** A question about a form's versions or how often it was amended. */
     public const VERSIONS = '/\\b(how many (?:versions|amendments|corrections|times)|ilang (?:version|amendment|beses)|(?:what|which|anong) version|(?:list|show)(?: me)?(?: all)?(?: the)? versions|version history|versions of)\\b/i';
 
-    /** Asking to open a form: "open form #11", "show the latest 1601-C", "buksan ang form #9". */
-    private const OPEN = '/^\s*(?:(?:please|pls|kindly|can you|could you)\s+)?(?:paki-?)?(?:open|show(?:\s+me)?|go\s+to|switch\s+to|bring\s+up|pull\s+up|buksan|ipakita|i-?open)\b/i';
+    /** Asking to open a form: "open form #11", "show the latest 1601-C", "buksan ang form #9", "pakita ang latest na 1601-C". */
+    private const OPEN = '/^\s*(?:(?:please|pls|kindly|can you|could you)\s+)?(?:paki-?)?(?:open|show(?:\s+me)?|go\s+to|switch\s+to|bring\s+up|pull\s+up|buksan|ipakita|pakita|i-?open)\b/i';
 
     /** Showing something about a form rather than the form: its employees, versions, PDF. */
     private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value)\b/i';
@@ -126,6 +126,12 @@ class BirChatLookup
             }
             $draft = $current;
         } else {
+            // "Do the 1601-C for August 2025", "Can I get the 2316 for Gino for 2026?": naming no
+            // box, and with no one saved form that fits, it asks for a form; the request path reads it.
+            if ($item === null && !$wantsValue && $ref['form_type'] !== null && $this->namesNoBox($ref, $message)
+                && !$this->finder->resolve($ref, $current) instanceof BirFormDraft) {
+                return null;
+            }
             $found = $this->target($ref, $current, $message, $state);
             if (!$found instanceof BirFormDraft) {
                 return $found;
@@ -234,7 +240,37 @@ class BirChatLookup
             $match = ['fields' => $this->conversation->fieldsForItem($draft->form_type, $field['item']), 'ambiguous' => false, 'words' => 1];
         }
 
-        return $match['ambiguous'] ? BirBoxMatcher::whichOne($draft->form_type, $match['fields']) : $match['fields'];
+        if ($match['ambiguous']) {
+            return BirBoxMatcher::whichOne($draft->form_type, $match['fields']);
+        }
+
+        return [...$match['fields'], ...$this->heldElsewhere($draft, $match)];
+    }
+
+    /** True when the message names no box of the form it refers to, by the boxes' words. */
+    private function namesNoBox(array $ref, string $message): bool
+    {
+        $fields = array_values(array_filter($this->conversation->fields($ref['form_type']), fn (array $f) => $f['source'] !== 'manual'));
+        $who = $ref['employee'] !== null ? [$ref['employee']->first_name, $ref['employee']->last_name] : [];
+
+        return BirBoxMatcher::match($fields, $message, array_filter([...$who, $ref['query']]))['fields'] === [];
+    }
+
+    /**
+     * The amount boxes the question's words fit as well, when the box picked is empty on this
+     * form and they aren't: "sahod" on a 2316 picks item 39, which is 0 for pay under P250,000;
+     * that pay is in item 29, so both are shown.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function heldElsewhere(BirFormDraft $draft, array $match): array
+    {
+        $amount = fn (array $f) => ($f['type'] ?? null) === 'decimal' ? (float) (($draft->fields ?? [])[$f['key']]['value'] ?? 0) : 0.0;
+        if (array_filter($match['fields'], fn (array $f) => $amount($f) != 0) !== []) {
+            return [];
+        }
+
+        return array_values(array_filter($match['tied'] ?? [], fn (array $f) => !in_array($f, $match['fields'], true) && $amount($f) != 0));
     }
 
     /** The form a reference names (BirFormFinder::resolve()), or the reply saying what is missing. */

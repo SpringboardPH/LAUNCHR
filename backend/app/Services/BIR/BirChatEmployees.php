@@ -22,7 +22,7 @@ use App\Services\BIR\Schemas\Form2316Schema;
 class BirChatEmployees
 {
     /** A question about the employees on a 1601-C as a whole. */
-    public const LIST = '/\b(employee list|list of (?:the )?employees|(?:list|show)(?: me)?(?: all)?(?: the)? employees|employees? (?:on|in|of|for|covered)\b|(?:which|what) employees|who(?: is|\'s| are)? (?:on|in|covered)|per employee|each employee|by employee|sino(?: ang)?(?: mga)? (?:empleyado|kasama)|mga empleyado)/i';
+    public const LIST = '/\b(employee list|list of (?:the )?employees|(?:list|show)(?: me)?(?: all)?(?: the)? employees|employees? (?:on|in|of|for|covered)\b|(?:which|what) employees|who(?: is|\'s| are)? (?:on|in|covered)|per employee|each employee|by employee|sino(?: ang)?(?: mga)? (?:empleyado|kasama)|(?:sino|sinu-sino|sino-sino)(?: ang| yung)?(?: mga)? nasa|mga empleyado)/i';
 
     /** A question about an amount, with or without a question mark. */
     private const HOW_MUCH = '/\\b(?:how much|magkano|ilan)\\b/i';

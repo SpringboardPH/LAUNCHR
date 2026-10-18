@@ -61,9 +61,10 @@ final class BirBoxMatcher
      * @param  array<int, array<string, mixed>>  $fields  the form's schema fields
      * @param  array<int, string>  $skip  words already spent on the form reference (the person's name)
      * words is how many words were left to name a box with: 0 means the question names no
-     * box at all ("2316 for Maria Santos 2026?"), so nothing should guess one.
+     * box at all ("2316 for Maria Santos 2026?"), so nothing should guess one. tied, when a box
+     * is named, is every box that scored as well, before the most specific label was picked.
      *
-     * @return array{fields: array<int, array<string, mixed>>, ambiguous: bool, words: int}
+     * @return array{fields: array<int, array<string, mixed>>, ambiguous: bool, words: int, tied?: array<int, array<string, mixed>>}
      */
     public static function match(array $fields, string $message, array $skip = []): array
     {
@@ -103,6 +104,7 @@ final class BirBoxMatcher
             return ['fields' => [], 'ambiguous' => false, 'words' => count($asked)];
         }
         $winners = array_values(array_filter($fields, fn (array $f, int $i) => $scores[$i] === $best, ARRAY_FILTER_USE_BOTH));
+        $tied = $winners;
         $items = fn (array $list) => count(array_unique(array_map(fn (array $f) => (string) $f['item'], $list)));
 
         // A tie between items goes to the most specific label, unless another winner has the
@@ -118,7 +120,7 @@ final class BirBoxMatcher
             }
         }
 
-        return ['fields' => $winners, 'ambiguous' => $items($winners) > 1, 'words' => count($asked)];
+        return ['fields' => $winners, 'ambiguous' => $items($winners) > 1, 'words' => count($asked), 'tied' => $tied];
     }
 
     /**

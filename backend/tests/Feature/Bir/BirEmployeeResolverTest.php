@@ -183,4 +183,15 @@ class BirEmployeeResolverTest extends TestCase
         $this->assertSame(BirEmployeeResolver::NOT_NAMED, $this->resolver->mentionedIn('by the grace of the 1601-C for September 2026')['status']);
         $this->assertSame(BirEmployeeResolver::AMBIGUOUS, $this->resolver->mentionedIn('the 2316 for juan 2026')['status']);
     }
+
+    public function test_one_slip_in_each_word_of_a_name_is_forgiven(): void
+    {
+        $this->employee('EMP300', 'Carlo', 'Mendoza');
+        $this->employee('EMP301', 'Dana', 'Lopez');
+
+        $this->assertSame('EMP300', $this->resolver->resolve('karlo mendosa')['employee']?->employee_id);
+        $this->assertSame('EMP300', $this->resolver->resolve('mendosa karlo')['employee']?->employee_id);
+        // A short word must match: Dina is someone else, not a slip for Dana.
+        $this->assertSame(BirEmployeeResolver::NOT_FOUND, $this->resolver->resolve('Dina Lopes')['status']);
+    }
 }

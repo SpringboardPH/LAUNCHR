@@ -49,11 +49,14 @@ class BirIntentService
         'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
         'july', 'jul', 'august', 'aug', 'september', 'sep', 'sept', 'october', 'oct', 'november', 'nov',
         'december', 'dec', 'enero', 'pebrero', 'marso', 'abril', 'mayo', 'hunyo', 'hulyo', 'agosto',
-        'setyembre', 'oktubre', 'nobyembre', 'disyembre',
+        'setyembre', 'okt', 'oktubre', 'nobyembre', 'disyembre',
     ];
 
     /** "last month", "this year", "ngayong taon"…: a period given relative to today. */
     private const RELATIVE_PERIOD = '/\b(this|last|next|current|previous) (year|month)\b|\b(ngayong|nakaraang|karaang|isang|susunod na) (taon|buwan)\b/i';
+
+    /** Correcting the request just understood: "no, September pala", "make it 2025", "si Gino instead". */
+    private const CORRECTION = '/^\s*(?:no|nope|hindi|ay|oops|sorry|wait|actually|make it|change it to|i mean)\b|\b(?:pala|instead)\b/i';
 
     /** Small words that can sit around a period or a form name without making it a question. */
     private const FILLER = [
@@ -304,7 +307,7 @@ class BirIntentService
         if ($year !== null && $year !== ($known['tax_year'] ?? null) && !self::mentionsYear($message)) {
             $year = null;
         }
-        if ($month !== null && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message)) {
+        if ($month !== null && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message) && !BirMessageFacts::spellsMonth($message, $month)) {
             $month = null;
         }
         $employee = is_string($raw['employee_query'] ?? null) && trim($raw['employee_query']) !== ''
@@ -355,6 +358,12 @@ class BirIntentService
                 ? trim($raw['clarification'])
                 : null,
         ];
+    }
+
+    /** True when the message corrects the request just understood rather than starting a new one. */
+    public static function corrects(string $message): bool
+    {
+        return preg_match(self::CORRECTION, $message) === 1;
     }
 
     /** A four-digit year, MM/YYYY, YYYY-MM, or a period relative to today. */

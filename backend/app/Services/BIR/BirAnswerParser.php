@@ -51,6 +51,9 @@ final class BirAnswerParser
         'palitan', 'pakipalitan', 'ibahin', 'baguhin', 'pakibago', 'gawing', 'i-update', 'iupdate',
     ];
 
+    /** Command words whose typos are fixed before the command is read (withCommandSpelled()). */
+    private const COMMAND_WORDS = ['change', 'update', 'palitan', 'pakipalitan', 'baguhin', 'open', 'buksan', 'ipakita', 'pakita'];
+
     /** Accepted date spellings. MM/DD/YYYY, not DD/MM/YYYY, because that is how BIR forms write dates. */
     private const DATE_FORMATS = ['Y-m-d', 'm/d/Y', 'F j, Y', 'F j Y', 'M j, Y', 'M j Y', 'j F Y', 'j M Y'];
 
@@ -207,6 +210,33 @@ final class BirAnswerParser
         $message = trim($message);
 
         return str_ends_with($message, '?') || in_array(strtok(mb_strtolower($message), " \t,"), self::QUESTION_WORDS, true);
+    }
+
+    /** A question, or words asking what a box means or where it came from: "wat dos this mean", "pakipaliwanag". */
+    public static function asksForExplanation(string $message): bool
+    {
+        return self::looksLikeQuestion($message)
+            || preg_match('/\b(?:mean|means|meaning|ibig sabihin|kahulugan|explain|paliwanag|ipaliwanag|pakipaliwanag|came from|come from|galing)\b/i', $message) === 1;
+    }
+
+    /**
+     * The message with a slip in its first word fixed, when that word is a command: "chnage item
+     * 4 to 2", "opne form #11", "palitn". Words of 4 letters or more, one slip only; anything
+     * else is left as typed. Submit is never guessed: sending a form for review must be asked plainly.
+     */
+    public static function withCommandSpelled(string $message): string
+    {
+        $first = strtok(mb_strtolower(trim($message)), " \t,:");
+        if ($first === false || strlen($first) < 4 || in_array($first, self::COMMAND_WORDS, true)) {
+            return $message;
+        }
+        foreach (self::COMMAND_WORDS as $word) {
+            if (BirMessageFacts::slips($first, $word) === 1) {
+                return preg_replace('/^\s*\S+/u', $word, $message, 1);
+            }
+        }
+
+        return $message;
     }
 
     /**
