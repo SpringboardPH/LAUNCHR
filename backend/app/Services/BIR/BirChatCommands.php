@@ -17,7 +17,11 @@ use App\Models\User;
  *   form #12 to …"). Details alone ("Maria Santos's 2316 for 2026") don't pick a form to
  *   change, since two forms can share them: the forms that fit are listed by number, and a
  *   reply with the number makes the change. Applied at once; "undo" puts it back
- *   (BirChatUndo).
+ *   (BirChatUndo). One box per message: the reply to a change is one answer for the caller
+ *   to save, so "change item 4 to 2 and item 26 to 100" changes nothing and says so. After a
+ *   change to another form, the chat goes back to the open one (backFromDetour()).
+ * - Open a form by its number or details: "open form #11", "show the latest 1601-C"
+ *   (BirChatLookup::open()). "#11 item 25": with the box named, a bare "#11" is the form.
  * - Forms are told apart by their number and details (BirFormFinder): status ("filed",
  *   "pending", "draft"), version ("version 2", "amendment 1") as well as period and person.
  *   When several fit, the chat lists them and asks; it never picks one.
@@ -92,6 +96,8 @@ class BirChatCommands
             }
         }
 
+        $message = self::bareFormNumber($message);
+        $state->setReturnTo(null); // only the message that changes another form sets it
         $item = BirAnswerParser::itemMentioned($message);
 
         $result = match (true) {
@@ -100,8 +106,10 @@ class BirChatCommands
             BirExplanationService::asksForTaxAdvice($message) => self::result(BirExplanationService::DECLINE, stay: true),
             BirChatSubmit::asksForWorkflow($message) => $this->submit->workflow($message, $current, $state),
             BirChatSubmit::asksForStatus($message) => $this->submit->status($message, $current, $state),
+            BirChatSubmit::asksToSchedule($message) => $this->submit->later($message, $current, $state),
             BirChatSubmit::asksToSubmit($message) => $this->submit->submit($message, $current, $state, $canAct),
             (bool) preg_match(BirChatLookup::VERSIONS, $message) => $this->lookup->versions($message, $current, $state),
+            BirChatLookup::asksToOpen($message) && ($opened = $this->lookup->open($message, $current, $state)) !== null => $opened,
             default => $this->submit->done($message, $current)
                 ?? $this->employees->answer($message, $current, $state)
                 ?? $this->lookup->lookup($message, $item, $current, $state),
@@ -112,8 +120,47 @@ class BirChatCommands
         if ($result !== null && $state->pending() !== null) {
             $result['stay'] = false;
         }
+        // A change saved on another form: once it is, the chat goes back to this one.
+        if ($result !== null && $result['answer'] !== null && $current !== null && $result['draft']?->id !== $current->id) {
+            $state->setReturnTo($current->id, $result['draft']->id);
+        }
 
         return $result;
+    }
+
+    /**
+     * Just after a change to another form was saved: back to the form that was open before,
+     * so "submit it for review" next means that form again. Null when there is none to go back to.
+     */
+    public function backFromDetour(BirFormDraft $saved, BirConversationState $state): ?array
+    {
+        $return = $state->returnTo();
+        if ($return === null || $return['from'] !== $saved->id) {
+            return null;
+        }
+        $state->setReturnTo(null);
+        $back = BirFormDraft::with('employee')->find($return['to']);
+
+        return $back === null ? null : self::result('Back to form ' . BirFormNames::name($back) . ' (' . BirFormNames::describe($back) . ').', $back, stay: true);
+    }
+
+    /**
+     * "#11 item 25": when the box is named by "item" or "box", a bare "#11" is the form's
+     * number, if it comes first, right after the box, or after a word like "on" or "of".
+     * One inside a value ("change item 6 to Unit #12, …") is left alone.
+     */
+    private static function bareFormNumber(string $message): string
+    {
+        if (!preg_match('/\b(?:item|box)\s*\d/i', $message)) {
+            return $message;
+        }
+
+        return preg_replace_callback('/(?<![\w#])#\s*(\d{1,6}(?:v\d{1,2})?)\b/i', function (array $m) use ($message) {
+            $before = mb_strtolower(rtrim(substr($message, 0, $m[0][1])));
+            $form = $before === '' || preg_match('/(?:^|\s)(?:on|of|in|sa|ng|from|for|at|' . implode('|', self::COMMAND_WORDS) . ')$|\b(?:item|box)\s*\d{1,2}[a-z]?$/u', $before);
+
+            return $form ? "form #{$m[1][0]}" : $m[0][0];
+        }, $message, -1, $count, PREG_OFFSET_CAPTURE);
     }
 
     /**
@@ -148,6 +195,20 @@ class BirChatCommands
      */
     private function change(string $message, ?BirFormDraft $current, BirConversationState $state, User $user, bool $canAct): array
     {
+        // One box per message: two changes would be two answers to save, and an "and" can also
+        // be part of a value ("Unit 4 and 5"), so only a second item number counts ("box 12"
+        // only before the value: "P.O. Box 123" is an address).
+        $text = BirFormFinder::withoutFormNumber($message);
+        $value = BirConversationService::newValue($text);
+        $head = $value !== null && ($at = mb_strrpos($text, $value)) !== false ? mb_substr($text, 0, $at) : $text;
+        preg_match_all('/\bitem\s*(\d{1,2}[a-z]?)\b/i', $text, $named);
+        preg_match_all('/\bbox\s*(\d{1,2}[a-z]?)\b/i', $head, $boxes);
+        $items = array_map('strtoupper', [...$named[1], ...$boxes[1]]);
+        if (count($items) > 1) {
+            return self::result('I can change one box per message, so nothing was changed. Send them one at a time, for example "change item '
+                . $items[0] . ' to …", then "change item ' . $items[1] . ' to …".', null, null, stay: true);
+        }
+
         // The form is read off the words around the new value, never the value itself: a TIN
         // or a year typed as the new value must not pick the form.
         $value = BirConversationService::newValue($message);

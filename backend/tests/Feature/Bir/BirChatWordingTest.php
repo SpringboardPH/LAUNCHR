@@ -19,7 +19,9 @@ use Tests\TestCase;
  * Findings from stress-testing the chat with everyday wording: "₱" amounts, a first name on
  * its own, asking the chat to approve or file, asking where a form stands, "the latest",
  * a TIN followed by a year, an employee list with no 1601-C, and a model that makes up a
- * name or a year.
+ * name or a year. Then: a submit for later, undo across conversations, going back after a
+ * change to another form, one box per change, the same value again, more ways to name or
+ * open a form, an item's figure on the open form, and the model failing.
  */
 class BirChatWordingTest extends TestCase
 {
@@ -51,9 +53,10 @@ class BirChatWordingTest extends TestCase
     {
         $id = $this->draft1601C('2026-09');
 
-        foreach (['₱2,600.00', '₱ 2600', 'PHP 2,600.00', 'P2600', '2,600.00'] as $amount) {
+        // Item 25 holds 2,600.00 from payroll, so each is a different amount.
+        foreach (['₱2,650.00', '₱ 2650', 'PHP 2,650.00', 'P2650', '2,650.00'] as $amount) {
             $this->send("change item 25 on form #{$id} to {$amount}")
-                ->assertJsonPath('data.answer', ['field' => 'total_taxes_withheld', 'value' => '2600.00']);
+                ->assertJsonPath('data.answer', ['field' => 'total_taxes_withheld', 'value' => '2650.00']);
         }
     }
 
@@ -165,16 +168,132 @@ class BirChatWordingTest extends TestCase
         $this->send('2316 for mariaa santos 2025')->assertJsonPath('data.reply', 'Understood: a 2316 for Maria Santos (EMP001), covering 2025.');
     }
 
-    // ---- helpers
-
-    private function send(string $message): TestResponse
+    public function test_a_submit_for_later_is_not_scheduled(): void
     {
-        return $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['message' => $message, 'reset' => true])->assertOk();
+        $id = $this->draft1601C('2026-09');
+        $later = "I can't schedule a submission for later. I only send a form for review when you ask me to at that moment, for example \"submit form #{$id} for review\", or you can click \"Submit for review\" above the form when it is ready. Until then, form #{$id} stays a draft.";
+
+        $this->send("submit form #{$id} later", actions: true)->assertJsonPath('data.action', null)->assertJsonPath('data.reply', $later);
+        foreach (['submit it tomorrow', 'i-submit mo bukas', 'can you submit it on Friday?', 'send it to accounting at 5pm', 'submit it when payroll is done'] as $message) {
+            $this->assertStringStartsWith("I can't schedule a submission for later.", $this->chat($id, $message, actions: true)->assertJsonPath('data.action', null)->json('data.reply'), $message);
+        }
+        $this->assertStringNotContainsString('schedule', $this->chat($id, 'how do I submit when it has errors?')->json('data.reply'));
+        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
+
+        // Asked for now, it goes to the submit (here refused: the test form has boxes still to fill).
+        $this->assertStringStartsWith("Form #{$id} (the September 2026 1601-C) can't be sent for review yet", $this->send("pakisend sa accounting ang form #{$id}", actions: true)->json('data.reply'));
     }
 
-    private function chat(int $id, string $message): TestResponse
+    public function test_a_new_conversation_on_a_form_forgets_the_old_changes(): void
     {
-        return $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $id, 'message' => $message])->assertOk();
+        $aug = $this->draft1601C('2026-08');
+        $sep = $this->draft1601C('2026-09');
+        $this->chat($aug, 'change item 4 to 2')->assertJsonPath('data.answer', ['field' => 'sheets_attached', 'value' => 2]);
+
+        // "New conversation", then a form opened: undo has nothing from before.
+        $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $sep, 'reset' => true])->assertOk();
+        $this->chat($sep, 'undo')->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, 'There is nothing to undo.'));
+    }
+
+    public function test_after_a_change_to_another_form_the_chat_goes_back(): void
+    {
+        $aug = $this->draft1601C('2026-08');
+        $sep = $this->draft1601C('2026-09');
+
+        $answer = $this->chat($aug, "change item 4 on form #{$sep} to 2")->assertJsonPath('data.draft_id', $sep)->json('data.answer');
+        $this->actingAs($this->accounting)->putJson("/api/bir/drafts/{$sep}", ['fields' => [$answer['field'] => $answer['value']]])->assertOk();
+        $this->chat($sep, null)->assertJsonPath('data.draft_id', $aug)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "Back to form #{$aug} (the August 2026 1601-C)."));
+        $this->assertStringStartsWith("Form #{$aug} (the August 2026 1601-C) can't be sent for review yet", $this->chat($aug, 'submit it for review', actions: true)->json('data.reply'));
+
+        // Only once, and only right after: the next turn on that form stays there.
+        $this->chat($sep, null)->assertJsonPath('data.draft_id', $sep);
+    }
+
+    public function test_one_box_per_change_and_the_same_value_changes_nothing(): void
+    {
+        $id = $this->draft1601C('2026-09');
+
+        $this->chat($id, 'change item 4 to 2 and item 26 to 100')->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, 'I can change one box per message, so nothing was changed. Send them one at a time, for example "change item 4 to …", then "change item 26 to …".'));
+        $this->chat($id, 'change item 25 to 2,600.00')->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, '"Item 25, Total Taxes Withheld" is already ₱2,600.00. Nothing was changed.'));
+        $this->chat($id, 'undo')->assertJsonPath('data.answer', null);
+    }
+
+    public function test_more_ways_to_name_a_form_and_open_it(): void
+    {
+        $aug = $this->draft1601C('2026-08');
+        $sep = $this->draft1601C('2026-09');
+
+        $this->assertSame("On the September 2026 1601-C (form #{$sep}, original, a draft), \"Item 25, Total Taxes Withheld\" is ₱2,600.00.", $this->send("#{$sep} item 25")->json('data.reply'));
+        $this->send("palitan ang item 4 ng form #{$sep} ng 3")->assertJsonPath('data.draft_id', $sep)->assertJsonPath('data.answer', ['field' => 'sheets_attached', 'value' => 3]);
+
+        $this->send("open form #{$aug}")->assertJsonPath('data.draft_id', $aug)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "Now on form #{$aug} (the August 2026 1601-C, a draft). Ask about any box"));
+        $this->chat($aug, 'show the latest 1601-C')->assertJsonPath('data.draft_id', $sep);
+        $this->send('show me the employees on form #' . $sep)->assertJsonPath('data.reply', fn (string $r) => str_contains($r, 'covers 2 employees'));
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_values_and_questions_that_only_look_like_the_new_commands(): void
+    {
+        $sep = $this->draft1601C('2026-09');
+        $w2 = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $this->maria->id])->assertCreated()->json('data.id');
+
+        // A "#" or a "P.O. Box" inside the new value is part of the value.
+        $this->send("change item 6 on form #{$w2} to Unit #12 Mabini St., Brgy. San Roque, Quezon City")->assertJsonPath('data.draft_id', $w2)
+            ->assertJsonPath('data.answer.field', 'employee_registered_address');
+        $this->send("change item 6 on form #{$w2} to P.O. Box 123, Brgy. San Roque, Quezon City")->assertJsonPath('data.draft_id', $w2)
+            ->assertJsonPath('data.answer.field', 'employee_registered_address');
+
+        // "this month's" and "next month's" name a form, not a time to submit.
+        foreach (["submit this month's 1601-C", "submit next month's 1601-C"] as $message) {
+            $this->assertStringNotContainsString('schedule', $this->send($message, actions: true)->json('data.reply'), $message);
+        }
+        $this->assertStringStartsWith("I can't schedule", $this->chat($sep, 'submit it next month', actions: true)->json('data.reply'));
+
+        // "show me how much…" is a question about an employee, not a request to open the form.
+        $this->send("show me how much Maria was paid on form #{$sep}")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "Maria Santos's part of the September 2026 1601-C"));
+    }
+
+    public function test_what_is_an_item_on_the_open_form_gives_its_figure_and_meaning(): void
+    {
+        $id = $this->draft1601C('2026-09');
+
+        $this->chat($id, 'what is item 25?')->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "On the September 2026 1601-C (form #{$id}, original, a draft), \"Item 25, Total Taxes Withheld\" is ₱2,600.00.\n\n\"Item 25, Total Taxes Withheld\": "));
+        $this->assertStringNotContainsString('₱', $this->chat($id, 'what does item 25 mean?')->json('data.reply'));
+    }
+
+    public function test_with_the_model_failing_a_request_that_names_its_form_is_understood(): void
+    {
+        $this->model->willFail();
+        $this->send('Generate the September 2026 1601-C')->assertJsonPath('data.understood', true)
+            ->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-09. Please check this is right before creating the draft.');
+        $this->model->willFail();
+        $this->send('2316 for Maria Santos 2025')->assertJsonPath('data.understood', true)
+            ->assertJsonPath('data.reply', 'Understood: a 2316 for Maria Santos (EMP001), covering 2025. Please check this is right before creating the draft.');
+        $this->model->willFail();
+        $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['message' => 'hello', 'reset' => true])->assertStatus(503);
+    }
+
+    public function test_a_name_the_model_missed_is_read_from_the_message(): void
+    {
+        $this->model->willReturn(['form_type' => '2316', 'tax_year' => 2025, 'tax_month' => null, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]);
+        $this->send('2316 for Maria Santos 2025')->assertJsonPath('data.reply', 'Understood: a 2316 for Maria Santos (EMP001), covering 2025.');
+    }
+
+    // ---- helpers
+
+    private function send(string $message, bool $actions = false): TestResponse
+    {
+        return $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['message' => $message, 'reset' => true, 'actions' => $actions])->assertOk();
+    }
+
+    private function chat(int $id, ?string $message, bool $actions = false): TestResponse
+    {
+        return $this->actingAs($this->accounting)->postJson('/api/bir/chat', array_filter(['draft_id' => $id, 'message' => $message, 'actions' => $actions], fn ($v) => $v !== null))->assertOk();
     }
 
     private function draft1601C(string $period): int

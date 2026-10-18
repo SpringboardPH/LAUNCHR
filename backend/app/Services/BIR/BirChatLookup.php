@@ -14,6 +14,8 @@ use App\Models\BirFormDraft;
  * - "how many versions does form #64 have?", "what version is form #72?", "how many times
  *   was the March 2026 1601-C amended?": every version of the form, with its label, what
  *   it is (original, amendment or version) and its status, and how many amendments are left.
+ * - "what is item 21?" with a form open: what the box holds on it, then what it means.
+ * - "open form #11", "show the latest 1601-C": the chat moves to that form (open()).
  *
  * Nothing here changes a form. Replies use BirChatCommands::result().
  */
@@ -29,6 +31,12 @@ class BirChatLookup
 
     /** A question about a form's versions or how often it was amended. */
     public const VERSIONS = '/\\b(how many (?:versions|amendments|corrections|times)|ilang (?:version|amendment|beses)|(?:what|which|anong) version|(?:list|show)(?: me)?(?: all)?(?: the)? versions|version history|versions of)\\b/i';
+
+    /** Asking to open a form: "open form #11", "show the latest 1601-C", "buksan ang form #9". */
+    private const OPEN = '/^\s*(?:(?:please|pls|kindly|can you|could you)\s+)?(?:paki-?)?(?:open|show(?:\s+me)?|go\s+to|switch\s+to|bring\s+up|pull\s+up|buksan|ipakita|i-?open)\b/i';
+
+    /** Showing something about a form rather than the form: its employees, versions, PDF. */
+    private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value)\b/i';
 
     public function __construct(
         private readonly BirFormFinder $finder,
@@ -105,8 +113,12 @@ class BirChatLookup
             return null;
         }
 
+        // "what is item 21?" with a form open: its figure there, then what the box means.
+        $withMeaning = $item !== null && $current !== null && !$wantsValue && !preg_match(self::NOT_A_LOOKUP, $message)
+            && !preg_match(self::SOURCE_WORDS, $message) && preg_match('/^\s*(?:what\'?s|what is|ano ang|ano yung|anong)\b/i', $message);
+
         if (!BirFormFinder::specific($ref)) {
-            if (!$wantsValue || ($ref['form_type'] !== null && $current !== null && $ref['form_type'] !== $current->form_type)) {
+            if (!($wantsValue || $withMeaning) || ($ref['form_type'] !== null && $current !== null && $ref['form_type'] !== $current->form_type)) {
                 return null;
             }
             if ($current === null) {
@@ -119,6 +131,7 @@ class BirChatLookup
                 return $found;
             }
             $draft = $found;
+            $withMeaning = false; // a form named in the question: only what it holds
         }
 
         if ($item === null) {
@@ -158,7 +171,35 @@ class BirChatLookup
             }
         }
 
+        if ($withMeaning && ($meaning = $this->explanations->meaningOfItem($draft->form_type, $item)) !== null) {
+            $reply .= "\n\n{$meaning}";
+        }
+
         return BirChatCommands::result($reply, null, null, stay: true);
+    }
+
+    /** True when the message asks to open a form, by its number or its details. */
+    public static function asksToOpen(string $message): bool
+    {
+        return preg_match(self::OPEN, $message) === 1 && !preg_match(self::NOT_OPEN, $message)
+            && BirAnswerParser::itemMentioned($message) === null;
+    }
+
+    /** "open form #11": the chat moves to it. Null when the message names no form ("show me how"). */
+    public function open(string $message, ?BirFormDraft $current, BirConversationState $state): ?array
+    {
+        $ref = $this->finder->reference($message);
+        if (!BirFormFinder::specific($ref) && $ref['form_type'] === null) {
+            return null;
+        }
+        // Read without the open form: "the latest 1601-C" is the newest one, not the open one's latest version.
+        $found = $this->target($ref, null, $message, $state);
+        if (!$found instanceof BirFormDraft) {
+            return $found;
+        }
+
+        return BirChatCommands::result('Now on form ' . BirFormNames::name($found) . ' (' . BirFormNames::describe($found) . ', ' . BirFormNames::statusWord($found)
+            . '). Ask about any box, or say "change item 12 to …".', $found, stay: true);
     }
 
     /**

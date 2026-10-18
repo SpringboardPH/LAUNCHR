@@ -83,6 +83,17 @@ class BirIntentService
     }
 
     /**
+     * What the message alone says, for when the model fails: the form and period it names,
+     * checked as the model's answer would be. Null unless it names exactly one form.
+     *
+     * @param  array<string,mixed>  $known
+     */
+    public function fromMessage(string $message, array $known = []): ?array
+    {
+        return count(BirMessageFacts::formsSaid($message)) === 1 ? $this->validate([], $message, $known) : null;
+    }
+
+    /**
      * Sorts a message typed while a draft is being filled in, that wasn't a readable
      * answer: a muddled answer, a question about a box, a tax question, or a new request.
      * The model also names the box, but only from $boxes; anything else becomes null.

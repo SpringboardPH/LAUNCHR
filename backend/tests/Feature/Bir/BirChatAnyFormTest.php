@@ -309,10 +309,10 @@ class BirChatAnyFormTest extends TestCase
             ->assertJsonPath('data.reply', "Form #{$id} (Maria Santos' 2316 for 2026) is filed, so it can't be changed. Its version 2, form #{$id}v2 (#{$v2}), a draft, is still open. Reply \"form #{$id}v2\" to make the change there.");
         $this->send("#{$v2}")->assertJsonPath('data.draft_id', $v2)->assertJsonPath('data.answer.value', '049');
 
-        // "no" to an offer changes nothing.
+        // "no" to an offer changes nothing. (The address it already has would change nothing either.)
         $this->save($v2, ['employee_rdo_code' => '049']);
         BirFormDraft::whereKey($v2)->update(['status' => 'finalized']);
-        $this->send("change item 6 on form #{$v2} to " . self::ADDRESS, actions: true);
+        $this->send("change item 6 on form #{$v2} to 14 Mabini St., Brgy. San Roque, Quezon City", actions: true);
         $this->send('no', actions: true)->assertJsonPath('data.reply', 'Okay, nothing was changed.')->assertJsonPath('data.action', null);
 
         $this->assertSame([], $this->model->calls());

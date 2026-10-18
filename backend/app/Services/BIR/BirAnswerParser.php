@@ -212,10 +212,11 @@ final class BirAnswerParser
     /**
      * Free text is taken as written, unless it reads as a question about the box, a request
      * to change a box, or names another box ("item 12 should be …"). Those are never saved.
+     * "P.O. Box 12" in an address is an address, not box 12.
      */
     private static function text(string $answer): array
     {
-        if (self::looksLikeChange($answer) || preg_match('/\b(item|box)\s*\d/i', $answer)) {
+        if (self::looksLikeChange($answer) || preg_match('/\bitem\s*\d|(?<!p\.o\.\s)(?<!p\.o\.)(?<!po\s)\bbox\s*\d/i', $answer)) {
             return self::problem('That looks like a request about another box rather than the answer. To change a box, say "change item 12 to …"; otherwise type the answer itself.');
         }
         if (self::looksLikeQuestion($answer)) {

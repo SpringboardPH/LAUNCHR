@@ -18,11 +18,11 @@ use Illuminate\Support\Facades\Cache;
  * outlives a single sitting — a half-finished 2316 should still be there on
  * Monday.
  *
- * Supervisor's changes: three more things are remembered, each under its own key so that
+ * Supervisor's changes: four more things are remembered, each under its own key so that
  * forget() (a request understood) leaves them alone and only reset() (New conversation)
  * clears them: the changes made in the chat, newest last, for "undo"; an offer to start a
- * correction of a filed form, for "yes"; and a command still missing a year or a person,
- * so "2026" can finish it.
+ * correction of a filed form, for "yes"; a command still missing a year or a person,
+ * so "2026" can finish it; and the form to go back to after a change to another one.
  */
 class BirConversationState
 {
@@ -84,7 +84,7 @@ class BirConversationState
     public function reset(): void
     {
         $this->forget();
-        foreach (['undo', 'offer', 'pending'] as $part) {
+        foreach (['undo', 'offer', 'pending', 'return'] as $part) {
             Cache::forget($this->key() . ":{$part}");
         }
     }
@@ -126,6 +126,23 @@ class BirConversationState
     public function offer(): ?array
     {
         return Cache::get($this->key() . ':offer');
+    }
+
+    /**
+     * The form the chat was on ($to) before a change to another form ($from), to go back to
+     * once that change is saved ("change item 4 on form #11 to 1" while #17 is open). null clears it.
+     */
+    public function setReturnTo(?int $to, ?int $from = null): void
+    {
+        $to === null ? Cache::forget($this->key() . ':return') : $this->put('return', ['to' => $to, 'from' => $from]);
+    }
+
+    /** @return ?array{to: int, from: ?int} */
+    public function returnTo(): ?array
+    {
+        $back = Cache::get($this->key() . ':return');
+
+        return is_array($back) ? $back : null;
     }
 
     /**

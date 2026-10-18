@@ -49,6 +49,11 @@ use RuntimeException;
  * the employee for a 2316. A caller that can run the workflow's revise and submit for the
  * chat sends actions: true; without it, the chat only points to the buttons.
  *
+ * From the stress tests: "New conversation" (reset) clears what the chat remembers on a
+ * draft turn too, so "undo" never reaches into an earlier chat; after a change to another
+ * form the chat goes back to the open one; "open form #11" moves the chat there; and with
+ * the model failing, a message that names its form and period is still understood.
+ *
  * Each step is a service call — nothing is computed here.
  */
 class BirChatController extends Controller
@@ -74,12 +79,12 @@ class BirChatController extends Controller
         $state = new BirConversationState($request->user()->id);
         $canAct = (bool) ($validated['actions'] ?? false);
 
-        if (isset($validated['draft_id'])) {
-            return $this->draftTurn((int) $validated['draft_id'], $validated['field'] ?? null, $validated['message'] ?? null, $state, $request, $canAct);
-        }
-
         if ($validated['reset'] ?? false) {
             $state->reset();
+        }
+
+        if (isset($validated['draft_id'])) {
+            return $this->draftTurn((int) $validated['draft_id'], $validated['field'] ?? null, $validated['message'] ?? null, $state, $request, $canAct);
         }
 
         $message = $validated['message'];
@@ -97,11 +102,15 @@ class BirChatController extends Controller
         try {
             $parsed = $this->intent->parse($message, $state->get());
         } catch (RuntimeException $e) {
-            // The assistant being down must never take the feature down with it.
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage() . ' You can still pick a form and period manually.',
-            ], 503);
+            // The assistant being down must never take the feature down with it: a message
+            // that names its form is read in PHP alone; anything else says to pick manually.
+            $parsed = $this->intent->fromMessage($message, $state->get());
+            if ($parsed === null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage() . ' You can still pick a form and period manually.',
+                ], 503);
+            }
         }
 
         // A TIN names the employee whatever the model made of it: "2316 for 920-919-920-00001 2024".
@@ -109,6 +118,14 @@ class BirChatController extends Controller
             $parsed['employee_query'] = $tin[0];
             if (str_contains($message, '2316')) {
                 $parsed['kind'] = 'form_request';
+            }
+        }
+
+        // A person the message names, when the model gave none: "2316 for Andres Villanueva 2025".
+        if ($parsed['employee_query'] === null && ($parsed['form_type'] ?? $state->get()['form_type'] ?? null) === Form2316Schema::FORM_TYPE) {
+            $person = $this->employees->mentionedIn($message);
+            if ($person['status'] === BirEmployeeResolver::MATCHED) {
+                $parsed['employee_query'] = $person['employee']->employee_id;
             }
         }
 
@@ -233,6 +250,10 @@ class BirChatController extends Controller
         if ($message === null && ($resumed = $this->commands->resume($draft, $state)) !== null) {
             return $this->commandReply($resumed, $draft, $request->user());
         }
+        // Just after a change to another form was saved: back to the form that was open.
+        if ($message === null && ($back = $this->commands->backFromDetour($draft, $state)) !== null) {
+            return $this->commandReply($back, $draft, $request->user());
+        }
 
         // "What is item 12?" / "where did item 25A come from?": the item number picks the box.
         if ($message !== null && ($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
@@ -266,6 +287,12 @@ class BirChatController extends Controller
     {
         if ($command['draft'] !== null && $command['answer'] !== null) {
             return $this->draftReply($command['draft'], ['question' => null, 'answer' => $command['answer']], (string) $command['reply']);
+        }
+        // "open form #11", or back to the open form after a change to another: the chat moves there.
+        if ($command['draft'] !== null && $command['draft']->id !== $current?->id) {
+            $open = self::editableBy($command['draft'], $user) ? $this->conversation->turn($command['draft'], null, null)['question'] : null;
+
+            return $this->draftReply($command['draft'], ['question' => $open, 'answer' => null], self::thenAsk((string) $command['reply'], $open));
         }
         if ($current === null) {
             return $this->reply([], false, $command['reply'], $command['candidates'], $command['action']);

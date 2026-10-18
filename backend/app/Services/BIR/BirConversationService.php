@@ -204,6 +204,10 @@ class BirConversationService
         $entry = ($draft->fields ?? [])[$field['key']] ?? [];
         $had = ($entry['origin'] ?? 'pending') !== 'pending' && ($entry['value'] ?? null) !== null && ($entry['value'] ?? '') !== '';
         $shown = self::display($parsed['value'], $field['type']);
+        // The same value again changes nothing, and isn't remembered for "undo" either.
+        if ($had && self::display($entry['value'], $field['type']) === $shown) {
+            return ['answer' => null, 'reply' => "{$name} is already {$shown}. Nothing was changed."];
+        }
         $reply = $had
             ? "Changed {$name} from " . self::display($entry['value'], $field['type']) . " to {$shown}."
             : self::sentence("Changed {$name} to {$shown}");
@@ -280,7 +284,11 @@ class BirConversationService
         return end($pieces);
     }
 
-    /** The new value: after "to", "ng", ":" or "=", or between "gawing" and "ang item". Null if none. */
+    /**
+     * The new value: after "to", "ng", ":" or "=", or between "gawing" and "ang item". Null if
+     * none. "palitan ang item 4 ng form #11 ng 3": a form named right after the first "ng" is
+     * the form, and the value comes after it.
+     */
     public static function newValue(string $message): ?string
     {
         $value = match (true) {
@@ -288,6 +296,9 @@ class BirConversationService
             (bool) preg_match('/(?:item|box|#)\s*\d{1,2}[a-z]?\b.*?(?:\s(?:to|ng|into)\s|\s*[:=]\s*)(.+)$/iu', $message, $m) => $m[1],
             default => null,
         };
+        if ($value !== null && preg_match('/^(?:(?:the\s+)?(?:form|draft)\s*(?:no\.?\s*)?#?\s*|#\s*)\d{1,6}(?:v\d{1,2})?\s+(?:to|ng|into|sa)\s+(.+)$/iu', $value, $m)) {
+            $value = $m[1];
+        }
         // Quotes are trimmed as characters (/u): trim() works byte by byte and would cut the
         // first byte off "₱", which shares it with “ ” ‘ ’.
         $value = $value === null ? null : preg_replace('/^[\s"\'“”‘’]+|[\s"\'“”‘’]+$/u', '', $value);

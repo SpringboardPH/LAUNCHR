@@ -10,6 +10,8 @@ use App\Models\BirFormDraft;
  * to accounting for approval", "pakisubmit", "i-submit mo na", "submit form #11". Anything
  * else leaves the form a draft. "done" and "tapos na" don't submit: they only get a reply
  * saying the form stays a draft and how to submit, so they are never saved as an answer.
+ * A submit for later ("submit it tomorrow", "i-submit mamaya") isn't kept for later either:
+ * the chat can't schedule one, so it says so and the form stays as it is (supervisor's rule).
  *
  * The submit itself is the workflow's (POST /bir/drafts/{id}/submit), run by the caller from
  * the action this returns, so its checks and roles apply. Replies use BirChatCommands::result().
@@ -20,7 +22,13 @@ class BirChatSubmit
     private const SUBMIT = '/\b(?:re-?|paki-?|pa-?|i-?)?submit(?!ted|ssion)/i';
 
     /** Sending it on, when the message also says where: for review or approval, or to accounting. */
-    private const SEND = '/\b(?:send|forward|pass|turn in|ipasa|pakipasa|ipadala|pakipadala|i-?forward)\b.*\b(?:for (?:review|approval|checking)|to (?:accounting|the reviewer|review)|i-?review|ma-?review|aprubahan|approval)\b/i';
+    private const SEND = '/\b(?:send|paki-?send|i-?send|forward|pass|turn in|ipasa|pakipasa|ipadala|pakipadala|i-?forward)\b.*\b(?:for (?:review|approval|checking)|to (?:accounting|the reviewer|review)|sa (?:accounting|reviewer)|i-?review|ma-?review|aprubahan|approval)\b/i';
+
+    /** A time to submit at: "later", "tomorrow", "on Friday", "at 5pm", "mamaya", "bukas". */
+    private const LATER = '/\b(?:later|tomorrow|tonight|mamaya|mamayang|bukas|sa (?:susunod|lunes|martes|miyerkules|huwebes|biyernes|sabado|linggo)|next (?:week|day|time|month(?![\'’]s| 1601| 2316)|' . self::DAYS . ')|this (?:morning|afternoon|evening|weekend)|(?:on|by|this|before|until|after) (?:' . self::DAYS . ')|(?:at|by|before|until|after) \d{1,2}(?::\d{2})?\s*(?:am|pm|nn)?|in (?:an?|\d+|a few|a couple of) (?:min\w*|hours?|days?|weeks?)|end of (?:the )?(?:day|week|month)|eod|(?:after|before|until) (?:lunch|work|the deadline|payroll)|(?<=\s)when(?! (?:can|could|should|do|does|is|was|will)\b))\b/i';
+
+    /** Days of the week, whole or short: "this month" is never "this mon". */
+    private const DAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu|thurs|fri|sat|sun';
 
     /** A question about submitting, or a "not yet": never a request to submit. */
     private const NOT_A_REQUEST = '/^\s*(?:how|paano|pano|what|ano|when|kailan|why|bakit|where|saan|which|who|is|are|was|were|has|have|did|does|can i|should i|do i|show|list)\b|\b(?:don\'?t|do not|not yet|hindi pa|huwag|wag|hold off|before)\b/i';
@@ -102,6 +110,32 @@ class BirChatSubmit
         $ref = ['status' => null] + $this->finder->reference(preg_replace('/\b(?:for (?:review|approval|checking)|to (?:accounting|the reviewer|review))\b/i', ' ', $message));
 
         return BirFormFinder::specific($ref) || $ref['form_type'] !== null ? $this->lookup->target($ref, $current, $message, $state) : $current;
+    }
+
+    /** True when the message asks to submit at a later time: the chat can't schedule it. */
+    public static function asksToSchedule(string $message): bool
+    {
+        // "how do I submit when it has errors?" asks how, not when.
+        return (preg_match(self::SUBMIT, $message) === 1 || preg_match(self::SEND, $message) === 1)
+            && preg_match(self::LATER, $message) === 1 && BirAnswerParser::itemMentioned($message) === null
+            && !preg_match('/^\s*(?:how|paano|pano|what|ano|why|bakit|where|saan|which|who)\b/i', $message);
+    }
+
+    /** "submit it tomorrow": nothing is sent or scheduled; how to submit when it is ready. */
+    public function later(string $message, ?BirFormDraft $current, BirConversationState $state): array
+    {
+        $form = $this->named($message, $current, $state);
+        if (is_array($form)) {
+            return $form;
+        }
+        $how = 'I can\'t schedule a submission for later. I only send a form for review when you ask me to at that moment, for example "submit '
+            . ($form instanceof BirFormDraft ? 'form ' . BirFormNames::label($form) : 'it') . ' for review", or you can click "Submit for review" above the form when it is ready.';
+
+        return BirChatCommands::result(match (true) {
+            $form === null => $how,
+            $form->status === 'draft' => "{$how} Until then, form " . BirFormNames::name($form) . ' stays a draft.',
+            default => 'Form ' . BirFormNames::name($form) . ' (' . BirFormNames::describe($form) . ') is already ' . BirFormNames::statusWord($form) . ', so there is nothing to submit.',
+        }, stay: true);
     }
 
     /** True when the message asks, directly, for a form to be sent for review. */
