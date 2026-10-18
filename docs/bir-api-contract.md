@@ -612,7 +612,9 @@ is `approved` or `finalized`, every page carries "DRAFT #id (status) — NOT FOR
 FILING" across the top and the filename ends in `-DRAFT`. The filename is in
 `Content-Disposition`, for example
 `attachment; filename="BIR-2316-2026-EMP-0001-v1-DRAFT.pdf"`: form type, period,
-the employee code on a 2316, and the version.
+the employee code on a 2316, and the version. `Content-Disposition` is listed in the
+CORS `exposed_headers` (`config/cors.php`), so the browser can read it and save the
+file under that name.
 
 404 if the draft is missing; employees get 403 like the rest of `/bir`. The PDF
 shows the draft's stored values, so a later payroll change does not alter it.

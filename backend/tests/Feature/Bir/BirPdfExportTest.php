@@ -77,6 +77,19 @@ class BirPdfExportTest extends TestCase
         $this->assertStringNotContainsString('NOT FOR FILING', $this->text($id));
     }
 
+    public function test_the_browser_is_allowed_to_read_the_file_name(): void
+    {
+        $id = $this->draft('2316');
+
+        $exposed = $this->actingAs($this->accounting)
+            ->get("/api/bir/drafts/{$id}/export", ['Origin' => 'http://localhost:5173'])
+            ->assertOk()
+            ->headers->get('Access-Control-Expose-Headers');
+
+        $this->assertStringContainsString('Content-Disposition', (string) $exposed,
+            'Without this the frontend cannot see the official file name.');
+    }
+
     public function test_a_new_version_of_a_filed_2316_says_in_red_that_it_was_filed_before(): void
     {
         $v1 = $this->draft('2316');
