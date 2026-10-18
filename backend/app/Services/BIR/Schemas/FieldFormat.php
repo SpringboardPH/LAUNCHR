@@ -56,15 +56,20 @@ final class FieldFormat
 
     /**
      * At least three parts separated by commas (street, barangay, city or municipality),
-     * each with letters in it. No house number is required: "Sitio Malinis, Brgy. Lawa,
+     * each with letters in it, except a house number on its own as the first part ("22,
+     * Mabini St., Quezon City"). No house number is required: "Sitio Malinis, Brgy. Lawa,
      * Calamba City" is an address; "blah blah blah" is not.
      */
     private static function isAddress(string $value): bool
     {
         $parts = array_map('trim', explode(',', $value));
+        $houseNumber = preg_match('/^#?\d[\d\s\/-]*$/', $parts[0]) === 1;
 
         return count($parts) >= 3
-            && array_filter($parts, fn (string $part) => preg_match('/\p{L}/u', $part) !== 1) === [];
+            && array_filter(
+                $houseNumber ? array_slice($parts, 1) : $parts,
+                fn (string $part) => preg_match('/\p{L}/u', $part) !== 1,
+            ) === [];
     }
 
     /**

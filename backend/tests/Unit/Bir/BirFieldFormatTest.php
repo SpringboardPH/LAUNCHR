@@ -74,7 +74,10 @@ class BirFieldFormatTest extends TestCase
             'address, words only' => ['address', 'blah blah blah', false],
             'address, no commas' => ['address', '12 Mabini St. Brgy. San Roque Quezon City', false],
             'address, two parts' => ['address', 'Mabini St., Quezon City', false],
-            'address, a part with no letters' => ['address', '12, Brgy. San Roque, Quezon City', false],
+            'address, house number on its own' => ['address', '22, mabini street, quezon city', true],
+            'address, house number like 12-B' => ['address', '12-B, Mabini St., Brgy. San Roque, Quezon City', true],
+            'address, a later part with no letters' => ['address', 'Mabini St., 12, Quezon City', false],
+            'address, numbers only after the house number' => ['address', '22, 34, Quezon City', false],
             'address, an empty part' => ['address', 'Mabini St., , Quezon City', false],
         ];
     }
