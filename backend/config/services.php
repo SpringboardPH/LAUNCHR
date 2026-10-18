@@ -42,6 +42,7 @@ return [
 
     'ollama' => [
         'url' => env('OLLAMA_URL', 'http://localhost:11434'),
+        'key' => env('OLLAMA_API_KEY', ''),
         'model' => env('OLLAMA_MODEL', 'qwen2.5:7b'),
     ],
 

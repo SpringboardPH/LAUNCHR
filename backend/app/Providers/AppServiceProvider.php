@@ -26,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
             'ollama' => new OllamaClient(
                 (string) config('services.ollama.url'),
                 (string) config('services.ollama.model'),
+                (string) config('services.ollama.key'),
             ),
             default => new FakeLlmClient(),
         });
