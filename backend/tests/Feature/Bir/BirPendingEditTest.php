@@ -118,8 +118,9 @@ class BirPendingEditTest extends TestCase
     {
         $roleRefusal = ['success' => false, 'message' => 'Only accounting can edit a form that is under review or approved'];
 
-        foreach (['pending', 'approved'] as $status) {
-            $id = $this->createWithStatus($status);
+        // A different month each, since a second 1601-C for one month is refused (409).
+        foreach (['pending' => '2026-09', 'approved' => '2026-08'] as $status => $period) {
+            $id = $this->createWithStatus($status, $period);
             $approver = $status === 'approved' ? $this->accounting()->id : null;
             BirFormDraft::whereKey($id)->update(['approved_by' => $approver]);
             $before = BirFormDraft::findOrFail($id)->fields['surcharge'];
@@ -162,10 +163,10 @@ class BirPendingEditTest extends TestCase
     }
 
     /** A real 1601-C made through the API, then moved straight to a status for the test. */
-    private function createWithStatus(string $status): int
+    private function createWithStatus(string $status, string $period = '2026-09'): int
     {
         $id = $this->actingAs($this->accounting())
-            ->postJson('/api/bir/drafts', ['form_type' => '1601-C', 'period' => '2026-09'])
+            ->postJson('/api/bir/drafts', ['form_type' => '1601-C', 'period' => $period])
             ->assertCreated()
             ->json('data.id');
 

@@ -92,7 +92,8 @@ class BirChatAnyFormTest extends TestCase
         // What user-side testing found: two drafts for the same person and year, one changed by
         // hand, and the chat read the other one. They are two forms, told apart by number.
         $old = $this->draft2316($this->maria, '2026');
-        $new = $this->draft2316($this->maria, '2026');
+        // A second original can no longer be created (409); this stands in for one saved before that rule.
+        $new = BirFormDraft::create(BirFormDraft::findOrFail($old)->only(['form_type', 'period', 'employee_id', 'status', 'version', 'prepared_by', 'fields', 'source_snapshot', 'validation_errors']))->id;
         $this->save($new, ['employee_rdo_code' => '049']);
 
         $this->send("what is item 5 on maria santos's 2316 for 2026?", reset: true)
@@ -202,6 +203,8 @@ class BirChatAnyFormTest extends TestCase
     public function test_a_form_that_is_not_open_is_only_changed_by_its_number(): void
     {
         $id = $this->draft2316($this->maria, '2026');
+        // Kept as built, for a second original saved before the one-form-per-period rule (now 409).
+        $asBuilt = BirFormDraft::findOrFail($id)->only(['form_type', 'period', 'employee_id', 'status', 'version', 'prepared_by', 'fields', 'source_snapshot', 'validation_errors']);
 
         // Details alone: the chat names the form that fits and asks for its number.
         $this->send('edit 2316 item #6 for maria santos 2026, change it to ' . self::ADDRESS, reset: true)
@@ -220,7 +223,7 @@ class BirChatAnyFormTest extends TestCase
         $this->save($id, ['employee_rdo_code' => '049']);
 
         // Two forms fit: both are listed, and the number picks one.
-        $other = $this->draft2316($this->maria, '2026');
+        $other = BirFormDraft::create($asBuilt)->id;
         $this->send('change item 5 on maria santos 2316 2026 to 051', reset: true)
             ->assertJsonPath('data.reply', "To change a form that isn't open here, I need its number. These fit:\n- form #{$other}: Maria Santos' 2316 for 2026, original, a draft\n- form #{$id}: Maria Santos' 2316 for 2026, original, a draft\nSay its number, for example \"form #{$other}\".");
         $this->send("form #{$other}")->assertJsonPath('data.draft_id', $other)->assertJsonPath('data.answer.value', '051');
@@ -342,8 +345,9 @@ class BirChatAnyFormTest extends TestCase
 
     public function test_a_number_that_does_not_fit_the_list_is_answered_not_a_crash(): void
     {
-        $this->draft1601C('2026-09');
-        $this->draft1601C('2026-09');
+        $first = $this->draft1601C('2026-09');
+        // A second original can no longer be created (409); this stands in for one saved before that rule.
+        BirFormDraft::create(BirFormDraft::findOrFail($first)->only(['form_type', 'period', 'employee_id', 'status', 'version', 'prepared_by', 'fields', 'source_snapshot', 'validation_errors']));
         $august = $this->draft1601C('2026-08');
 
         $this->assertStringStartsWith("To change a form that isn't open here, I need its number. These fit:", $this->send('change item 4 on the September 2026 1601-C to 2', reset: true)->json('data.reply'));

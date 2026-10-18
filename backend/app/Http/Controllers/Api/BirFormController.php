@@ -79,29 +79,48 @@ class BirFormController extends Controller
     public function store(StoreBirDraftRequest $request)
     {
         $validated = $request->validated();
+        $formType = $validated['form_type'];
         $period = $validated['period'];
+        $employeeId = $validated['employee_id'] ?? null;
 
-        // Dev A's mapper: payroll totals plus company settings as full six-key entries, totals
-        // worked out, anything it can't supply left pending. meta is the aggregation's _meta.
-        $built = BirFormMapper::build($validated['form_type'], $period, $validated['employee_id'] ?? null);
+        // One return per period: a second original for the same form type, period and employee
+        // (null on a 1601-C) is refused in any status and any version; corrections go through
+        // revise. The lock, as in revise, keeps two creates at the same moment from both finding
+        // nothing. On MySQL the loser of that race deadlocks and is retried (3 attempts), and the
+        // retry finds the winner's form, so it gets the 409 rather than a 500.
+        [$draft, $existing] = DB::transaction(function () use ($request, $formType, $period, $employeeId) {
+            $existing = BirFormDraft::where('form_type', $formType)
+                ->where('period', $period)
+                ->where('employee_id', $employeeId)
+                ->lockForUpdate()
+                ->get()
+                ->sortByDesc('version')
+                ->first();
+            if ($existing) {
+                return [null, $existing];
+            }
 
-        $draft = BirFormDraft::create([
-            'form_type' => $validated['form_type'],
-            'period' => $period,
-            'employee_id' => $validated['employee_id'] ?? null,
-            'status' => 'draft',
-            'version' => 1,
-            'parent_id' => null,
-            'prepared_by' => $request->user()->id,
-            'fields' => $built['fields'],
-            'source_snapshot' => $this->buildSourceSnapshot(
-                $validated['form_type'],
-                $period,
-                $validated['employee_id'] ?? null,
-                $built['meta'],
-            ),
-            'validation_errors' => [],
-        ]);
+            // Dev A's mapper: payroll totals plus company settings as full six-key entries, totals
+            // worked out, anything it can't supply left pending. meta is the aggregation's _meta.
+            $built = BirFormMapper::build($formType, $period, $employeeId);
+
+            return [BirFormDraft::create([
+                'form_type' => $formType,
+                'period' => $period,
+                'employee_id' => $employeeId,
+                'status' => 'draft',
+                'version' => 1,
+                'parent_id' => null,
+                'prepared_by' => $request->user()->id,
+                'fields' => $built['fields'],
+                'source_snapshot' => $this->buildSourceSnapshot($formType, $period, $employeeId, $built['meta']),
+                'validation_errors' => [],
+            ]), null];
+        }, 3);
+
+        if ($existing) {
+            return $this->alreadyExists($existing);
+        }
 
         $draft->load('preparer', 'approver', 'employee');
 
@@ -110,6 +129,31 @@ class BirFormController extends Controller
             'data' => new BirFormDraftResource($draft),
             'message' => 'Draft created',
         ], 201);
+    }
+
+    /** 409 for a second original, naming the latest version of the form already there. */
+    private function alreadyExists(BirFormDraft $existing)
+    {
+        if ($existing->form_type === '2316') {
+            $employee = $existing->employee()->withTrashed()->first();
+            $what = '2316 for ' . trim(($employee?->first_name ?? '') . ' ' . ($employee?->last_name ?? '')) . " for {$existing->period}";
+        } else {
+            $what = '1601-C for ' . substr($existing->period, 5, 2) . '/' . substr($existing->period, 0, 4);
+        }
+        $label = $existing->label();
+
+        return response()->json([
+            'success' => false,
+            'message' => $existing->status === 'finalized'
+                ? "A {$what} was already filed (form {$label}). Start a correction instead."
+                : "A {$what} already exists (form {$label}, {$existing->status}). Open it instead.",
+            'data' => ['existing' => [
+                'id' => $existing->id,
+                'label' => $label,
+                'status' => $existing->status,
+                'version' => $existing->version,
+            ]],
+        ], 409);
     }
 
     /**

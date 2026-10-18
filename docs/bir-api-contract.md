@@ -53,6 +53,7 @@ Every response uses the envelope already used across LAUNCHR:
 | 400 | Illegal status move, or a form that is locked (finalized) |
 | 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
+| 409 | A form for that period already exists (`POST /bir/drafts`) |
 | 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
 | 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
 
@@ -437,6 +438,27 @@ current page — use the query parameters instead.
 ```
 
 Both required. 201 with the new draft.
+
+One return per period: a form that already exists for the same `form_type` and
+`period` (1601-C), or `form_type`, `period` and `employee_id` (2316), in any
+status and any version, makes this a 409 and nothing is created. Corrections go
+through `revise`, never through create. The role, switch and body checks come
+first, so a 409 only answers a valid body. `existing` is the latest version of
+that form:
+
+```json
+{
+  "success": false,
+  "message": "A 1601-C for 09/2026 already exists (form #31, draft). Open it instead.",
+  "data": { "existing": { "id": 31, "label": "#31", "status": "draft", "version": 1 } }
+}
+```
+
+The message names the form (`1601-C for MM/YYYY`, or `2316 for <employee name>
+for YYYY`) and its label, and ends one of two ways:
+
+- not finalized: "… already exists (form #31v2, pending). Open it instead."
+- finalized: "… was already filed (form #31). Start a correction instead."
 
 ### PUT /bir/drafts/{id}
 

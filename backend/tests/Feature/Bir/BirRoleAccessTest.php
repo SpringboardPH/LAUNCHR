@@ -40,7 +40,8 @@ class BirRoleAccessTest extends TestCase
         'config' => ['GET', '/api/bir/config', null, [], self::ALL, 200],
         'index' => ['GET', '/api/bir/drafts', null, [], self::ALL, 200],
         'show' => ['GET', '/api/bir/drafts/{id}', 'draft', [], self::ALL, 200],
-        'store' => ['POST', '/api/bir/drafts', null, ['form_type' => '1601-C', 'period' => '2026-09'], self::ALL, 201],
+        // 2026-08: formIn() already made the 2026-09 form, and a second one for a month is 409.
+        'store' => ['POST', '/api/bir/drafts', null, ['form_type' => '1601-C', 'period' => '2026-08'], self::ALL, 201],
         'update a draft' => ['PUT', '/api/bir/drafts/{id}', 'draft', ['fields' => ['surcharge' => '1000.00']], self::ALL, 200],
         'update a pending form' => ['PUT', '/api/bir/drafts/{id}', 'pending', ['fields' => ['surcharge' => '1000.00']], self::ACCOUNTING, 200],
         'update an approved form' => ['PUT', '/api/bir/drafts/{id}', 'approved', ['fields' => ['surcharge' => '1000.00']], self::ACCOUNTING, 200],
