@@ -70,6 +70,7 @@ final class BirBoxMatcher
     {
         $fields = array_values(array_filter($fields, fn (array $f) => $f['item'] !== null));
         $skip = array_map(self::stem(...), self::words(implode(' ', $skip)));
+        $message = preg_replace('/\b(?:last|this|next|previous|current)\s+(?:year|month|week)\b/i', ' ', $message); // "last year" is a period, not the last name
         $asked = array_values(array_filter(
             self::words($message),
             fn (string $w) => !in_array($w, self::IGNORED, true) && !in_array(self::stem($w), $skip, true) && !ctype_digit($w) && strlen($w) > 1,
@@ -81,13 +82,25 @@ final class BirBoxMatcher
         $vocabulary = array_values(array_unique(array_merge([], ...array_map(self::tokens(...), $fields))));
         $asked = array_map(fn (string $word) => self::spelled($word, $vocabulary), $asked);
 
+        // A word counts twice, a helper ("her") once, so it only settles a tie; two words said
+        // together that the label also has together ("gross compensation") add one.
         $scores = [];
         $unmatched = count($asked);
         foreach ($fields as $i => $field) {
             $tokens = self::tokens($field);
             $score = 0;
             foreach ($asked as $word) {
-                $score += count(array_intersect(self::meanings($word), $tokens));
+                $score += count(array_intersect(self::meanings($word), $tokens)) * (in_array($word, self::HELPERS, true) ? 1 : 2);
+            }
+            $label = array_map(self::stem(...), array_values(array_diff(self::words($field['label']), self::LABEL_NOISE, self::IGNORED)));
+            for ($w = 1; $w < count($asked); $w++) {
+                $pair = [self::stem($asked[$w - 1]), self::stem($asked[$w])];
+                for ($l = 1; $l < count($label); $l++) {
+                    if ([$label[$l - 1], $label[$l]] === $pair) {
+                        $score++;
+                        break;
+                    }
+                }
             }
             $scores[$i] = $score;
         }
@@ -121,6 +134,13 @@ final class BirBoxMatcher
                 $item = $specific[0]['item'];
                 $winners = array_values(array_filter($winners, fn (array $f) => $f['item'] === $item));
             }
+        }
+
+        // "13th month" on a 2316 is in two boxes, the non-taxable part and the taxable excess: both.
+        if (preg_match('/\b(?:13th|thirteenth)\b/i', $message) && array_filter($winners, fn (array $f) => str_contains($f['key'], 'thirteenth')) !== [] && !preg_match('/\b(?:taxable|non-?taxable|exempt|excess)\b/i', $message)) {
+            $both = array_values(array_filter($fields, fn (array $f) => str_contains($f['key'], 'thirteenth')));
+
+            return ['fields' => $both, 'ambiguous' => false, 'words' => count($asked), 'tied' => $tied];
         }
 
         return ['fields' => $winners, 'ambiguous' => $items($winners) > 1, 'words' => count($asked), 'tied' => $tied];

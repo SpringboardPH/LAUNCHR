@@ -3,6 +3,7 @@
 namespace App\Services\BIR;
 
 use App\Models\BirFormDraft;
+use App\Services\BIR\Schemas\Form2316Schema;
 
 /**
  * Reading forms in the chat (BirChatCommands sends questions here): what a box holds on any
@@ -22,6 +23,9 @@ use App\Models\BirFormDraft;
 class BirChatLookup
 {
     /** Words asking for what a box holds rather than what it means. */
+    /** Details from the employee record, and payroll by the month: never a box of their 2316. */
+    private const RECORD_WORDS = '/\b(?:net\s*(?:pay|salary|income)|take[- ]?home|salary|sahod|sweldo|base pay|rate|hire[ds]?|hiring|joined|position|job|department|dept|e-?mail|phone|contact|status|active|employee\s*(?:id|number|no\.?)|tin|payroll|per month|monthly|each month)\b/i';
+
     private const VALUE_WORDS = '/\b(value|laman|nakalagay|how much|magkano|amount|figure|show|give|tell me|check|what\'?s in|what is in|ano ang nasa|ano yung nasa)\b/i';
 
     private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source|who (?:changed|edited|typed|entered|put)|sino (?:ang )?(?:nagpalit|nagbago|nag-?edit|naglagay))\b/i';
@@ -110,8 +114,17 @@ class BirChatLookup
         if ($ref['number'] === null && $item === null && $this->employees->namedIn($message)->count() > 1) {
             return null;
         }
-        // "salary of Elias?", "how much tax did Hazel have withheld in March 2026?": no form named, no form open.
-        if ($ref['number'] === null && $item === null && $current === null && !preg_match('/2316|1601|\b(?:form|draft|item|box)\b/i', $message)
+        // "what's Mina Lim's 13th month pay?": a box of her 2316, when she has one and the words name
+        // one of its boxes. Her record ("salary of Elias?", her TIN) and a month of her pay ("how much
+        // tax did Hazel have withheld in March 2026?") are questions about the records instead.
+        $theirBox = false;
+        if ($ref['number'] === null && BirMessageFacts::formsSaid($message) === [] && $current === null && $ref['month'] === null && BirMessageFacts::monthsSaid($message) === [] && BirDataWords::monthsAsked($message) === []
+            && $ref['person'] === BirEmployeeResolver::MATCHED && !($ref['close'] ?? false) && !preg_match(self::RECORD_WORDS, $message)
+            && BirFormDraft::where('employee_id', $ref['employee']->id)->where('form_type', Form2316Schema::FORM_TYPE)->exists()
+            && ($item !== null || !$this->namesNoBox(['form_type' => Form2316Schema::FORM_TYPE] + $ref, $message))) {
+            [$ref['form_type'], $theirBox] = [Form2316Schema::FORM_TYPE, true];
+        }
+        if ($ref['number'] === null && $item === null && $current === null && !$theirBox && !preg_match('/2316|1601|\b(?:form|draft|item|box)\b/i', $message)
             && $this->employees->namedIn($message)->count() === 1) {
             return null;
         }
@@ -143,7 +156,7 @@ class BirChatLookup
         }
 
         if ($item === null && (preg_match(self::NOT_A_LOOKUP, $message)
-            || !($wantsValue || BirAnswerParser::looksLikeQuestion($message) || $ref['number'] !== null)
+            || !($wantsValue || BirAnswerParser::looksLikeQuestion($message) || $ref['number'] !== null || $this->namesTheirBox($ref, $message))
             || !($wantsValue || BirFormFinder::specific($ref))
             || ($ref['form_type'] ?? $current?->form_type ?? $ref['number']) === null)) {
             return null;
@@ -297,6 +310,12 @@ class BirChatLookup
         }
 
         return [...$match['fields'], ...$this->heldElsewhere($draft, $match)];
+    }
+
+    /** "Mina's gross compensation on her 2316": a person's form and one of its boxes, though not asked as a question. */
+    private function namesTheirBox(array $ref, string $message): bool
+    {
+        return $ref['form_type'] !== null && $ref['person'] === BirEmployeeResolver::MATCHED && !$this->namesNoBox($ref, $message);
     }
 
     /** True when the message names no box of the form it refers to, by the boxes' words. */

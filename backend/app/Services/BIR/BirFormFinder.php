@@ -325,6 +325,15 @@ class BirFormFinder
             return self::ask("There is no{$status} " . substr(BirFormNames::wanted($ref), 2) . "{$version} saved. Ask for it to prepare one, or check the details.", false);
         }
 
+        // One person's 2316s for different years: which year.
+        $years = $forms->map(fn (BirFormDraft $d) => substr($d->period, 0, 4))->unique()->sort()->values();
+        if ($lead === null && $ref['form_type'] === Form2316Schema::FORM_TYPE && $ref['employee'] !== null && $years->count() > 1) {
+            $name = trim("{$ref['employee']->first_name} {$ref['employee']->last_name}");
+
+            return self::ask("{$name} has 2316s for " . BirDataForms::andList($years->all()) . ". Which year do you mean?\n"
+                . $forms->map(fn (BirFormDraft $d) => '- ' . BirFormNames::line($d))->implode("\n") . "\nSay the year, for example \"{$years->last()}\".", true, needs: 'form');
+        }
+
         return $forms->count() === 1 && $lead === null
             ? $forms->first()
             : ($forms->count() === 1 ? $forms->first() : self::ask(BirFormNames::listing($forms, $lead ?? BirFormNames::SEVERAL), true, needs: 'form'));

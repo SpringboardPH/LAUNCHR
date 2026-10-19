@@ -67,6 +67,26 @@ class BirChatEmployeesTest extends TestCase
         $this->assertSame([], $this->model->calls());
     }
 
+    public function test_the_details_asked_for_each_employee_on_a_1601c(): void
+    {
+        $id = $this->draft1601C();
+
+        // Only what is asked, for each employee on it: from the form, and from their record.
+        $this->send('what are the TIN numbers of the employees in 1601c september 2026')
+            ->assertJsonPath('data.reply', "The September 2026 1601-C (form #{$id}, original, a draft) covers 2 employees. Their TIN:\n"
+                . "- SANTOS, MARIA: 920-919-920-00001\n- REYES, JOSE: 123-456-789-00000");
+        $this->send("tax withheld of each employee on form #{$id}")
+            ->assertJsonPath('data.reply', "The September 2026 1601-C (form #{$id}, original, a draft) covers 2 employees. Their tax withheld (item 25):\n"
+                . "- SANTOS, MARIA: ₱600.00\n- REYES, JOSE: ₱2,000.00\nTotal tax withheld: ₱2,600.00.");
+        $this->assertStringContainsString('Their TIN and SSS, PhilHealth and Pag-IBIG (employee share) (item 19):', $this->send("TINs and SSS contributions of everyone on form #{$id}")->json('data.reply'));
+        $this->assertStringContainsString("- SANTOS, MARIA: January 1, 2020", $this->send("hire dates of the employees on form #{$id}")->json('data.reply'));
+        // One person and one column: that column only.
+        $this->assertStringEndsWith("(taxable):\n- SSS, PhilHealth and Pag-IBIG (employee share) (item 19): ₱1,400.00", $this->send("what are Maria's SSS contributions on form #{$id}")->json('data.reply'));
+        // No such 1601-C saved.
+        $this->send('what are the TINs of the employees in 1601c november 2026')->assertJsonPath('data.reply', 'There is no 1601-C for November 2026 saved. Ask for it to prepare one, or check the details.');
+        $this->assertSame([], $this->model->calls());
+    }
+
     public function test_one_employees_part_is_given_by_name(): void
     {
         $id = $this->draft1601C();

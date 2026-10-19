@@ -152,6 +152,35 @@ class BirChatDataQuestionMoreTest extends TestCase
         $this->assertStringContainsString('It was submitted for review on ', $this->send("when was form #{$id} submitted")->json('data.reply'));
     }
 
+    public function test_a_box_of_a_named_employees_2316_and_which_year(): void
+    {
+        $teresa = Employee::where('employee_id', 'EMP001')->value('id');
+        $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2025', 'employee_id' => $teresa])->assertCreated();
+        // No form named: her 2316's boxes; "13th month" is both its boxes, the non-taxable part and the taxable excess.
+        $reply = $this->send('whats the 13th month pay of Teresa')->json('data.reply');
+        $this->assertStringStartsWith("On Teresa Taxable's 2316 for 2025", $reply);
+        $this->assertStringContainsString('"Item 34, 13th Month Pay', $reply);
+        $this->assertStringContainsString('"Item 48, Taxable 13th Month', $reply);
+        // A box named, not asked as a question; and "her" never picks her TIN over the box named.
+        $this->assertStringContainsString('"Item 19, Gross Compensation', $this->send("Teresa's gross compensation on her 2316")->json('data.reply'));
+        $this->assertStringContainsString('"Item 34, 13th Month Pay', $this->send("what is Teresa's 13th month on her 2316")->json('data.reply'));
+        // A month named is her payroll, not her 2316; net pay is not a figure the records keep.
+        $this->asks("Teresa's compensation in September 2025", ['topic' => 'amounts', 'amount' => 'compensation', 'employee' => 'Teresa', 'tax_year' => 2025, 'tax_month' => 9])
+            ->assertJsonPath('data.reply', 'Compensation for Teresa Taxable (EMP001) in September 2025: ₱60,000.00.');
+        $this->asks("what's Teresa's net pay in September 2025", ['topic' => 'amounts', 'amount' => 'compensation', 'employee' => 'Teresa', 'tax_year' => 2025, 'tax_month' => 9])
+            ->assertJsonPath('data.reply', BirDataAnswers::CANT);
+        // Her salary is still the rate on file.
+        $this->asks('salary of Teresa', ['topic' => 'employee', 'employee' => 'Teresa', 'detail' => 'salary'])
+            ->assertJsonPath('data.reply', 'The salary on file for Teresa Taxable (EMP001) is ₱60,000.00 a month.');
+
+        // A 2316 for two years: which year, and "2025" answers it.
+        Payroll::create(['employee_id' => $teresa, 'cutoff_start' => '2026-01-01', 'cutoff_end' => '2026-01-15', 'base_salary' => 60000, 'gross_pay' => 30000,
+            'deductions' => ['SSS EE Contribution' => 700, 'Withholding Tax' => 3000], 'allowances' => [], 'status' => 'finalized']);
+        $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $teresa])->assertCreated();
+        $this->assertStringStartsWith('Teresa Taxable has 2316s for 2025 and 2026. Which year do you mean?', $this->send('what is item 28 of Teresa')->json('data.reply'));
+        $this->assertStringStartsWith("On Teresa Taxable's 2316 for 2025", $this->next('2025')->json('data.reply'));
+    }
+
     // ---- helpers
 
     /** A message the model labels a data_question with these parts. */

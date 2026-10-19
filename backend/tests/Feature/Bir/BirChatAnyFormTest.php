@@ -149,7 +149,7 @@ class BirChatAnyFormTest extends TestCase
         $this->save($id, ['employee_rdo_code' => '049']);
         $cruz = $this->employee('EMP002', 'Maria', 'Cruz', '111-222-333-000');
 
-        $this->assertStringStartsWith("More than one form fits. Which one do you mean?\n- form #{$id}: Maria Santos' 2316 for 2026", $this->send("what's in item 5 on maria santos's 2316?", reset: true)->json('data.reply'));
+        $this->assertStringStartsWith("Maria Santos has 2316s for 2025 and 2026. Which year do you mean?\n- form #{$id}: Maria Santos' 2316 for 2026", $this->send("what's in item 5 on maria santos's 2316?", reset: true)->json('data.reply'));
         $this->send('2026')
             ->assertJsonPath('data.reply', "On Maria Santos' 2316 for 2026 (form #{$id}, original, a draft), \"Item 5, RDO Code\" is 049.");
 

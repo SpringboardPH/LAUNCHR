@@ -300,6 +300,11 @@ final class BirDataIntent
         if ($unknown) {
             [$question['amount'], $question['sort_by'], $question['filters'], $unread] = [null, null, [], false];
         }
+        // Net or take-home pay is after every deduction: not a figure these records keep, never the gross.
+        if (preg_match('/\bnet\s*(?:pay|salary|income|sahod)|take[- ]?home|kinuha\s+sa\s+bulsa/i', $message)) {
+            [$unknown, $question['amount'], $question['sort_by'], $question['filters'], $unread] = [true, null, null, [], false];
+            $question['topic'] = in_array($question['topic'], ['forms', 'missing_forms', 'company'], true) ? $question['topic'] : 'employees';
+        }
         if ($unknown && in_array($question['topic'], ['employees', 'amounts', 'unsupported'], true)) {
             $question['topic'] = 'unsupported';
         }
