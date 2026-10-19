@@ -4,6 +4,7 @@ import { Search, Plus, RefreshCw } from 'lucide-react'
 import { birKeys, getBirEmployees, getAllBir2316, createBirDraft } from '../../api/queries'
 import { StatusBadge } from '../ui/index.jsx'
 import { formLabel, versionLabel } from './BirDraftList'
+import BirCreateError from './BirExistingForm'
 
 const CY = new Date().getFullYear()
 const YEARS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -75,9 +76,7 @@ export default function BirEmployeesView({ activeId, onOpen }) {
         <span className="text-[11px] text-gray-400">{shown.length} employee{shown.length === 1 ? '' : 's'}</span>
       </div>
 
-      {create.isError && (
-        <p className="px-4 pt-2 text-xs text-red-600">{create.error?.response?.data?.message || 'Could not create the form.'}</p>
-      )}
+      {create.isError && <div className="px-4 pt-2"><BirCreateError error={create.error} onOpen={onOpen} /></div>}
 
       {!shown.length ? (
         <p className="px-4 py-8 text-center text-xs text-gray-400">No employees match these filters.</p>

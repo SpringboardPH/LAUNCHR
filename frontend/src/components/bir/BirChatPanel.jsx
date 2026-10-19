@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import {
   birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees, reviseBirDraft, submitBirDraft,
 } from '../../api/queries'
+import { ExistingFormButton, existingForm } from './BirExistingForm'
 import { useAuth } from '../../store/AuthContext'
 
 // The 2316 example names someone who is really on file, so it works on any database.
@@ -144,7 +145,7 @@ function Guidance({ text }) {
   )
 }
 
-function Message({ msg, onConfirm, onDecline, onPick, busy }) {
+function Message({ msg, onConfirm, onDecline, onPick, onOpen, busy }) {
   const isUser = msg.role === 'user'
   return (
     <div className={clsx('flex gap-2.5', isUser && 'flex-row-reverse')}>
@@ -162,6 +163,7 @@ function Message({ msg, onConfirm, onDecline, onPick, busy }) {
         )}>
         {msg.text}
         {msg.guidance && <Guidance text={msg.guidance} />}
+        {msg.existing && onOpen && <div className="mt-2"><ExistingFormButton existing={msg.existing} onOpen={onOpen} /></div>}
         {msg.candidates?.length > 0 && (
           <Candidates candidates={msg.candidates} disabled={busy || msg.picked} onPick={(c) => onPick(msg, c)} />
         )}
@@ -293,7 +295,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
   })
 
   // "yes" to a correction: start it like the "Start a correction" button, then the chat makes
-  // the change it offered on the new version. "done": submit, like "Submit for review".
+  // the change it offered on the new version. "Submit it for review": submit, like the "Submit for review" button.
   const act = useMutation({
     mutationFn: ({ action }) => (action.type === 'revise' ? reviseBirDraft(action.draft_id) : submitBirDraft(action.draft_id)),
     onSuccess: (res, { action, reply }) => {
@@ -347,22 +349,26 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
     },
     onError: (err, { msgId }) => {
       patch(msgId, { intentStatus: 'open' })
-      push({ role: 'assistant', error: true, text: errorText(err) })
+      // 409: the period already has a form; the message carries the button to it.
+      push({ role: 'assistant', error: true, text: errorText(err), existing: existingForm(err) })
     },
   })
 
   const busy = chat.isPending || create.isPending || save.isPending || act.isPending
 
   // A draft opened on the page (Saved forms, "Open with the assistant"): move the chat to it.
-  // Each opening is announced once, even when React runs this twice (StrictMode in development).
-  const announcedRef = useRef(null)
+  // Run after the render settles, and cancelled on cleanup: StrictMode (development) mounts
+  // twice, and only the second run goes ahead, so the opening is announced and asked once.
   useEffect(() => {
     if (!openDraftId || openDraftId === filling?.draftId || openDraftId === createdRef.current) return
-    if (announcedRef.current === `${openDraftId}:${openKey}`) return
-    announcedRef.current = `${openDraftId}:${openKey}`
-    setFilling({ draftId: openDraftId, field: null })
-    push({ role: 'assistant', text: `Now working on draft #${openDraftId}. Ask about any box, or say "change item 12 to …".` })
-    chat.mutate({ draftId: openDraftId }) // its next question, or that nothing is left to ask
+    const t = setTimeout(() => {
+      setFilling({ draftId: openDraftId, field: null })
+      push({ role: 'assistant', text: `Now working on draft #${openDraftId}. Ask about any box, or say "change item 12 to …".` })
+      // The first message of a conversation says so, even on a form, so "undo" forgets older chats.
+      chat.mutate({ draftId: openDraftId, reset: freshRef.current }) // its next question, or that nothing is left to ask
+      freshRef.current = false
+    }, 0)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDraftId, openKey])
 
@@ -380,7 +386,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
     push({ role: 'user', text: message })
     setInput('')
     chat.mutate(filling
-      ? { message, draftId: filling.draftId, field: filling.field }
+      ? { message, draftId: filling.draftId, field: filling.field, reset: freshRef.current }
       : { message, reset: freshRef.current })
     freshRef.current = false
   }
@@ -438,7 +444,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4" role="log" aria-live="polite">
         {messages.map(m => (
-          <Message key={m.id} msg={m} onConfirm={confirm} onDecline={decline} onPick={pick} busy={busy} />
+          <Message key={m.id} msg={m} onConfirm={confirm} onDecline={decline} onPick={pick} onOpen={onDraftCreated} busy={busy} />
         ))}
         {busy && <TypingIndicator />}
         {showSuggestions && (

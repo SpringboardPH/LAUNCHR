@@ -12,6 +12,7 @@ import BirChatPanel, { formName } from '../../components/bir/BirChatPanel'
 import BirFieldPreview from '../../components/bir/BirFieldPreview'
 import BirDraftList from '../../components/bir/BirDraftList'
 import BirEmployeesView from '../../components/bir/BirEmployeesView'
+import BirCreateError from '../../components/bir/BirExistingForm'
 
 const CY = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -85,9 +86,7 @@ function ManualPicker({ formTypes, onCreated }) {
           </label>
         )}
       </div>
-      {create.isError && (
-        <p className="text-xs text-red-600">{create.error?.response?.data?.message || 'Could not create the draft.'}</p>
-      )}
+      {create.isError && <BirCreateError error={create.error} onOpen={onCreated} fallback="Could not create the draft." />}
       <button type="submit" className="btn-secondary w-full justify-center" disabled={create.isPending || (is2316 && !employeeId)}>
         {create.isPending ? 'Creating…' : 'Create draft'}
       </button>
