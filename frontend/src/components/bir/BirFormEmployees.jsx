@@ -14,8 +14,8 @@ const CATEGORY = {
 // Item numbers next to each column, as they add up on the 1601-C.
 const COLUMNS = [
   ['compensation', 'Pay', '14'],
-  ['ee', 'SSS/PH/PI', '19'],
-  ['taxable', 'Taxable', '22'],
+  ['ee', 'Contributions', '19'],
+  ['taxable', 'After Contributions', '22'],
   ['tax_withheld', 'Tax withheld', '25'],
 ]
 
