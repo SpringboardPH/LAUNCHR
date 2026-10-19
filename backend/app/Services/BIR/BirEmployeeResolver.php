@@ -145,6 +145,23 @@ class BirEmployeeResolver
     }
 
     /**
+     * Every employee the text names by a whole first name, or by a last name typed with a capital
+     * ("Teresa and Noel", "Andres or Carlo", "Santos'"): two or more is a question about them all,
+     * never "more than one person matches". "taxable" in lowercase is not Teresa Taxable.
+     *
+     * @return Collection<int, Employee>
+     */
+    public function namedIn(string $text): Collection
+    {
+        $words = preg_split('/[^\p{L}]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        $lower = array_map('mb_strtolower', $words);
+
+        return Employee::query()->get(['id', 'employee_id', 'first_name', 'last_name'])
+            ->filter(fn (Employee $e) => in_array(mb_strtolower(trim((string) $e->first_name)), $lower, true) || in_array(trim((string) $e->last_name), $words, true))
+            ->values();
+    }
+
+    /**
      * Whoever a whole sentence names: a TIN, an employee ID, or a name written in it
      * ("for maria santos", "Maria Santos's 2316"). A full name beats a last or first name
      * alone; failing those, the words after "for", "ni" or "kay" are looked up like a typed
