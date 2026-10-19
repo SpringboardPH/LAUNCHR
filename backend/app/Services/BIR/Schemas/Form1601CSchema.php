@@ -65,7 +65,7 @@ class Form1601CSchema
         'total_taxes_withheld' => "All income tax withheld from employees' pay this month, from payroll.",
         'prior_month_adjustment' => "A correction to tax withheld in earlier months: positive if too little was withheld, negative if too much. A year-end refund to an employee (from their 2316) goes here as a negative amount. Usually 0.",
         'taxes_withheld_for_remittance' => 'Item 25 plus item 26: the tax to pay to the BIR for this month.',
-        'previously_remitted_tax' => 'For an amended return only: the tax already paid with the original return for this month.',
+        'previously_remitted_tax' => 'For an amended return only. On the first amendment: the tax already paid with the original return for this month. On a later amendment: the same amount as on the previous amendment (already filled in from it).',
         'other_remittances' => "Any other payment already made for this month's withholding tax. Usually 0.",
         'other_remittances_desc' => 'Describe the payment entered in item 29.',
         'total_remittances_made' => 'Item 28 plus item 29: what has already been paid for this month.',

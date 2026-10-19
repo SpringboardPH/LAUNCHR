@@ -158,11 +158,11 @@ class Form1601CMapperTest extends TestCase
         $this->assertAddsUp($fields);
     }
 
-    public function test_a_hire_or_leaver_part_month_is_judged_on_the_pay_in_that_month(): void
+    public function test_a_new_hire_is_judged_on_the_salary_and_a_leaver_on_the_pay_in_that_month(): void
     {
-        // Both earn 30,000 a month but were paid for half of August: 14,500 after EE,
-        // x 12 = 174,000, so item 23. The P250,000 basis is open with the accountant
-        // (pay x 12 or the salary rate); if it changes, so does this test.
+        // Both earn 30,000 a month but were paid for half of August: 14,500 after EE.
+        // The new hire is judged by the salary before EE, 30,000 > 20,833, so item 24; the
+        // leaver by the pay, 14,500 x 12 = 174,000, so item 23 (accountant, 10/2026).
         $this->payroll('H', '2026-08-16', '2026-08-31', 15000, ['SSS EE Contribution' => 500], hired: '2026-08-16');
         $this->payroll('L', '2026-08-01', '2026-08-15', 15000, ['SSS EE Contribution' => 500], status: 'inactive');
 
@@ -170,10 +170,23 @@ class Form1601CMapperTest extends TestCase
         $fields = $built['fields'];
 
         $this->assertSame('30000.00', $fields['total_compensation']['value']);         // 14
+        $this->assertSame('14500.00', $fields['exempt_250k_compensation']['value']);   // 23: the leaver
+        $this->assertSame('14500.00', $fields['net_taxable_compensation']['value']);   // 24: the new hire
+        $this->assertSame(1, $built['meta']['employee_counts']['exempt_250k']);
+        $this->assertSame(1, $built['meta']['employee_counts']['taxable']);
+        $this->assertAddsUp($fields);
+    }
+
+    public function test_a_new_hire_at_or_under_20833_a_month_stays_in_item_23(): void
+    {
+        // 20,000 a month; a daily rate of 950 is 950 x 261 / 12 = 20,662.50 (Mon-Fri, as payroll counts it).
+        $this->payroll('M', '2026-08-16', '2026-08-31', 15000, ['SSS EE Contribution' => 500], hired: '2026-08-16', salary: 20000);
+        $this->payroll('D', '2026-08-16', '2026-08-31', 15000, ['SSS EE Contribution' => 500], hired: '2026-08-16', salary: 950, rate: 'daily');
+
+        $fields = Form1601CMapper::map(2026, 8)['fields'];
+
         $this->assertSame('29000.00', $fields['exempt_250k_compensation']['value']);   // 23
         $this->assertSame('0.00', $fields['net_taxable_compensation']['value']);       // 24
-        $this->assertSame(2, $built['meta']['employee_counts']['exempt_250k']);
-        $this->assertAddsUp($fields);
     }
 
     public function test_december_without_a_13th_month_leaves_item_17_at_zero(): void
@@ -219,11 +232,11 @@ class Form1601CMapperTest extends TestCase
 
     /** One payroll row for a new employee. */
     private function payroll(string $code, string $start, string $end, float $gross, array $deductions,
-        string $hired = '2026-01-01', string $status = 'active'): void
+        string $hired = '2026-01-01', string $status = 'active', float $salary = 30000, string $rate = 'monthly'): void
     {
         $e = Employee::create([
             'employee_id' => "BIR-{$code}", 'first_name' => 'Employee', 'last_name' => $code, 'email' => "bir-{$code}@example.com",
-            'position' => 'Staff', 'hire_date' => $hired, 'salary' => 30000, 'status' => $status, 'rate_type' => 'monthly',
+            'position' => 'Staff', 'hire_date' => $hired, 'salary' => $salary, 'status' => $status, 'rate_type' => $rate,
         ]);
         Payroll::create([
             'employee_id' => $e->id, 'cutoff_start' => $start, 'cutoff_end' => $end, 'base_salary' => 30000,

@@ -49,15 +49,15 @@ class BirSampleSeeder extends Seeder
      * months with that extra pay. middle, rdo, address, zip, born: the 2316 answers about the employee.
      */
     private const EMPLOYEES = [
-        'TST-001' => ['first' => 'Teresa', 'middle' => 'DIAZ', 'last' => 'Taxable', 'position' => 'Accountant', 'department' => 'Finance', 'monthly' => 35000,
+        'TST-001' => ['first' => 'Teresa', 'middle' => 'DIAZ', 'last' => 'Go', 'position' => 'Accountant', 'department' => 'Finance', 'monthly' => 35000,
             'tin' => '301-111-222-00000', 'sss' => '34-1110001-1', 'philhealth' => '12-111000001-1', 'pagibig' => '1210-1001-2001', 'bank' => '200000000001',
             'phone' => '09171239001', 'rdo' => '047', 'address' => '12 SAMPLE ST., BRGY. SANTOLAN, PASIG CITY', 'zip' => '1610', 'born' => '1990-04-12',
             'overtime' => [3, 10]],
-        'TST-002' => ['first' => 'Noel', 'middle' => 'CRUZ', 'last' => 'Nontaxable', 'position' => 'Office Assistant', 'department' => 'Administration', 'monthly' => 18000,
+        'TST-002' => ['first' => 'Noel', 'middle' => 'CRUZ', 'last' => 'Tan', 'position' => 'Office Assistant', 'department' => 'Administration', 'monthly' => 18000,
             'tin' => '302-222-333-00000', 'sss' => '34-1110002-2', 'philhealth' => '12-111000002-2', 'pagibig' => '1210-1002-2002', 'bank' => '200000000002',
             'phone' => '09171239002', 'rdo' => '044', 'address' => '8 SAMPLE AVE., BRGY. 123, CALOOCAN CITY', 'zip' => '1400', 'born' => '2001-07-30',
             'holiday' => [6]],
-        'TST-003' => ['first' => 'Mina', 'middle' => 'REYES', 'last' => 'Minwage', 'position' => 'Warehouse Staff', 'department' => 'Administration', 'monthly' => 16823.75,
+        'TST-003' => ['first' => 'Mina', 'middle' => 'REYES', 'last' => 'Lim', 'position' => 'Warehouse Staff', 'department' => 'Administration', 'monthly' => 16823.75,
             'tin' => '303-333-444-00000', 'sss' => '34-1110003-3', 'philhealth' => '12-111000003-3', 'pagibig' => '1210-1003-2003', 'bank' => '200000000003',
             'phone' => '09171239003', 'rdo' => '043', 'address' => '27 SAMPLE RD., BRGY. PINYAHAN, QUEZON CITY', 'zip' => '1100', 'born' => '1998-09-03',
             'mwe' => ['daily' => '645.00'], 'holiday' => [6], 'overtime' => [4], 'night' => [9]],

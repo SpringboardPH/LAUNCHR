@@ -3,6 +3,7 @@
 namespace App\Services\BIR;
 
 use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
 use App\Services\BIR\Schemas\FieldFormat;
@@ -78,6 +79,7 @@ class BirAggregationService
     public static function monthlyWithholding(int $year, int $month): array
     {
         $mweIds = self::mweEmployeeIds();
+        $newHires = Employee::withTrashed()->whereYear('hire_date', $year)->whereMonth('hire_date', $month)->get()->keyBy('id');
 
         $employees = self::monthQuery($year, $month)
             ->whereIn('status', self::COUNTED_STATUSES)
@@ -87,6 +89,7 @@ class BirAggregationService
                 (int) $employeeId,
                 $rows,
                 in_array((int) $employeeId, $mweIds, true),
+                $newHires->get((int) $employeeId),
             ));
 
         $mwe = $employees->where('category', 'mwe');
@@ -281,11 +284,34 @@ class BirAggregationService
             ->all();
     }
 
-    /** One employee's month for the 1601-C; the P250,000 test projects the month over 12. */
-    private static function employeeMonth(int $employeeId, Collection $rows, bool $isMwe): array
+    /**
+     * One employee's month for the 1601-C; the P250,000 test projects the month over 12. A new
+     * hire's first (partial) month is judged by the monthly salary instead, before the employee's
+     * share: over P20,833 a month is taxable. Anyone else with part of a month's pay is judged by
+     * the pay they got (accountant, 10/2026).
+     */
+    private static function employeeMonth(int $employeeId, Collection $rows, bool $isMwe, ?Employee $newHire): array
     {
-        return ['employee_id' => $employeeId, 'payroll_count' => $rows->count()]
-            + self::classify(self::payTotals($rows), $isMwe, 12);
+        $month = self::classify(self::payTotals($rows), $isMwe, 12);
+        if ($newHire !== null && !$isMwe) {
+            $month['category'] = self::monthlySalary($newHire) * 12 > self::EXEMPT_ANNUAL_CEILING ? 'taxable' : 'exempt_250k';
+        }
+
+        return ['employee_id' => $employeeId, 'payroll_count' => $rows->count()] + $month;
+    }
+
+    /** The salary rate a month; a daily rate uses payroll's working days a year (261 Mon-Fri, 313 with Saturdays). */
+    private static function monthlySalary(Employee $employee): float
+    {
+        if ($employee->rate_type !== 'daily') {
+            return (float) $employee->salary;
+        }
+        $template = EmployeeSchedule::getCurrentForEmployee($employee->id)?->template;
+        $workDays = $template?->day_rules
+            ? collect($template->day_rules)->filter(fn ($rule) => !empty($rule['enabled']))->count()
+            : count($template?->work_days ?? [1, 2, 3, 4, 5]);
+
+        return (float) $employee->salary * ($workDays <= 5 ? 261 : 313) / 12;
     }
 
     /**
