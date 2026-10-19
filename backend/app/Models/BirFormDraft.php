@@ -4,13 +4,20 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 use App\Traits\Auditable;
 
+/**
+ * Soft-deleted (DELETE /bir/drafts/{id}, drafts only): normal queries skip a deleted form, but
+ * the version numbering and the amendment count include it (withTrashed), so a deleted
+ * correction still counts toward the limit and its version number is never reused.
+ */
 class BirFormDraft extends Model
 {
     use Auditable;
     use HasFactory;
+    use SoftDeletes;
 
     protected $table = 'bir_form_drafts';
 
@@ -78,7 +85,7 @@ class BirFormDraft extends Model
     {
         $seen = [];
         $form = $this;
-        while ($form->parent_id !== null && !isset($seen[$form->id]) && ($parent = self::find($form->parent_id)) !== null) {
+        while ($form->parent_id !== null && !isset($seen[$form->id]) && ($parent = self::withTrashed()->find($form->parent_id)) !== null) {
             $seen[$form->id] = true;
             $form = $parent;
         }
@@ -118,10 +125,10 @@ class BirFormDraft extends Model
         return $fields;
     }
 
-    /** Amendments made to this form so far: its highest version, less the original. */
+    /** Amendments made to this form so far: its highest version, less the original. A deleted correction counts. */
     public function amendmentsMade(): int
     {
-        return (int) self::where('form_type', $this->form_type)
+        return (int) self::withTrashed()->where('form_type', $this->form_type)
             ->where('period', $this->period)
             ->where('employee_id', $this->employee_id)
             ->max('version') - 1;

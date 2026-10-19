@@ -85,7 +85,7 @@ class BirFormController extends Controller
 
         // One return per period: a second original for the same form type, period and employee
         // (null on a 1601-C) is refused in any status and any version; corrections go through
-        // revise. The lock, as in revise, keeps two creates at the same moment from both finding
+        // revise. A deleted form (soft delete) doesn't count, so the period can be created again. The lock, as in revise, keeps two creates at the same moment from both finding
         // nothing. On MySQL the loser of that race deadlocks and is retried (3 attempts), and the
         // retry finds the winner's form, so it gets the 409 rather than a 500.
         [$draft, $existing] = DB::transaction(function () use ($request, $formType, $period, $employeeId) {
@@ -496,10 +496,11 @@ class BirFormController extends Controller
         // parent's: revising the same filed v1 twice gives v2 then v3, never two v2s. Whether
         // only the latest version may be revised is still open with the accountant. The lock
         // keeps two revisions created at the same moment from reading the same highest version,
-        // and so from both getting past the amendment limit (null: the limit is reached).
+        // and so from both getting past the amendment limit (null: the limit is reached). Deleted
+        // corrections count (withTrashed), as in amendmentsMade(): a number is never reused.
         $limit = BirFormDraft::AMENDMENT_LIMITS[$draft->form_type] ?? null;
         $revision = DB::transaction(function () use ($draft, $request, $limit) {
-            $highest = BirFormDraft::where('form_type', $draft->form_type)
+            $highest = BirFormDraft::withTrashed()->where('form_type', $draft->form_type)
                 ->where('period', $draft->period)
                 ->where('employee_id', $draft->employee_id)
                 ->lockForUpdate()
