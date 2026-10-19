@@ -51,6 +51,18 @@ class BirChatCommands
 {
     private const YES = '/^\s*(yes|y|oo|opo|sige|go|go ahead|yes please|ok|okay)\s*[.!]*\s*$/i';
 
+    /** "no", "hindi": turning down what the chat offered or asked. */
+    public static function saysNo(string $message): bool
+    {
+        return preg_match(self::NO, $message) === 1;
+    }
+
+    /** "yes", "oo", "sige": agreeing to what the chat offered or asked. */
+    public static function saysYes(string $message): bool
+    {
+        return preg_match(self::YES, $message) === 1;
+    }
+
     private const NO = '/^\s*(no|n|hindi|huwag|wag|cancel|never ?mind)\s*[.!]*\s*$/i';
 
     private const UNDO = '/^\s*(undo|i-?undo|ibalik|bawiin)\b/i';
@@ -78,7 +90,12 @@ class BirChatCommands
         // boxes: finish the command that asked.
         $pending = $state->pending();
         $state->setPending(null);
-        if ($pending !== null && ($extra = $this->completion($message, $pending['needs'])) !== null) {
+        // "yes" to "Did you mean Maria Santos?" gives that person; "no" asks who.
+        if ($pending !== null && !empty($pending['suggest']) && preg_match(self::NO, $message)) {
+            return self::result(BirEmployeeResolver::NOT_THEM);
+        }
+        $extra = $pending !== null && !empty($pending['suggest']) && preg_match(self::YES, $message) ? "for {$pending['suggest']}" : null;
+        if ($pending !== null && ($extra ??= $this->completion($message, $pending['needs'])) !== null) {
             // An item number for a change goes right after the command word, before the new value.
             $message = !empty($pending['insert']) && str_starts_with($extra, 'item ')
                 ? preg_replace('/^(\s*\S+)/u', '$1 ' . $extra, $pending['message'], 1)
@@ -242,8 +259,10 @@ class BirChatCommands
         // "change local home address of form 71 to …": the box by its name, when only one fits.
         if (BirAnswerParser::itemMentioned($message) === null) {
             $named = $this->itemNamed($target, $around, $ref);
-            if ($named !== null && str_starts_with($named, 'Which one')) {
-                $state->setPending(['message' => $message, 'needs' => 'box', 'insert' => true]);
+            if ($named !== null && !preg_match('/^\d{1,2}[A-Z]?$/', $named)) {
+                if (str_starts_with($named, 'Which one')) {
+                    $state->setPending(['message' => $message, 'needs' => 'box', 'insert' => true]);
+                }
 
                 return self::result($named, null, null, stay: true);
             }
@@ -269,13 +288,19 @@ class BirChatCommands
 
     /**
      * The item a change names by its box's name (BirBoxMatcher), "Which one…" when several
-     * boxes share the name, or null when the words name no box.
+     * boxes share the name, what to say when it names a box with no item number, or null
+     * when the words name no box.
      */
     private function itemNamed(BirFormDraft $target, string $around, array $ref): ?string
     {
         $fields = array_values(array_filter($this->conversation->fields($target->form_type), fn (array $f) => $f['source'] !== 'manual'));
         $who = $ref['employee'] !== null ? [$ref['employee']->first_name, $ref['employee']->last_name] : [];
-        $match = BirBoxMatcher::match($fields, $around, array_filter([...$who, $ref['query'], ...self::COMMAND_WORDS]));
+        $skip = array_filter([...$who, $ref['query'], ...self::COMMAND_WORDS]);
+        // A box with no item number ("the date issued" is the CTC's): never another box in its place.
+        if (($box = BirBoxMatcher::unnumbered($fields, $around, $skip)) !== null) {
+            return "\"{$box['label']}\" has no item number on the form, so I can't change it from the chat. Change it on the form itself. Nothing was changed.";
+        }
+        $match = BirBoxMatcher::match($fields, $around, $skip);
 
         return match (true) {
             $match['fields'] === [] => null,
@@ -293,7 +318,7 @@ class BirChatCommands
             return self::result(self::NEEDS_NUMBER . ' That sounds like ' . BirFormNames::line($found) . '. Reply "form ' . BirFormNames::label($found) . '" to change it.', null, null, stay: true);
         }
         if ($found['ask']) {
-            $state->setPending(['message' => $message, 'needs' => $found['needs']]);
+            $state->setPending(['message' => $message, 'needs' => $found['needs'], 'suggest' => $found['suggest'] ?? null]);
         }
 
         return self::result($found['reply'], null, null, null, $found['candidates'], stay: true);
@@ -397,9 +422,10 @@ class BirChatCommands
     private function completion(string $message, string $needs): ?string
     {
         $short = str_word_count($message) <= 5 && !BirAnswerParser::looksLikeChange($message);
-        // A bare year ("2026") is a year even here; "#2026" or "form 2026" would be a number.
+        // A bare year ("2026") is a year even here, and a bare "2316" or "1601" the form type;
+        // "#2026" or "form 2316" would be a number.
         if ($needs === 'form' && preg_match('/^\s*(?:(form|draft)\s*(?:no\.?|number)?\s*)?(#)?\s*(\d{1,6})(?:\s*v(\d{1,2}))?\s*[.!]?\s*$/i', $message, $m)
-            && ($m[1] !== '' || $m[2] !== '' || isset($m[4]) || !preg_match('/^(19|20)\d{2}$/', $m[3]))) {
+            && ($m[1] !== '' || $m[2] !== '' || isset($m[4]) || !preg_match('/^(?:(19|20)\d{2}|2316|1601)$/', $m[3]))) {
             return "on form #{$m[3]}" . (isset($m[4]) && $m[4] !== '' ? "v{$m[4]}" : '');
         }
         if ($needs === 'box' && preg_match('/^\s*(?:item|box|#)?\s*(\d{1,2}[a-z]?)\s*[.!?]?\s*$/i', $message, $m)) {

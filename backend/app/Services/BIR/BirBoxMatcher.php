@@ -77,6 +77,9 @@ final class BirBoxMatcher
         if ($asked === []) {
             return ['fields' => [], 'ambiguous' => false, 'words' => 0];
         }
+        // "compnsation", "witheld": a word no box has, one slip from one that only one word is.
+        $vocabulary = array_values(array_unique(array_merge([], ...array_map(self::tokens(...), $fields))));
+        $asked = array_map(fn (string $word) => self::spelled($word, $vocabulary), $asked);
 
         $scores = [];
         $unmatched = count($asked);
@@ -124,6 +127,34 @@ final class BirBoxMatcher
     }
 
     /**
+     * The box without an item number that a word of the question names, when no numbered box
+     * has that word: "the date issued" is the CTC's, so a change must never land on the date of
+     * birth in its place. Null when every word fits a numbered box, or none at all.
+     *
+     * @param  array<int, array<string, mixed>>  $fields  the form's schema fields
+     * @param  array<int, string>  $skip  words already spent elsewhere (names, command words)
+     * @return array<string, mixed>|null
+     */
+    public static function unnumbered(array $fields, string $message, array $skip = []): ?array
+    {
+        $numbered = array_merge([], ...array_map(self::tokens(...), array_values(array_filter($fields, fn (array $f) => $f['item'] !== null))));
+        $skip = array_map(self::stem(...), self::words(implode(' ', $skip)));
+        foreach (self::words($message) as $word) {
+            if (in_array($word, self::IGNORED, true) || in_array(self::stem($word), $skip, true) || ctype_digit($word) || strlen($word) < 3
+                || array_intersect(self::meanings($word), $numbered) !== []) {
+                continue;
+            }
+            foreach ($fields as $field) {
+                if ($field['item'] === null && array_intersect(self::meanings($word), self::tokens($field)) !== []) {
+                    return $field;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * "Which one do you mean? On the 2316 that could be: item 3, the employee's Taxpayer
      * Identification Number; …" — each told apart by the start of its help text.
      *
@@ -139,6 +170,18 @@ final class BirBoxMatcher
 
         return "Which one do you mean? On the {$formType} that could be:\n" . implode("\n", $lines)
             . "\nSay the item number, for example \"item " . array_key_first($lines) . '".';
+    }
+
+    /** The word, or the one box word it is a slip of: 6 letters or more, one slip (two from 9). */
+    private static function spelled(string $word, array $vocabulary): string
+    {
+        if (strlen($word) < 6 || array_intersect(self::meanings($word), $vocabulary) !== []) {
+            return $word;
+        }
+        $near = array_values(array_filter($vocabulary, fn (string $token) => abs(strlen($token) - strlen($word)) <= 2
+            && BirMessageFacts::slips(self::stem($word), $token) <= (strlen($word) >= 9 ? 2 : 1)));
+
+        return count($near) === 1 ? $near[0] : $word;
     }
 
     /** @return array<int, string> lower-case words, possessives dropped ("Maria's" → "maria") */

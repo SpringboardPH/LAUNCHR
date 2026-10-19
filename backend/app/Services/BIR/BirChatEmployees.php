@@ -64,7 +64,7 @@ class BirChatEmployees
         if ($ref['person'] === BirEmployeeResolver::NOT_NAMED && $asks) {
             $named = $this->employees->capitalisedName($message);
             if ($named['status'] !== BirEmployeeResolver::NOT_NAMED) {
-                [$ref['person'], $ref['employee'], $ref['candidates']] = [$named['status'], $named['employee'], $named['candidates']];
+                [$ref['person'], $ref['employee'], $ref['candidates'], $ref['close'], $ref['query']] = [$named['status'], $named['employee'], $named['candidates'], $named['close'], $named['query']];
             }
         }
         $person = $ref['person'] !== BirEmployeeResolver::NOT_NAMED;
@@ -83,6 +83,13 @@ class BirChatEmployees
         }
         if ($type !== Form1601CSchema::FORM_TYPE || !($asksList || ($person && $asks))) {
             return null;
+        }
+
+        // A name only spelled close to someone's ("Mario"): ask, never show another person's pay.
+        if ($person && $ref['person'] === BirEmployeeResolver::MATCHED && ($ref['close'] ?? false)) {
+            $state->setPending(['message' => $message, 'needs' => 'detail', 'suggest' => $ref['employee']->employee_id]);
+
+            return BirChatCommands::result(BirEmployeeResolver::didYouMean((string) $ref['query'], $ref['employee']), null, null, null, $ref['candidates'], stay: true);
         }
 
         // The person picks a row, not the form: find the 1601-C without them.

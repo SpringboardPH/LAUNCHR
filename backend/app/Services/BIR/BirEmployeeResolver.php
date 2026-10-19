@@ -50,6 +50,24 @@ class BirEmployeeResolver
         'may', 'june', 'april', 'august', 'item', 'box', 'form', 'change', 'edit', 'update', 'the', 'for',
     ];
 
+    /** Words that start a question or name a box, never a person: "for form #4 where did …", "for #4 item 25A". */
+    private const QUESTION_START = '/^(?:what|where|which|who|how|when|why|is|are|was|did|does|do|can|could|ano|anong|saan|bakit|paano|sino|kailan|magkano|ilan|item|box|form|draft|version)\b/i';
+
+    /** Small words that sit beside a name in a request or question and are never part of it. */
+    private const NOT_A_NAME = [
+        'the', 'for', 'of', 'in', 'on', 'and', 'sa', 'ng', 'ang', 'yung', 'mga', 'para', 'noong', 'nung', 'po', 'si', 'ni', 'kay',
+        'taon', 'taong', 'year', 'box', 'bir', 'how', 'what', 'who', 'which', 'when', 'where', 'why', 'much', 'was', 'did',
+        'does', 'magkano', 'ano', 'anong', 'sino', 'saan', 'kailan', 'bakit', 'paano', 'ilan', 'sahod', 'paid', 'pay',
+        'salary', 'tax', 'withheld', 'certificate', 'remittance', 'latest', 'filed', 'draft', 'version', 'original',
+        'can', 'you', 'please', 'pls', 'show', 'tell', 'give', 'get', 'make', 'need', 'want', 'this', 'last', 'next',
+        'open', 'change', 'edit', 'update', 'set', 'check', 'view', 'see', 'find', 'read', 'display', 'print', 'download',
+        'submit', 'approve', 'file', 'buksan', 'pakita', 'ipakita', 'palitan', 'tingnan', 'whats', 'are', 'about', 'with',
+        'from', 'its', 'their', 'his', 'her', 'kanyang', 'niya', 'nasaan', 'status', 'amount', 'item', 'all', 'every',
+    ];
+
+    /** The reply to "no" after "Did you mean …?". */
+    public const NOT_THEM = 'Okay, nobody was picked. Which employee did you mean? Give their full name or employee ID.';
+
     /** Maximum candidates shown before asking the user to be more specific. */
     private const MAX_CANDIDATES = 5;
 
@@ -64,7 +82,8 @@ class BirEmployeeResolver
      */
     public function resolve(string $query): array
     {
-        $query = trim($query);
+        // "si Noel", "ni si Noel", "Noel pala", "kay Mina po": the words around a name aren't part of it.
+        $query = trim(preg_replace(['/^(?:(?:si|ni|kay|kina|sina|para kay)\s+)+/iu', '/(?:\s+(?:po|pala|nga|naman|lang|ba))+\s*$/iu'], '', trim($query)));
 
         if ($query === '') {
             return $this->result(self::NOT_FOUND);
@@ -85,11 +104,13 @@ class BirEmployeeResolver
             fn () => $this->byExactName($employees, $query),
             fn () => $this->byAllTokens($employees, $query),
             fn () => $this->byCloseSpelling($employees, $query),
-        ] as $tier) {
+        ] as $i => $tier) {
             $hits = $tier();
 
+            // Found only by close spelling: "close", so the chat asks "Did you mean…?" ("Mario
+            // Santos" may be someone not on file, not a typo for Maria Santos).
             if ($hits->count() === 1) {
-                return $this->result(self::MATCHED, $hits->first());
+                return $this->result(self::MATCHED, $hits->first(), $i === 3 ? $hits : null, $i === 3);
             }
 
             if ($hits->count() > 1) {
@@ -159,8 +180,13 @@ class BirEmployeeResolver
             fn (Employee $e) => $has($e->first_name, $words) && $has($e->last_name, $words),
             fn (Employee $e) => $has($e->last_name, $named),
             fn (Employee $e) => $has($e->first_name, $named),
-        ] as $tier) {
+        ] as $i => $tier) {
             $hits = $employees->filter($tier)->values();
+            // One name of theirs, with another name beside it ("Pedro Santos's", "teresa taxabel's"):
+            // perhaps someone else, so the chat asks "Did you mean…?".
+            if ($hits->count() === 1 && $i > 0 && ($other = $this->otherNameWords($named, $hits->first())) !== []) {
+                return $this->result(self::MATCHED, $hits->first(), $hits, true) + ['query' => $this->typedName($named, $hits->first(), $other)];
+            }
             if ($hits->count() === 1) {
                 return $this->result(self::MATCHED, $hits->first()) + ['query' => null];
             }
@@ -172,8 +198,9 @@ class BirEmployeeResolver
         // "for mariaa santos": the words after "for" / "ni" / "kay", up to the next keyword.
         if (preg_match('/\b(?:for|ni|kay)\s+([\p{L}][\p{L} .\'-]*?)(?=\s*(?:[,;:?!]|\'s\b|\b(?:item|box|to|ng|for|on|in|sa|of|change|from|na)\b|\d|$))/iu', $text, $m)) {
             $query = trim($m[1], " .'-");
-            // A lone letter is no name: the "Q" of "for Q1 2025".
-            if (mb_strlen($query) > 1 && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
+            // A lone letter is no name: the "Q" of "for Q1 2025". Nor is a question: "for form #4
+            // where did item 25A come from" leaves "where did" after "for" once the form number is out.
+            if (mb_strlen($query) > 1 && !preg_match(self::QUESTION_START, $query) && !BirIntentService::onlyNamesAPeriodOrForm($query)) {
                 return $this->resolve($query) + ['query' => $query];
             }
         }
@@ -195,8 +222,19 @@ class BirEmployeeResolver
         $words = array_diff(array_map(fn (string $w) => $this->normalize($w), $m[0]), self::NOT_NAMES);
         $is = fn (string $name) => count($parts = explode(' ', $this->normalize($name))) === 1 && in_array($parts[0], $words, true);
 
-        foreach ([fn (Employee $e) => $is($e->first_name), fn (Employee $e) => $is($e->last_name)] as $tier) {
+        // Last, a capitalised word one slip from a name: "how much was Teressa paid".
+        $near = fn (Employee $e) => array_filter($words, fn (string $w) => $this->nameSlip($w, $e->first_name) || $this->nameSlip($w, $e->last_name)) !== [];
+
+        foreach ([fn (Employee $e) => $is($e->first_name), fn (Employee $e) => $is($e->last_name), $near] as $i => $tier) {
             $hits = $this->employees()->filter($tier)->values();
+            if ($hits->count() === 1 && $i < 2 && ($other = $this->otherNameWords($words, $hits->first())) !== []) {
+                return $this->result(self::MATCHED, $hits->first(), $hits, true) + ['query' => $this->typedName($words, $hits->first(), $other)];
+            }
+            if ($hits->count() === 1 && $i === 2) {
+                $typed = collect($m[0])->first(fn (string $w) => $this->nameSlip($this->normalize($w), $hits->first()->first_name) || $this->nameSlip($this->normalize($w), $hits->first()->last_name));
+
+                return $this->result(self::MATCHED, $hits->first(), $hits, true) + ['query' => $typed];
+            }
             if ($hits->count() === 1) {
                 return $this->result(self::MATCHED, $hits->first()) + ['query' => null];
             }
@@ -282,7 +320,10 @@ class BirEmployeeResolver
             $full = $this->normalize($e->first_name . ' ' . $e->last_name);
             $reversed = $this->normalize($e->last_name . ' ' . $e->first_name);
 
-            return $this->isClose($needle, $full) || $this->isClose($needle, $reversed);
+            // One name alone with a slip: "Teressa" is Teresa, "Mnia" is Mina (nameSlip()).
+            $alone = !str_contains($needle, ' ') && ($this->nameSlip($needle, $e->first_name) || $this->nameSlip($needle, $e->last_name));
+
+            return $alone || $this->isClose($needle, $full) || $this->isClose($needle, $reversed);
         })->values();
     }
 
@@ -308,6 +349,54 @@ class BirEmployeeResolver
         similar_text($needle, $candidate, $percent);
 
         return $percent >= self::SIMILARITY_THRESHOLD || $this->eachWordClose($needle, $candidate);
+    }
+
+    /**
+     * Name-like words typed beside an employee's own names, the sentence's small words aside:
+     * "pedro" in "Pedro Santos's", "taxabel" in "teresa taxabel's". Empty when there are none.
+     *
+     * @param  array<int, string>  $words  normalized words
+     * @return array<int, string>
+     */
+    private function otherNameWords(array $words, Employee $employee): array
+    {
+        $own = explode(' ', $this->normalize($employee->first_name . ' ' . $employee->last_name));
+
+        return array_values(array_filter(array_unique($words), fn (string $w) => strlen($w) >= 3 && !preg_match('/\d/', $w)
+            && !in_array($w, $own, true) && !in_array($w, self::NOT_NAMES, true) && !in_array($w, self::NOT_A_NAME, true)
+            && !isset(BirFormFinder::MONTHS[$w])));
+    }
+
+    /** The name as typed, for "I couldn't find …": the employee's matching name and the words beside it. */
+    private function typedName(array $words, Employee $employee, array $other): string
+    {
+        $own = explode(' ', $this->normalize($employee->first_name . ' ' . $employee->last_name));
+
+        return ucwords(implode(' ', array_values(array_filter($words, fn (string $w) => in_array($w, $own, true) || in_array($w, $other, true)))));
+    }
+
+    /** What the chat asks when a name was only spelled close to someone's. */
+    public static function didYouMean(string $typed, Employee $employee): string
+    {
+        return "I couldn't find \"{$typed}\". Did you mean " . trim($employee->first_name . ' ' . $employee->last_name)
+            . " ({$employee->employee_id})? Say yes, or give the right name or employee ID.";
+    }
+
+    /**
+     * A name typed with one slip: 5 letters or more, one slip ("Teressa"); 4 letters, only two
+     * letters swapped ("Mnia" is Mina), so "Dina" stays someone other than Dana. Shorter must match.
+     */
+    private function nameSlip(string $typed, string $name): bool
+    {
+        $name = $this->normalize($name);
+        if ($typed === $name || str_contains($name, ' ')) {
+            return false;
+        }
+        if (strlen($typed) >= 5) {
+            return BirMessageFacts::slips($typed, $name) <= 1;
+        }
+
+        return strlen($typed) === 4 && strlen($name) === 4 && count_chars($typed, 1) == count_chars($name, 1) && BirMessageFacts::slips($typed, $name) === 1;
     }
 
     /**
@@ -349,10 +438,11 @@ class BirEmployeeResolver
      * @param  Collection<int,Employee>|null  $candidates
      * @return array{status:string, employee:?Employee, candidates:array<int,array<string,mixed>>}
      */
-    private function result(string $status, ?Employee $employee = null, ?Collection $candidates = null): array
+    private function result(string $status, ?Employee $employee = null, ?Collection $candidates = null, bool $close = false): array
     {
         return [
             'status' => $status,
+            'close' => $close,
             'employee' => $employee,
             'candidates' => $candidates
                 ? $candidates->take(self::MAX_CANDIDATES)->map(fn (Employee $e) => [

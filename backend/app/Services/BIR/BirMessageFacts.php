@@ -63,21 +63,40 @@ final class BirMessageFacts
 
     /**
      * True when a word in the message is this month's name typed with a slip ("novmber", "agust",
-     * "decmber"): one in a word of 5 letters or more, two from 8. It only confirms the model's
-     * month, never finds one on its own, so a name like "Marco" is never read as March.
+     * "decmber", "Mrch"): one in a word of 4 letters or more, two from 8. It confirms the model's
+     * month; nearMonth() is the only guess, and only when the model gave none.
      */
     public static function spellsMonth(string $message, int $month): bool
     {
         $names = array_keys(array_filter(BirFormFinder::MONTHS, fn (int $m, string $name) => $m === $month && strlen($name) >= 4, ARRAY_FILTER_USE_BOTH));
         foreach (preg_split('/[^a-z]+/', mb_strtolower($message), -1, PREG_SPLIT_NO_EMPTY) as $word) {
             foreach ($names as $name) {
-                if (strlen($word) >= 5 && self::slips($word, $name) <= (strlen($word) >= 8 ? 2 : 1)) {
+                if (strlen($word) >= 4 && self::slips($word, $name) <= (strlen($word) >= 8 ? 2 : 1)) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /**
+     * The one month a misspelled word in the message is closest to ("Agosot", "Mrch"), when the
+     * model read none: one slip in a word of 4 letters or more, two from 8. Null when no word, or
+     * words for two months, are that close. The caller asks the user to check what it guessed.
+     */
+    public static function nearMonth(string $message): ?int
+    {
+        $found = [];
+        foreach (preg_split('/[^a-z]+/', mb_strtolower($message), -1, PREG_SPLIT_NO_EMPTY) as $word) {
+            foreach (BirFormFinder::MONTHS as $name => $month) {
+                if (strlen($word) >= 4 && strlen($name) >= 4 && $word !== $name && self::slips($word, $name) <= (strlen($word) >= 8 ? 2 : 1)) {
+                    $found[$month] = true;
+                }
+            }
+        }
+
+        return count($found) === 1 ? array_key_first($found) : null;
     }
 
     /** Typing slips between two words: letters added, dropped, changed, or two swapped ("opne"). */

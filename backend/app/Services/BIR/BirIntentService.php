@@ -297,6 +297,14 @@ class BirIntentService
         // message, and one the model missed is taken from it when it says exactly one.
         $year = BirMessageFacts::agreed(is_int($raw['tax_year'] ?? null) ? $raw['tax_year'] : null, BirMessageFacts::yearsSaid($message));
         $month = BirMessageFacts::agreed(is_int($raw['tax_month'] ?? null) ? $raw['tax_month'] : null, BirMessageFacts::monthsSaid($message));
+        // "10" on its own, answering "which month?" for a 1601-C, is October.
+        $bareMonth = ($known['form_type'] ?? null) === Form1601CSchema::FORM_TYPE && ($known['tax_month'] ?? null) === null
+            && preg_match('/^\s*(1[0-2]|0?[1-9])\s*[.!]?\s*$/', $message, $n) ? (int) $n[1] : null;
+        $month = $bareMonth ?? $month;
+        // A misspelled month the model didn't read ("Agosot", "Mrch") on a 1601-C: a guess the user checks.
+        $guessedMonth = $month === null && ($formsSaid === [Form1601CSchema::FORM_TYPE] || ($formsSaid === [] && ($known['form_type'] ?? null) === Form1601CSchema::FORM_TYPE))
+            ? BirMessageFacts::nearMonth($message) : null;
+        $month ??= $guessedMonth;
         if ($year !== null && BirMessageFacts::yearsSaid($message) === [] && preg_match(self::RELATIVE_PERIOD, $message)
             && abs($year - SystemClock::now()->year) > 1) {
             $year = null; // "last year" is never 1899
@@ -307,7 +315,7 @@ class BirIntentService
         if ($year !== null && $year !== ($known['tax_year'] ?? null) && !self::mentionsYear($message)) {
             $year = null;
         }
-        if ($month !== null && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message) && !BirMessageFacts::spellsMonth($message, $month)) {
+        if ($month !== null && $month !== $bareMonth && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message) && !BirMessageFacts::spellsMonth($message, $month)) {
             $month = null;
         }
         $employee = is_string($raw['employee_query'] ?? null) && trim($raw['employee_query']) !== ''
@@ -353,7 +361,7 @@ class BirIntentService
             'employee_query' => $employee,
             'kind' => $kind,
             'rejected_year' => $rejectedYear,
-            'needs_clarification' => ($raw['confidence'] ?? 'low') === 'low',
+            'needs_clarification' => ($raw['confidence'] ?? 'low') === 'low' || $guessedMonth !== null,
             'clarification' => is_string($raw['clarification'] ?? null) && trim($raw['clarification']) !== ''
                 ? trim($raw['clarification'])
                 : null,

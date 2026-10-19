@@ -89,6 +89,7 @@ class BirChatController extends Controller
 
         $message = $validated['message'];
         $card = $state->takeCard(); // the request understood last, for this message only
+        $suggested = $state->takeSuggestion(); // the person "Did you mean …?" offered
 
         // Reading or changing a box on a saved form, "yes", "submit it for review" and "undo": PHP only.
         if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
@@ -98,6 +99,11 @@ class BirChatController extends Controller
         // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
         if (($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
             return $this->reply($state->get(), false, $this->aboutItem($message, $item, $state->get()['form_type'] ?? null));
+        }
+
+        // "yes" or "no" to "Did you mean Maria Santos?": that person, or ask who.
+        if ($suggested !== null && (BirChatCommands::saysYes($message) || BirChatCommands::saysNo($message))) {
+            return BirChatCommands::saysYes($message) ? $this->withEmployee($state->merge(['employee_query' => $suggested]), $state) : $this->reply($state->get(), false, BirEmployeeResolver::NOT_THEM);
         }
 
         // "no, September pala" right after a request was understood: it corrects that request.
@@ -202,6 +208,13 @@ class BirChatController extends Controller
                 "More than one person matches that: {$names}. Which one did you mean?",
                 $match['candidates'],
             );
+        }
+
+        // Found only by close spelling ("Mario Santos" for Maria Santos): ask, never pick.
+        if ($match['close']) {
+            $state->setSuggestion($match['employee']->employee_id);
+
+            return $this->reply($merged, false, BirEmployeeResolver::didYouMean((string) $merged['employee_query'], $match['employee']), $match['candidates']);
         }
 
         $employee = $match['employee'];
@@ -341,7 +354,7 @@ class BirChatController extends Controller
             'explain_source' => $box !== null ? $this->explanations->source($draft, $box) : BirExplanationService::WHICH_BOX,
             'tax_question' => BirExplanationService::DECLINE,
             'new_request' => BirExplanationService::NEW_REQUEST,
-            'other' => BirExplanationService::OTHER,
+            'other' => BirAnswerParser::looksLikeQuestion($message) ? BirExplanationService::OTHER : null, // "abc", "skip": the question again
             default => null, // a muddled answer: keep the re-ask
         };
 
@@ -418,6 +431,9 @@ class BirChatController extends Controller
             str_contains($message, '2316') => Form2316Schema::FORM_TYPE,
             default => $formType,
         };
+        // An item only one form has ("item 25A" is the 2316's) needs no "which form?".
+        $has = array_values(array_filter([Form1601CSchema::FORM_TYPE, Form2316Schema::FORM_TYPE], fn (string $type) => $this->explanations->meaningOfItem($type, $item) !== null));
+        $named ??= count($has) === 1 ? $has[0] : null;
         if ($named === null) {
             return BirExplanationService::WHICH_FORM;
         }

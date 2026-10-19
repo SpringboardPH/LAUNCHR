@@ -52,7 +52,7 @@ final class BirAnswerParser
     ];
 
     /** Command words whose typos are fixed before the command is read (withCommandSpelled()). */
-    private const COMMAND_WORDS = ['change', 'update', 'palitan', 'pakipalitan', 'baguhin', 'open', 'buksan', 'ipakita', 'pakita'];
+    private const COMMAND_WORDS = ['change', 'update', 'palitan', 'pakipalitan', 'baguhin', 'open', 'buksan', 'ipakita', 'pakita', 'undo'];
 
     /** Accepted date spellings. MM/DD/YYYY, not DD/MM/YYYY, because that is how BIR forms write dates. */
     private const DATE_FORMATS = ['Y-m-d', 'm/d/Y', 'F j, Y', 'F j Y', 'M j, Y', 'M j Y', 'j F Y', 'j M Y'];
@@ -98,7 +98,8 @@ final class BirAnswerParser
         // "draft #12" and "form #12" are a form's number, never item 12.
         $message = BirFormFinder::withoutFormNumber($message);
 
-        return preg_match('/(?:\bitem|\bbox|#)\s*(\d{1,2}[a-z]?)\b/i', $message, $m) ? strtoupper($m[1]) : null;
+        // "itm 5", "iten 5": a slip in "item" too.
+        return preg_match('/(?:\bitem|\bitm|\biten|\bitme|\bbox|#)\s*(\d{1,2}[a-z]?)\b/i', $message, $m) ? strtoupper($m[1]) : null;
     }
 
     /**
@@ -221,13 +222,13 @@ final class BirAnswerParser
 
     /**
      * The message with a slip in its first word fixed, when that word is a command: "chnage item
-     * 4 to 2", "opne form #11", "palitn". Words of 4 letters or more, one slip only; anything
+     * 4 to 2", "opne form #11", "palitn", "opn", "udno". Words of 3 letters or more, one slip only; anything
      * else is left as typed. Submit is never guessed: sending a form for review must be asked plainly.
      */
     public static function withCommandSpelled(string $message): string
     {
         $first = strtok(mb_strtolower(trim($message)), " \t,:");
-        if ($first === false || strlen($first) < 4 || in_array($first, self::COMMAND_WORDS, true)) {
+        if ($first === false || strlen($first) < 3 || in_array($first, self::COMMAND_WORDS, true)) {
             return $message;
         }
         foreach (self::COMMAND_WORDS as $word) {

@@ -81,7 +81,9 @@ class BirChatWordingTest extends TestCase
             ->assertJsonPath('data.reply', "Form #{$id} (the September 2026 1601-C) is waiting for review. I can't approve or return forms from the chat. Accounting does that with the \"Approve\" and \"Return to preparer\" buttons above the form, once it is submitted for review.");
         $this->assertStringContainsString("I can't approve or return forms from the chat.", $this->send("return form #{$id} to the preparer")->json('data.reply'));
         $this->assertStringContainsString("I can't mark forms as filed from the chat.", $this->send("mark form #{$id} as filed")->json('data.reply'));
-        $this->assertStringContainsString("Forms aren't deleted in the BIR Form Assistant.", $this->send("delete form #{$id}")->json('data.reply'));
+        $this->assertStringContainsString('Only drafts can be deleted.', $this->send("delete form #{$id}")->json('data.reply'));
+        $draft = $this->draft1601C('2026-08');
+        $this->assertStringEndsWith('A draft can be deleted with the "Delete draft" button above it.', $this->send("delete form #{$draft}")->json('data.reply'));
         $this->assertStringContainsString("I can't approve or return forms from the chat.", $this->send('please approve it')->json('data.reply'));
 
         $this->assertSame('pending', BirFormDraft::findOrFail($id)->status);
@@ -361,6 +363,71 @@ class BirChatWordingTest extends TestCase
         $reply = $this->send("magkano ang sahod ni Maria sa form #{$id}?")->json('data.reply');
         $this->assertStringContainsString('"Item 39, Basic Salary" is ₱0.00', $reply);
         $this->assertStringContainsString('"Item 29, Basic Salary (including the exempt P250,000 & below) or the Statutory Minimum Wage of the MWE" is ₱', $reply);
+    }
+
+    public function test_messages_from_the_second_cloud_model_round(): void
+    {
+        $sep = $this->draft1601C('2026-09');
+        $id = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $this->maria->id])->assertCreated()->json('data.id');
+        $on = "On Maria Santos' 2316 for 2026 (form #{$id}";
+
+        // "for form #N …": the words after "for" are the question, not a person.
+        $this->assertStringStartsWith($on, $this->send("for form #{$id} what is item 25A")->json('data.reply'));
+        $this->assertStringStartsWith($on, $this->send("for #{$id} item 25A")->json('data.reply'));
+        // A form number, then only an item number.
+        $this->assertStringContainsString('"Item 25A,', $this->send("form #{$id} 25A")->json('data.reply'));
+        // A box named after a form number is read without a question mark.
+        $this->assertStringStartsWith('Which one do you mean? On the 2316 that could be:', $this->send("Maria's TIN on form #{$id}")->json('data.reply'));
+        // "who changed" asks where the figure came from.
+        $this->assertStringContainsString('It comes from payroll', $this->send("who changed item 25 on form #{$sep}?")->json('data.reply'));
+        // An item only one form has needs no "which form?".
+        $this->assertStringStartsWith('"Item 25A,', $this->send('what does item 25A mean?')->json('data.reply'));
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_more_ways_to_ask_where_a_form_stands(): void
+    {
+        $id = $this->draft1601C('2026-09');
+        BirFormDraft::whereKey($id)->update(['rejection_reason' => 'Item 25 does not match payroll.']);
+
+        $this->assertStringContainsString('The reviewer sent it back: "Item 25 does not match payroll."', $this->send("why was form #{$id} returned?")->json('data.reply'));
+        $this->assertStringStartsWith("Form #{$id} (the September 2026 1601-C) is", $this->send("nasaan na ang form #{$id}?")->json('data.reply'));
+        $this->assertStringEndsWith('Prepared by ' . $this->accounting->name . '.', $this->send("sino ang gumawa ng form #{$id}?")->json('data.reply'));
+        $this->assertStringStartsWith("Form #{$id} (the September 2026 1601-C) is", $this->send("kailan na-file ang form #{$id}?")->json('data.reply'));
+        $this->assertSame([], $this->model->calls());
+    }
+
+    public function test_a_form_type_answering_which_form_is_not_a_form_number(): void
+    {
+        $id = $this->draft1601C('2026-09');
+        $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '1601-C', 'period' => '2026-08'])->assertCreated();
+
+        $this->assertStringStartsWith('More than one form fits.', $this->send('what is item 25 on the 1601-C for 2026?')->json('data.reply'));
+        $this->assertStringStartsNotWith('There is no form #1601', $this->next('1601')->json('data.reply'));
+    }
+
+    public function test_a_bare_answer_gets_the_question_again_and_a_bare_month_is_read(): void
+    {
+        $id = $this->draft1601C('2026-09');
+        $this->assertSame('sheets_attached', $this->chat($id, null)->json('data.question.field'));
+        $this->model->willReturn(['kind' => 'other', 'field' => null]);
+        $reply = $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $id, 'field' => 'sheets_attached', 'message' => 'abc'])->json('data.reply');
+        $this->assertStringStartsNotWith('I can explain', $reply);
+
+        $this->model->willReturn(['form_type' => '1601-C', 'tax_year' => 2026, 'tax_month' => null, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]);
+        $this->send('1601-C 2026')->assertJsonPath('data.reply', 'Could you tell me the month? I prepare one 1601-C at a time.');
+        $this->model->willReturn(['form_type' => '1601-C', 'tax_year' => 2026, 'tax_month' => null, 'employee_query' => null, 'kind' => 'form_request', 'confidence' => 'high', 'clarification' => null]);
+        $this->next('10')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-10.');
+    }
+
+    public function test_a_change_never_lands_on_another_box_than_the_one_named(): void
+    {
+        $id = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $this->maria->id])->assertCreated()->json('data.id');
+
+        // "the date issued" is the CTC's, which has no item number: never the date of birth instead.
+        $this->send("change the date issued on form #{$id} to January 8, 2026")->assertJsonPath('data.answer', null)
+            ->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, '"Date Issued (CTC/Valid ID)" has no item number on the form'));
+        $this->send("change item 7 on form #{$id} to March 14, 1995")->assertJsonPath('data.answer', ['field' => 'employee_birthdate', 'value' => '1995-03-14']);
     }
 
     // ---- helpers

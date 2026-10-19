@@ -30,6 +30,9 @@ class BirChatSubmit
     /** Days of the week, whole or short: "this month" is never "this mon". */
     private const DAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu|thurs|fri|sat|sun';
 
+    /** Also where a form stands: "why was form #5 returned?", "nasaan na ang form #2?", "sino ang gumawa ng form #4?", "kailan na-file ang form #4?". */
+    private const STANDING = '/^\s*(?:why|bakit)\b.*\b(?:returned|rejected|sent back|ibinalik|binalik|na-?reject)\b|^\s*nasaan\b|\b(?:who|sino)\b.*\b(?:prepared|made|created|submitted|approved|filed|gumawa|naghanda|nag-?submit|nag-?approve|nag-?file)\b|^\s*(?:when|kailan)\b.*\b(?:submitted|approved|filed|returned|na-?submit|na-?approve|na-?file|ibinalik)\b/i';
+
     /** A question about submitting, or a "not yet": never a request to submit. */
     private const NOT_A_REQUEST = '/^\s*(?:how|paano|pano|what|ano|when|kailan|why|bakit|where|saan|which|who|is|are|was|were|has|have|did|does|can i|should i|do i|show|list)\b|\b(?:don\'?t|do not|not yet|hindi pa|huwag|wag|hold off|before)\b/i';
 
@@ -57,7 +60,7 @@ class BirChatSubmit
     /** True when the message asks where a form stands: submitted, approved, filed. */
     public static function asksForStatus(string $message): bool
     {
-        return preg_match(self::STATUS, $message) === 1 && BirAnswerParser::itemMentioned($message) === null;
+        return (preg_match(self::STATUS, $message) === 1 || preg_match(self::STANDING, $message) === 1) && BirAnswerParser::itemMentioned($message) === null;
     }
 
     /** "approve form #9": the chat can't; says who can, and with which button. */
@@ -71,7 +74,9 @@ class BirChatSubmit
         $reply = match (true) {
             in_array($verb, ['approve', 'aprubahan', 'reject', 'return'], true) => 'I can\'t approve or return forms from the chat. Accounting does that with the "Approve" and "Return to preparer" buttons above the form, once it is submitted for review.',
             in_array($verb, ['mark', 'file', 'finalize', 'finalise'], true) => 'I can\'t mark forms as filed from the chat. Accounting does that with the "Mark as filed" button above the form, once it is approved and filed with the BIR.',
-            default => 'Forms aren\'t deleted in the BIR Form Assistant. A draft you don\'t need can be left as it is, and a filed form stays as the record of what was filed.',
+            // Drafts (a returned one too) can be deleted on screen; nothing under review, approved or filed (Kyle's DELETE).
+            $form instanceof BirFormDraft && $form->status !== 'draft' => 'Only drafts can be deleted. A form under review or approved stays as it is, and a filed form stays as the record of what was filed.',
+            default => 'I can\'t delete forms from the chat. A draft can be deleted with the "Delete draft" button above it.',
         };
 
         return BirChatCommands::result($lead . $reply, stay: true);
@@ -97,7 +102,12 @@ class BirChatSubmit
             default => ' It is the record of what was filed; a change goes in a new version.',
         };
 
-        return BirChatCommands::result("{$name} is " . BirFormNames::statusWord($form) . ".{$next}", stay: true);
+        // "who made / approved form #4?": the people on it too.
+        $who = preg_match('/\b(?:who|sino)\b/i', $message) === 1
+            ? ' Prepared by ' . ($form->preparer?->name ?? 'someone no longer in the system') . ($form->approver ? ', approved by ' . $form->approver->name : '') . '.'
+            : '';
+
+        return BirChatCommands::result("{$name} is " . BirFormNames::statusWord($form) . ".{$next}{$who}", stay: true);
     }
 
     /**

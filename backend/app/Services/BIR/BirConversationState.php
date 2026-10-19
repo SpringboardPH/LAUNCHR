@@ -86,6 +86,20 @@ class BirConversationState
         Cache::forget($this->key());
     }
 
+    /** The employee "Did you mean …?" suggested, for a "yes" to it; null clears it. */
+    public function setSuggestion(?string $employeeCode): void
+    {
+        $employeeCode === null ? Cache::forget($this->key() . ':suggest') : $this->put('suggest', $employeeCode);
+    }
+
+    /** The suggested employee's code, once. */
+    public function takeSuggestion(): ?string
+    {
+        $code = Cache::pull($this->key() . ':suggest');
+
+        return is_string($code) ? $code : null;
+    }
+
     /** The request understood last, once: the message after it may correct it. */
     public function takeCard(): ?array
     {
@@ -98,7 +112,7 @@ class BirConversationState
     public function reset(): void
     {
         $this->forget();
-        foreach (['undo', 'offer', 'pending', 'return', 'card'] as $part) {
+        foreach (['undo', 'offer', 'pending', 'return', 'card', 'suggest'] as $part) {
             Cache::forget($this->key() . ":{$part}");
         }
     }

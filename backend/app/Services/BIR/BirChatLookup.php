@@ -24,7 +24,7 @@ class BirChatLookup
     /** Words asking for what a box holds rather than what it means. */
     private const VALUE_WORDS = '/\b(value|laman|nakalagay|how much|magkano|amount|figure|show|give|tell me|check|what\'?s in|what is in|ano ang nasa|ano yung nasa)\b/i';
 
-    private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source)\b/i';
+    private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source|who (?:changed|edited|typed|entered|put)|sino (?:ang )?(?:nagpalit|nagbago|nag-?edit|naglagay))\b/i';
 
     /** A question about what a box means, or a request for a new form: never read as a lookup by name. */
     private const NOT_A_LOOKUP = '/\b(mean|means|meaning|ibig sabihin|explain|paliwanag|make|generate|prepare|create|gawa|gumawa|need|kailangan)\b/i';
@@ -105,9 +105,13 @@ class BirChatLookup
     {
         $ref = $this->finder->reference($message);
         $wantsValue = preg_match(self::VALUE_WORDS, $message) === 1;
+        // "form #4 25A", "#11 25": a form number, then only an item number.
+        if ($item === null && preg_match('/^\s*(?:form\s*|draft\s*)?#?\s*\d{1,6}(?:\s*v\d{1,2})?\s+(\d{1,2}[a-z]?)\s*\??\s*$/i', $message, $code)) {
+            $item = strtoupper($code[1]);
+        }
 
         if ($item === null && (preg_match(self::NOT_A_LOOKUP, $message)
-            || !($wantsValue || BirAnswerParser::looksLikeQuestion($message))
+            || !($wantsValue || BirAnswerParser::looksLikeQuestion($message) || $ref['number'] !== null)
             || !($wantsValue || BirFormFinder::specific($ref))
             || ($ref['form_type'] ?? $current?->form_type ?? $ref['number']) === null)) {
             return null;
@@ -266,7 +270,8 @@ class BirChatLookup
     private function heldElsewhere(BirFormDraft $draft, array $match): array
     {
         $amount = fn (array $f) => ($f['type'] ?? null) === 'decimal' ? (float) (($draft->fields ?? [])[$f['key']]['value'] ?? 0) : 0.0;
-        if (array_filter($match['fields'], fn (array $f) => $amount($f) != 0) !== []) {
+        $amounts = array_filter($match['fields'], fn (array $f) => ($f['type'] ?? null) === 'decimal');
+        if (count($amounts) !== count($match['fields']) || array_filter($match['fields'], fn (array $f) => $amount($f) != 0) !== []) {
             return [];
         }
 
@@ -281,7 +286,7 @@ class BirChatLookup
             return $found;
         }
         if ($found['ask']) {
-            $state->setPending(['message' => $message, 'needs' => $found['needs']]); // "2026", a name or "#9" finishes it
+            $state->setPending(['message' => $message, 'needs' => $found['needs'], 'suggest' => $found['suggest'] ?? null]); // "2026", a name, "#9" or "yes" finishes it
         }
 
         return BirChatCommands::result($found['reply'], null, null, null, $found['candidates'], stay: true);

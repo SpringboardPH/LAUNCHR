@@ -141,6 +141,7 @@ class BirFormFinder
             'person' => $person['status'],
             'candidates' => $person['candidates'],
             'query' => $person['query'],
+            'close' => $person['close'] ?? false,
             'status' => $status,
             'version' => $version,
             'latest' => $latest,
@@ -253,6 +254,11 @@ class BirFormFinder
      */
     public function resolve(array $ref, ?BirFormDraft $current, ?string $lead = null): BirFormDraft|array
     {
+        // A name only spelled close to someone's: ask before reading or changing their form.
+        if ($ref['person'] === BirEmployeeResolver::MATCHED && ($ref['close'] ?? false)) {
+            return self::ask(BirEmployeeResolver::didYouMean((string) $ref['query'], $ref['employee']), true, $ref['candidates'])
+                + ['suggest' => $ref['employee']->employee_id];
+        }
         if ($ref['number'] !== null) {
             $draft = BirFormDraft::with('employee')->find($ref['number']);
             if ($draft === null) {
