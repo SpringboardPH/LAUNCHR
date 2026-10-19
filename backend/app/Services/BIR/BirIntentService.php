@@ -35,10 +35,10 @@ use App\Services\BIR\Schemas\Form2316Schema;
 class BirIntentService
 {
     /** What parse() says a message is. Anything but form_request gets a fixed reply, not the model's words. */
-    public const KINDS = ['form_request', 'tax_question', 'other'];
+    public const KINDS = ['form_request', 'tax_question', 'data_question', 'other'];
 
     /** What classifyDraftMessage() says a message is, while a draft is being filled in. */
-    public const DRAFT_KINDS = ['answer', 'explain_meaning', 'explain_source', 'tax_question', 'new_request', 'other'];
+    public const DRAFT_KINDS = ['answer', 'explain_meaning', 'explain_source', 'tax_question', 'data_question', 'new_request', 'other'];
 
     /** The earliest year a form can be prepared for. The latest is next year. */
     public const FIRST_YEAR = 2000;
@@ -103,12 +103,14 @@ class BirIntentService
      *
      * @param  array<string, string>  $boxes  field key => "Item 22: label", the draft's boxes
      * @param  ?string  $open  the box the open question is about, for "what does this mean?"
-     * @return array{kind: string, field: ?string}
+     * @return array{kind: string, field: ?string, question: ?array}
      *
      * @throws \RuntimeException when the provider fails (the caller falls back to re-asking)
      */
-    public function classifyDraftMessage(string $message, string $formType, array $boxes, ?string $open): array
+    public function classifyDraftMessage(string $message, string $formType, array $boxes, ?string $open, ?array $previous = null): array
     {
+        $today = SystemClock::today()->toDateString();
+        $data = BirDataIntent::rules();
         $list = implode("\n", array_map(fn (string $key, string $box) => "{$key} | {$box}", array_keys($boxes), $boxes));
         $openLine = $open !== null ? "The question currently open is about the box \"{$open}\"." : 'No question is open.';
 
@@ -121,9 +123,13 @@ class BirIntentService
             - "answer": an attempt to answer the open question.
             - "explain_meaning": asks what a box means or what to put in it.
             - "explain_source": asks where a figure came from, why it is that amount, or how it was worked out.
-            - "tax_question": asks for tax advice, tax rates or rules, salaries or other payroll amounts.
+            - "tax_question": asks for tax advice, tax rates or rules, or to work out pay or tax.
+            - "data_question": asks what the records say about employees, payroll or saved forms (below).
             - "new_request": asks for a different form, period or employee.
             - "other": anything else.
+
+            Today is {$today}.
+            {$data}
 
             For explain_meaning and explain_source, set field to the key of the box the
             message is about, from the list below. If it names no box, use the open
@@ -140,6 +146,7 @@ class BirIntentService
                 'properties' => [
                     'kind' => ['type' => 'string', 'enum' => self::DRAFT_KINDS],
                     'field' => ['type' => ['string', 'null'], 'enum' => [...array_keys($boxes), null]],
+                    'question' => BirDataIntent::schema(),
                 ],
                 'required' => ['kind', 'field'],
             ],
@@ -147,8 +154,9 @@ class BirIntentService
 
         $kind = in_array($raw['kind'] ?? null, self::DRAFT_KINDS, true) ? $raw['kind'] : 'answer';
         $field = is_string($raw['field'] ?? null) && array_key_exists($raw['field'], $boxes) ? $raw['field'] : null;
+        $question = $kind === 'data_question' ? BirDataIntent::read($raw['question'] ?? null, $message, [], $previous) : null;
 
-        return ['kind' => $kind, 'field' => $field];
+        return ['kind' => $question !== null ? $kind : ($kind === 'data_question' ? 'other' : $kind), 'field' => $field, 'question' => $question];
     }
 
     /** @param array<string,mixed> $known */
@@ -157,6 +165,7 @@ class BirIntentService
         $today = SystemClock::today()->toDateString();
         $c = Form1601CSchema::FORM_TYPE;
         $s = Form2316Schema::FORM_TYPE;
+        $data = BirDataIntent::rules();
 
         $prompt = <<<PROMPT
         You interpret requests to generate Philippine BIR tax forms inside an HR system.
@@ -181,10 +190,11 @@ class BirIntentService
           short question in clarification.
         - Requests may mix English and Filipino. "1601c ng August" is a valid request.
         - Set kind to "form_request" when the user wants one of the two forms prepared,
-          "tax_question" for questions about tax rules, rates, salaries or payroll
-          amounts, and "other" for anything else. Do not answer such questions.
+          "tax_question" for tax advice (tax rules, rates, or working out what tax or
+          pay should be), and "other" for anything else. Do not answer such questions.
           A message that only gives a month, a year or a form name ("September 2026")
           is a form_request.
+        {$data}
 
         You only interpret the request. You never calculate amounts and never see
         payroll data.
@@ -192,6 +202,10 @@ class BirIntentService
 
         if ($known !== []) {
             $prompt .= "\n\n" . $this->knownContext($known);
+        }
+        if (isset($known['question'])) {
+            $prompt .= "\n\nThe last message asked this data_question: " . json_encode($known['question'])
+                . "\nA follow-up such as \"how about 2024?\" or \"e yung minimum wage?\" is a data_question that changes only what it says.";
         }
 
         return $prompt;
@@ -263,6 +277,7 @@ class BirIntentService
                     'type' => ['string', 'null'],
                     'description' => 'One short question when confidence is low.',
                 ],
+                'question' => BirDataIntent::schema(),
             ],
             'required' => ['form_type', 'tax_year', 'tax_month', 'employee_query', 'kind', 'confidence'],
         ];
@@ -352,6 +367,15 @@ class BirIntentService
         if ($kind !== 'form_request' && self::onlyNamesAPeriodOrForm($message)) {
             $kind = 'form_request';
         }
+        // "how about August 2025?" right after a question about the records follows it up, naming no form.
+        if ($kind !== 'data_question' && isset($known['question']) && $formsSaid === [] && BirDataIntent::followsUp($message)) {
+            $kind = 'data_question';
+        }
+        // A question about the records (BirDataIntent): one PHP can answer, or else "other".
+        $question = $kind === 'data_question' ? BirDataIntent::read($raw['question'] ?? [], $message, $raw, $known['question'] ?? null) : null;
+        if ($kind === 'data_question' && $question === null) {
+            $kind = 'other';
+        }
 
         return [
             'form_type' => $formType,
@@ -360,12 +384,21 @@ class BirIntentService
             'period' => $this->period($formType, $year, $month),
             'employee_query' => $employee,
             'kind' => $kind,
+            'question' => $question,
             'rejected_year' => $rejectedYear,
             'needs_clarification' => ($raw['confidence'] ?? 'low') === 'low' || $guessedMonth !== null,
             'clarification' => is_string($raw['clarification'] ?? null) && trim($raw['clarification']) !== ''
                 ? trim($raw['clarification'])
                 : null,
         ];
+    }
+
+    /** Why a year was refused. Years from FIRST_YEAR up to next year are accepted. */
+    public static function refusedYear(int $year): string
+    {
+        return $year > SystemClock::now()->year
+            ? "I can't prepare a form for {$year} because that year hasn't happened yet."
+            : "I can't prepare a form for {$year}. I prepare forms from " . self::FIRST_YEAR . ' onward.';
     }
 
     /** True when the message corrects the request just understood rather than starting a new one. */

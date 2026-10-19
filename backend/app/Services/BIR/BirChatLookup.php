@@ -36,13 +36,14 @@ class BirChatLookup
     private const OPEN = '/^\s*(?:(?:please|pls|kindly|can you|could you)\s+)?(?:paki-?)?(?:open|show(?:\s+me)?|go\s+to|switch\s+to|bring\s+up|pull\s+up|buksan|ipakita|pakita|i-?open)\b/i';
 
     /** Showing something about a form rather than the form: its employees, versions, PDF. */
-    private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value)\b/i';
+    private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value|forms|drafts|list)\b/i';
 
     public function __construct(
         private readonly BirFormFinder $finder,
         private readonly BirConversationService $conversation,
         private readonly BirExplanationService $explanations,
         private readonly BirIntentService $intent,
+        private readonly BirEmployeeResolver $employees,
     ) {}
 
     /**
@@ -105,6 +106,13 @@ class BirChatLookup
     {
         $ref = $this->finder->reference($message);
         $wantsValue = preg_match(self::VALUE_WORDS, $message) === 1;
+        // "how much tax was withheld from Mina?" with Teresa's 2316 open: never the open form's figure.
+        if ($ref['person'] === BirEmployeeResolver::NOT_NAMED && $ref['number'] === null && $current?->employee_id !== null && $item === null) {
+            $named = $this->employees->capitalisedName($message);
+            if ($named['status'] !== BirEmployeeResolver::NOT_NAMED && $named['employee']?->id !== $current->employee_id) {
+                return null;
+            }
+        }
         // "form #4 25A", "#11 25": a form number, then only an item number.
         if ($item === null && preg_match('/^\s*(?:form\s*|draft\s*)?#?\s*\d{1,6}(?:\s*v\d{1,2})?\s+(\d{1,2}[a-z]?)\s*\??\s*$/i', $message, $code)) {
             $item = strtoupper($code[1]);
@@ -134,6 +142,11 @@ class BirChatLookup
             // box, and with no one saved form that fits, it asks for a form; the request path reads it.
             if ($item === null && !$wantsValue && $ref['form_type'] !== null && $this->namesNoBox($ref, $message)
                 && !$this->finder->resolve($ref, $current) instanceof BirFormDraft) {
+                return null;
+            }
+            // "what is Teresa's TIN?" naming no form, and she has none saved: her employee record answers (BirDataAnswers).
+            if ($item === null && $ref['number'] === null && BirMessageFacts::formsSaid($message) === [] && $ref['person'] === BirEmployeeResolver::MATCHED
+                && !($ref['close'] ?? false) && !BirFormDraft::where('employee_id', $ref['employee']->id)->exists()) {
                 return null;
             }
             $found = $this->target($ref, $current, $message, $state);
@@ -244,6 +257,14 @@ class BirChatLookup
             $match = ['fields' => $this->conversation->fieldsForItem($draft->form_type, $field['item']), 'ambiguous' => false, 'words' => 1];
         }
 
+        // "Teresa's TIN", "TIN ni Teresa": of the boxes that fit, the one about the employee named.
+        // "the TIN on Teresa's 2316" names her form, not the box, and still asks.
+        $theirs = array_values(array_filter($match['fields'], fn (array $f) => str_starts_with($f['key'], 'employee_')));
+        $name = $ref['employee'] !== null ? preg_quote($ref['employee']->first_name, '/') . '|' . preg_quote($ref['employee']->last_name, '/') : null;
+        $owns = $name !== null && preg_match("/\\b(?:{$name})(?:'s?|s')\\s+(?!(?:\\w+\\s+)?(?:2316|1601|form|certificate|draft)\\b)|\\b(?:ni|of|kay)\\s+(?:\\w+\\s+)?(?:{$name})\\b/iu", $message) === 1;
+        if ($match['ambiguous'] && $owns && count($theirs) === 1) {
+            $match = ['fields' => $theirs, 'ambiguous' => false] + $match;
+        }
         if ($match['ambiguous']) {
             return BirBoxMatcher::whichOne($draft->form_type, $match['fields']);
         }

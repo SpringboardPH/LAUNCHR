@@ -24,6 +24,9 @@ class BirChatEmployees
     /** A question about the employees on a 1601-C as a whole. */
     public const LIST = '/\b(employee list|list of (?:the )?employees|(?:list|show)(?: me)?(?: all)?(?: the)? employees|employees? (?:on|in|of|for|covered)\b|(?:which|what) employees|who(?: is|\'s| are)? (?:on|in|covered)|per employee|each employee|by employee|sino(?: ang)?(?: mga)? (?:empleyado|kasama)|(?:sino|sinu-sino|sino-sino)(?: ang| yung)?(?: mga)? nasa|mga empleyado)/i';
 
+    /** Pointing at a form: "this", "on it". "list all employees" points at none and is a question about the records. */
+    private const THIS_FORM = '/\\b(?:this|that|ito|iyan|yan|nito|niyan)\\b|\\b(?:on|in|sa)\\s+(?:it|the form|the 2316|the certificate)\\b/i';
+
     /** A question about an amount, with or without a question mark. */
     private const HOW_MUCH = '/\\b(?:how much|magkano|ilan)\\b/i';
 
@@ -79,7 +82,7 @@ class BirChatEmployees
             default => $current?->form_type,
         };
         if ($asksList && $type !== Form1601CSchema::FORM_TYPE) {
-            return $this->notAList($type, $ref, $current);
+            return $ref['number'] !== null || preg_match(self::THIS_FORM, $message) ? $this->notAList($type, $ref, $current) : null;
         }
         if ($type !== Form1601CSchema::FORM_TYPE || !($asksList || ($person && $asks))) {
             return null;
@@ -107,7 +110,7 @@ class BirChatEmployees
             return BirChatCommands::result(ucfirst($on) . ' was made before the employee list existed, so I don\'t have its employees. A new draft for that month has them.', stay: true);
         }
 
-        return $person ? $this->row($ref, $list, $on, $message, $state) : $this->everyone($list, $on);
+        return $person ? $this->row($ref, $list, $on, $message, $state) : $this->everyone($list, $on, BirDataIntent::groupSaid($message));
     }
 
     /** An employee list asked for with no 1601-C to read it from: say which form has one. */
@@ -156,12 +159,22 @@ class BirChatEmployees
         return BirChatCommands::result("{$name}'s part of {$on}, from {$payrolls}{$tin} ({$kind}):\n" . implode("\n", $lines), stay: true);
     }
 
-    /** Every employee on the form, the totals, and whether they add up to it. */
-    private function everyone(array $list, string $on): array
+    /** Every employee on the form, the totals, and whether they add up to it; or only those in a group ("the taxable ones"). */
+    private function everyone(array $list, string $on, ?string $group = null): array
     {
         $count = count($list['employees']);
         if ($count === 0) {
             return BirChatCommands::result(ucfirst($on) . ' has no employees: there was no counted payroll that month.', stay: true);
+        }
+        if ($group !== null) {
+            $all = $count;
+            $list['employees'] = array_values(array_filter($list['employees'], fn (array $row) => BirDataAnswers::inGroup($row, $group)));
+            $count = count($list['employees']);
+            $list['totals'] = ['compensation' => (string) array_sum(array_column($list['employees'], 'compensation')), 'tax_withheld' => (string) array_sum(array_column($list['employees'], 'tax_withheld'))];
+            $words = BirDataAnswers::GROUPS[BirDataAnswers::groupKey($group)][$count === 1 ? 0 : 1];
+            if ($count === 0) {
+                return BirChatCommands::result(ucfirst($on) . " covers {$all} employees; none of them " . ($group === 'minimum_wage' ? 'is a minimum wage earner' : "is {$words}") . '.', stay: true);
+            }
         }
 
         $people = Employee::withTrashed()->whereIn('id', array_column($list['employees'], 'employee_id'))->get()->keyBy('id');
@@ -177,6 +190,9 @@ class BirChatEmployees
         $total = 'Total: compensation ' . self::money($list['totals']['compensation']) . ', tax withheld ' . self::money($list['totals']['tax_withheld']) . '.';
 
         $who = $count === 1 ? '1 employee' : "{$count} employees";
+        if ($group !== null) {
+            return BirChatCommands::result(ucfirst($on) . " covers {$all} employees; {$count} " . ($count === 1 ? 'is' : 'are') . " {$words}:\n{$lines}{$more}\n{$total}", stay: true);
+        }
 
         return BirChatCommands::result(ucfirst($on) . " covers {$who}:\n{$lines}{$more}\n{$total}\n" . self::addsUp($list['differences']), stay: true);
     }

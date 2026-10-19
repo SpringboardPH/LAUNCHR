@@ -67,7 +67,7 @@ class BirExplanationService
     public const OTHER = 'I can explain what a box on this form means or where its figure came from. For anything else, please check with accounting.';
 
     /** Anything that isn't a form request, before any draft exists. */
-    public const NOT_A_REQUEST = 'I prepare drafts of BIR Forms 1601-C and 2316. Tell me which form and period you need, for example "the August 2026 1601-C".';
+    public const NOT_A_REQUEST = 'I prepare drafts of BIR Forms 1601-C and 2316. Tell me which form and period you need, for example "the August 2026 1601-C". You can also ask about your employees and forms, for example "who are the taxable employees?" or "which forms are still drafts?".';
 
     /** A question about a box that didn't say which box. */
     public const WHICH_BOX = 'Which box do you mean? Give its item number, for example "item 22".';

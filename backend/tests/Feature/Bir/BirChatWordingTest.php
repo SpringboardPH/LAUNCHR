@@ -140,11 +140,12 @@ class BirChatWordingTest extends TestCase
     {
         $id = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2026', 'employee_id' => $this->maria->id])->assertCreated()->json('data.id');
 
-        $this->send('list the employees')
-            ->assertJsonPath('data.reply', 'Which 1601-C? Give its number or its month, for example "who is on form #11?" or "who is on the September 2026 1601-C?"');
+        // Naming no form, it is a question about the records (BirChatDataQuestionTest): the employees on file.
+        $this->model->willReturn(['kind' => 'data_question', 'form_type' => null, 'tax_year' => null, 'tax_month' => null, 'employee_query' => null, 'confidence' => 'high', 'clarification' => null, 'question' => ['topic' => 'employees']]);
+        $this->assertStringStartsWith('There are ', $this->send('list the employees')->json('data.reply'));
         $this->send("who is on form #{$id}?")
             ->assertJsonPath('data.reply', "Form #{$id} is Maria Santos' 2316 for 2026, one employee's certificate, so it has no employee list. A 1601-C has one, for example \"who is on the September 2026 1601-C?\"");
-        $this->assertSame([], $this->model->calls());
+        $this->assertCount(1, $this->model->calls());
     }
 
     public function test_a_name_or_year_the_model_makes_up_is_never_used(): void
@@ -376,8 +377,8 @@ class BirChatWordingTest extends TestCase
         $this->assertStringStartsWith($on, $this->send("for #{$id} item 25A")->json('data.reply'));
         // A form number, then only an item number.
         $this->assertStringContainsString('"Item 25A,', $this->send("form #{$id} 25A")->json('data.reply'));
-        // A box named after a form number is read without a question mark.
-        $this->assertStringStartsWith('Which one do you mean? On the 2316 that could be:', $this->send("Maria's TIN on form #{$id}")->json('data.reply'));
+        // A box named after a form number is read without a question mark; "Maria's TIN" is hers (item 3).
+        $this->assertStringEndsWith('"Item 3, TIN" is 920-919-920-00001.', $this->send("Maria's TIN on form #{$id}")->json('data.reply'));
         // "who changed" asks where the figure came from.
         $this->assertStringContainsString('It comes from payroll', $this->send("who changed item 25 on form #{$sep}?")->json('data.reply'));
         // An item only one form has needs no "which form?".

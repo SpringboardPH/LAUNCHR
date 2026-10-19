@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Helpers\SystemClock;
 use App\Http\Controllers\Controller;
 use App\Models\BirFormDraft;
 use App\Models\User;
@@ -10,6 +9,8 @@ use App\Services\BIR\BirAnswerParser;
 use App\Services\BIR\BirChatCommands;
 use App\Services\BIR\BirConversationService;
 use App\Services\BIR\BirConversationState;
+use App\Services\BIR\BirDataAnswers;
+use App\Services\BIR\BirDataIntent;
 use App\Services\BIR\BirDraftValidator;
 use App\Services\BIR\BirEmployeeResolver;
 use App\Services\BIR\BirExplanationService;
@@ -23,36 +24,26 @@ use RuntimeException;
 /**
  * POST /api/bir/chat
  *
- * Without draft_id: understands a request. Sequences parse it, merge it with what
- * earlier messages established, then find the employee if one was named. The merged
- * intent carries a ready-to-use period string for POST /bir/drafts.
+ * Without draft_id: understands a request. Sequences parse it, merge it with what earlier
+ * messages established, then find the employee if one was named. The merged intent carries a
+ * ready-to-use period string for POST /bir/drafts.
  *
- * With draft_id (Week 5): fills in that draft, one missing field at a time. Send no
- * message to get the next question; send the field just asked and the user's message
- * to have it read. PHP only, so it works with the language model down.
+ * With draft_id: fills in that draft, one missing field at a time, in PHP only, so it works
+ * with the language model down. Send no message to get the next question; send the field just
+ * asked and the user's message to have it read. A message that isn't a readable answer is sorted
+ * by the model (a question about a box, a tax question, a new request) and answered in PHP from
+ * the draft's records and the schema's help text.
  *
- * Week 6: a message that isn't a readable answer is sorted by the model (a question
- * about a box, a tax question, a new request) and answered in PHP from the draft's
- * records and the schema's help text. The model labels; it never writes a reply.
- * Fixes from chat testing: a refused year is explained (B3), and the model's label only
- * replaces the re-ask with an explanation when the message reads as a question (D4).
+ * The model only labels; every reply is written in PHP. Read in PHP before the model is asked
+ * (BirChatCommands): a box on any saved form read or changed, "open form #11", "yes" to a
+ * correction, "submit it for review" (BirChatSubmit), "undo", and the 1601-C employee list.
+ * A caller that can run the workflow's revise and submit sends actions: true; without it, the
+ * chat only points to the buttons. A refused year is explained, "New conversation" (reset)
+ * clears what the chat remembers, and with the model failing, a message that names its form and
+ * period is still understood.
  *
- * Fixes from user-side testing: the model never words a reply (its "unsure" question is
- * replaced by a line asking the user to check the summary); "what is item 12 on the 2316?"
- * is answered on either form, with or without a draft; "change item 12 to …" changes a box
- * on the open draft and is never saved as the answer to another question. These three are
- * read in PHP before the model is asked, so they work with it switched off.
- *
- * Supervisor's changes (BirChatCommands): a box on any saved form can be read or changed
- * without opening it; a filed form says how it can be corrected (the button, or "yes");
- * asking to submit sends a form for review (BirChatSubmit); "undo" takes back a change made here. A TIN finds
- * the employee for a 2316. A caller that can run the workflow's revise and submit for the
- * chat sends actions: true; without it, the chat only points to the buttons.
- *
- * From the stress tests: "New conversation" (reset) clears what the chat remembers on a
- * draft turn too, so "undo" never reaches into an earlier chat; after a change to another
- * form the chat goes back to the open one; "open form #11" moves the chat there; and with
- * the model failing, a message that names its form and period is still understood.
+ * Questions about the records ("who are the taxable employees?", "which forms are still
+ * drafts?") are labelled by the model and answered by BirDataAnswers, with or without a draft.
  *
  * Each step is a service call — nothing is computed here.
  */
@@ -65,6 +56,7 @@ class BirChatController extends Controller
         private readonly BirDraftValidator $validator,
         private readonly BirExplanationService $explanations,
         private readonly BirChatCommands $commands,
+        private readonly BirDataAnswers $data,
     ) {}
 
     public function message(Request $request)
@@ -91,13 +83,18 @@ class BirChatController extends Controller
         $card = $state->takeCard(); // the request understood last, for this message only
         $suggested = $state->takeSuggestion(); // the person "Did you mean …?" offered
 
+        // "yes", "no" or a name, when a question about the records asked who was meant.
+        if (($resumed = $this->data->resume($message, $state)) !== null) {
+            return $this->reply($state->get(), false, $resumed['reply'], $resumed['candidates']);
+        }
+
         // Reading or changing a box on a saved form, "yes", "submit it for review" and "undo": PHP only.
         if (($command = $this->commands->handle($message, null, $state, $request->user(), $canAct)) !== null) {
             return $this->commandReply($command, null, $request->user());
         }
 
         // "What is item 12 on the 2316?" needs no draft: the form's help text answers it.
-        if (($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
+        if (($item = BirAnswerParser::itemMentioned($message)) !== null && BirAnswerParser::asksAbout($message)) {
             return $this->reply($state->get(), false, $this->aboutItem($message, $item, $state->get()['form_type'] ?? null));
         }
 
@@ -112,17 +109,28 @@ class BirChatController extends Controller
         }
 
         try {
-            $parsed = $this->intent->parse($message, $state->get());
+            $parsed = $this->intent->parse($message, $state->get() + array_filter(['question' => $state->question()['q'] ?? null]));
         } catch (RuntimeException $e) {
             // The assistant being down must never take the feature down with it: a message
-            // that names its form is read in PHP alone; anything else says to pick manually.
+            // that names its form, or a plain question about employees, is read in PHP alone;
+            // anything else says to pick manually.
             $parsed = $this->intent->fromMessage($message, $state->get());
+            if ($parsed === null && ($question = BirDataIntent::fromMessage($message)) !== null) {
+                $parsed = ['kind' => 'data_question', 'question' => $question];
+            }
             if ($parsed === null) {
                 return response()->json([
                     'success' => false,
                     'message' => $e->getMessage() . ' You can still pick a form and period manually.',
                 ], 503);
             }
+        }
+
+        // "Who are the taxable employees?": answered from the records (BirDataAnswers).
+        if ($parsed['kind'] === 'data_question') {
+            $answer = $this->data->respond($parsed['question'], $state);
+
+            return $this->reply($state->get(), false, $answer['reply'], $answer['candidates']);
         }
 
         // A TIN names the employee whatever the model made of it: "2316 for 920-919-920-00001 2024".
@@ -154,7 +162,7 @@ class BirChatController extends Controller
         // A year no form can be prepared for: say so, then ask for the year, rather than
         // asking as if none was given.
         if ($parsed['rejected_year'] !== null) {
-            return $this->reply($merged, false, $this->refusedYear($parsed['rejected_year']) . ' '
+            return $this->reply($merged, false, BirIntentService::refusedYear($parsed['rejected_year']) . ' '
                 . $this->question($this->intent->missingFields(['tax_year' => null] + $merged)));
         }
 
@@ -259,6 +267,11 @@ class BirChatController extends Controller
             ? 'Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . ', and only accounting can change it now. You can still ask what a box means or where its figure came from.'
             : 'Form ' . BirFormNames::name($draft) . ' is ' . BirFormNames::statusWord($draft) . ", so it can't be changed here. You can still ask what a box means or where its figure came from.";
 
+        // "yes", "no" or a name, when a question about the records asked who was meant.
+        if ($message !== null && ($resumed = $this->data->resume($message, $state, $draft)) !== null) {
+            return $this->commandReply(BirChatCommands::result($resumed['reply'], null, null, null, $resumed['candidates'], stay: true), $draft, $request->user());
+        }
+
         // "change item 12 to …" (here or on any form), reading a box on another form, "yes",
         // "submit it for review", "done", "undo": read in PHP, whatever question is open. Never an answer.
         if ($message !== null && ($command = $this->commands->handle($message, $draft, $state, $request->user(), $canAct)) !== null) {
@@ -275,7 +288,7 @@ class BirChatController extends Controller
         }
 
         // "What is item 12?" / "where did item 25A come from?": the item number picks the box.
-        if ($message !== null && ($item = BirAnswerParser::itemMentioned($message)) !== null && self::asksAbout($message)) {
+        if ($message !== null && ($item = BirAnswerParser::itemMentioned($message)) !== null && BirAnswerParser::asksAbout($message)) {
             $open = $editable ? $this->conversation->turn($draft, null, null)['question'] : null;
 
             return $this->draftReply($draft, ['question' => $open, 'answer' => null], self::thenAsk($this->aboutItem($message, $item, $draft->form_type, $draft), $open));
@@ -286,7 +299,7 @@ class BirChatController extends Controller
             : ['question' => null, 'answer' => null, 'reply' => $locked, 'unread' => $message !== null];
 
         if ($turn['unread']) {
-            $turn['reply'] = $this->sorted($draft, $turn, (string) $message) ?? $turn['reply'];
+            $turn['reply'] = $this->sorted($draft, $turn, (string) $message, $state) ?? $turn['reply'];
         }
         if ($turn['answer'] !== null) {
             $this->commands->rememberAnswer($state, $draft, $turn['answer']); // "undo" can take it back
@@ -329,12 +342,12 @@ class BirChatController extends Controller
      *
      * @param  array{question: ?array}  $turn
      */
-    private function sorted(BirFormDraft $draft, array $turn, string $message): ?string
+    private function sorted(BirFormDraft $draft, array $turn, string $message, BirConversationState $state): ?string
     {
         $open = $turn['question']['field'] ?? null;
 
         try {
-            $sorted = $this->intent->classifyDraftMessage($message, $draft->form_type, $this->conversation->boxes($draft->form_type), $open);
+            $sorted = $this->intent->classifyDraftMessage($message, $draft->form_type, $this->conversation->boxes($draft->form_type), $open, $state->question()['q'] ?? null);
         } catch (RuntimeException) {
             return null;
         }
@@ -353,6 +366,7 @@ class BirChatController extends Controller
             'explain_meaning' => $box !== null ? $this->explanations->meaning($draft, $box) : BirExplanationService::WHICH_BOX,
             'explain_source' => $box !== null ? $this->explanations->source($draft, $box) : BirExplanationService::WHICH_BOX,
             'tax_question' => BirExplanationService::DECLINE,
+            'data_question' => $this->data->respond($sorted['question'], $state, $draft)['reply'],
             'new_request' => BirExplanationService::NEW_REQUEST,
             'other' => BirAnswerParser::looksLikeQuestion($message) ? BirExplanationService::OTHER : null, // "abc", "skip": the question again
             default => null, // a muddled answer: keep the re-ask
@@ -456,25 +470,10 @@ class BirChatController extends Controller
             : $meaning;
     }
 
-    /** A message that asks about something: a question mark, or a question word anywhere in it. */
-    private static function asksAbout(string $message): bool
-    {
-        return BirAnswerParser::looksLikeQuestion($message)
-            || preg_match('/\b(what|whats|ano|anong|explain|mean|means|meaning|ibig sabihin|paliwanag|where|saan|galing|why|bakit|paano|how)\b/i', $message) === 1;
-    }
-
     /** A reply, then the question still open, so the user is never left without one. */
     private static function thenAsk(string $reply, ?array $open): string
     {
         return $open !== null ? "{$reply}\n\n{$open['text']}" : $reply;
-    }
-
-    /** Why a year was refused. Years from FIRST_YEAR up to next year are accepted. */
-    private function refusedYear(int $year): string
-    {
-        return $year > SystemClock::now()->year
-            ? "I can't prepare a form for {$year} because that year hasn't happened yet."
-            : "I can't prepare a form for {$year}. I prepare forms from " . BirIntentService::FIRST_YEAR . ' onward.';
     }
 
     /** @param array<int,string> $missing */

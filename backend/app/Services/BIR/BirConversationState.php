@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Cache;
  * correction of a filed form, for "yes"; a command still missing a year or a person,
  * so "2026" can finish it; and the form to go back to after a change to another one.
  * From the cloud-model tests: the request last understood, for one message, so "no,
- * September pala" corrects it instead of starting over.
+ * September pala" corrects it instead of starting over; and the last question about the
+ * records, so "how about 2024?" follows it up.
  */
 class BirConversationState
 {
@@ -100,6 +101,26 @@ class BirConversationState
         return is_string($code) ? $code : null;
     }
 
+    /**
+     * The question about the records answered last (BirDataIntent), for a follow-up ("how about
+     * 2024?"), with the employee a "Did you mean …?" offered (suggest) or a name still awaited
+     * (waiting). null clears it.
+     *
+     * @param  ?array{q: array, suggest?: ?string, waiting?: bool}  $question
+     */
+    public function setQuestion(?array $question): void
+    {
+        $question === null ? Cache::forget($this->key() . ':question') : $this->put('question', $question);
+    }
+
+    /** @return ?array{q: array, suggest?: ?string, waiting?: bool} */
+    public function question(): ?array
+    {
+        $question = Cache::get($this->key() . ':question');
+
+        return is_array($question) ? $question : null;
+    }
+
     /** The request understood last, once: the message after it may correct it. */
     public function takeCard(): ?array
     {
@@ -112,7 +133,7 @@ class BirConversationState
     public function reset(): void
     {
         $this->forget();
-        foreach (['undo', 'offer', 'pending', 'return', 'card', 'suggest'] as $part) {
+        foreach (['undo', 'offer', 'pending', 'return', 'card', 'suggest', 'question'] as $part) {
             Cache::forget($this->key() . ":{$part}");
         }
     }

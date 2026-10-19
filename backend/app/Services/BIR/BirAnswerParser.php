@@ -213,6 +213,13 @@ final class BirAnswerParser
         return str_ends_with($message, '?') || in_array(strtok(mb_strtolower($message), " \t,"), self::QUESTION_WORDS, true);
     }
 
+    /** A message that asks about something: a question mark, or a question word anywhere in it. */
+    public static function asksAbout(string $message): bool
+    {
+        return self::looksLikeQuestion($message)
+            || preg_match('/\b(what|whats|ano|anong|explain|mean|means|meaning|ibig sabihin|paliwanag|where|saan|galing|why|bakit|paano|how)\b/i', $message) === 1;
+    }
+
     /** A question, or words asking what a box means or where it came from: "wat dos this mean", "pakipaliwanag". */
     public static function asksForExplanation(string $message): bool
     {
