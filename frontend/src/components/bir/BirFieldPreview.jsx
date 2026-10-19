@@ -75,7 +75,7 @@ const forwardRow = (el, key, refs) => { if (el) refs.current[key] = el; else del
  * filed, for the go/no-go check; Week 6 makes the boxes editable and adds the
  * submit / approve / file steps.
  */
-export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft }) {
+export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft, onDeleted }) {
   const { user } = useAuth()
   const qc = useQueryClient()
   const [editing, setEditing] = useState(null)
@@ -301,7 +301,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
         {compare && importNote && <p className="text-[11px] text-gray-500">{importNote}</p>}
       </div>
 
-      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft}
+      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft} onDeleted={onDeleted}
         edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
       {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
 

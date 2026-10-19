@@ -211,7 +211,7 @@ function TypingIndicator() {
  * here through the same endpoints as the buttons, and the chat's reply is shown once it
  * has gone through.
  */
-export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId = null, openKey = 0, onClose, className }) {
+export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId = null, openKey = 0, onClose, className, deletedDraftId = null }) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const { data: employees } = useQuery({ queryKey: birKeys.employees, queryFn: getBirEmployees, staleTime: 5 * 60_000 })
@@ -236,6 +236,15 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
 
   const push = (msg) => setMessages(prev => [...prev, { id: nextId(), ...msg }])
   const patch = (id, changes) => setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...changes } : m)))
+
+  // The open form was deleted: every call about it would now be a 404, so the chat lets it go.
+  useEffect(() => {
+    if (!deletedDraftId || filling?.draftId !== deletedDraftId) return
+    setFilling(null)
+    onQuestion?.(null)
+    push({ role: 'assistant', text: `Draft #${deletedDraftId} was deleted. Which form and period do you need now?` })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deletedDraftId])
 
   // Opens on the page the form the chat has moved to, without announcing it in the chat.
   const follow = (draftId) => {

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download } from 'lucide-react'
+import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  birKeys, getBirConfig, exportBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
+  birKeys, getBirConfig, exportBirDraft, deleteBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
 } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { formatValue, formatWhen } from './BirDraftEditor'
@@ -36,12 +36,13 @@ export const REVIEWED = ['pending', 'approved']
  * The form's next steps, driven by `status_flow` from /bir/config rather than a hardcoded list.
  * Approve and Return show only to accounting (the server refuses anyone else).
  */
-export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowEdits }) {
+export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = [], onShowEdits }) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const [returning, setReturning] = useState(false)
   const [reason, setReason] = useState('')
   const [confirmFinalize, setConfirmFinalize] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [notice, setNotice] = useState(null)
 
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig, staleTime: Infinity })
@@ -81,6 +82,21 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
     },
   })
   // The official PDF, any status: until approved the server stamps it "DRAFT — NOT FOR FILING".
+  // Only a draft can be deleted; submitted, approved and filed forms are records (server says 400).
+  const remove = useMutation({
+    mutationFn: () => deleteBirDraft(draft.id),
+    onMutate: () => setNotice(null),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: birKeys.lists })
+      qc.removeQueries({ queryKey: birKeys.detail(draft.id) })
+      onDeleted?.(draft, res?.message)
+    },
+    onError: (err) => {
+      setConfirmDelete(false)
+      setNotice({ tone: 'error', text: err?.response?.data?.message || 'Could not delete the draft. Please try again.' })
+    },
+  })
+
   const download = useMutation({
     mutationFn: () => exportBirDraft(draft.id),
     onMutate: () => setNotice(null),
@@ -153,6 +169,20 @@ export default function BirApprovalBar({ draft, onOpenDraft, edits = [], onShowE
           title={['approved', 'finalized'].includes(draft.status) ? 'The official BIR form' : 'Marked DRAFT until the form is approved'}>
           <Download size={12} /> {download.isPending ? 'Preparing PDF…' : 'Download PDF'}
         </button>
+        {draft.status === 'draft' && (confirmDelete ? (
+          <span className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
+            Delete {draft.label ?? `#${draft.id}`}? It disappears from the list.
+            <button onClick={() => remove.mutate()} disabled={remove.isPending} className="btn-danger py-1.5 text-xs">
+              {remove.isPending ? 'Deleting…' : 'Yes, delete'}
+            </button>
+            <button onClick={() => setConfirmDelete(false)} disabled={remove.isPending} className="btn-ghost py-1.5 text-xs">Cancel</button>
+          </span>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} disabled={busy} className="btn-ghost py-1.5 text-xs text-red-600 hover:text-red-700"
+            title="Only a draft can be deleted. Submitted, approved and filed forms are kept.">
+            <Trash2 size={12} /> Delete draft
+          </button>
+        ))}
         {draft.amendments && (
           <span className="ml-auto text-[11px] text-gray-500" title="A 1601-C can be amended 5 times per month">
             {draft.version > 1 ? `Amendment ${draft.version - 1} · ` : ''}{draft.amendments.made} of {draft.amendments.limit} amendments used

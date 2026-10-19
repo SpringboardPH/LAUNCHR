@@ -30,7 +30,7 @@ export default function BirDraftDetailPage() {
         )}
       />
       <section className="card overflow-hidden">
-        <BirFieldPreview draftId={draftId} onOpenDraft={(d) => navigate(`/hr/bir-forms/${d.id}`)} />
+        <BirFieldPreview draftId={draftId} onOpenDraft={(d) => navigate(`/hr/bir-forms/${d.id}`)} onDeleted={() => navigate('/hr/bir-forms')} />
       </section>
     </div>
   )

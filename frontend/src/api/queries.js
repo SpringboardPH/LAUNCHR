@@ -618,6 +618,12 @@ export const updateBirDraft = bir(
   birMockApi.updateDraft,
 )
 
+// Only a form still in draft can be deleted (soft delete on the server); anything else is 400.
+export const deleteBirDraft = bir(
+  (id) => api.delete(`/bir/drafts/${id}`).then(r => r.data),
+  birMockApi.deleteDraft,
+)
+
 export const validateBirDraft = bir(
   (id) => api.post(`/bir/drafts/${id}/validate`).then(r => r.data),
   birMockApi.validate,

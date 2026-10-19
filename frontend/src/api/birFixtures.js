@@ -253,7 +253,7 @@ const stored = (f, value) => (f.type === 'boolean' && typeof value !== 'boolean'
   ? TRUE.includes(String(value).toLowerCase()) : f.type === 'decimal' ? String(value) : value)
 
 // Session-lived store: mutations stick until the page reloads.
-let drafts = seed()
+let drafts = seed(), gone = [] // gone: deleted drafts, which still count toward versions and amendments
 let nextId = 100
 
 const clone = (x) => structuredClone(x)
@@ -269,7 +269,7 @@ const fail = (status, message, extra = {}) => {
 const rootOf = (d) => (d.parent_id ? rootOf(find(d.parent_id) ?? { id: d.parent_id }) : d.id)
 const decorate = (d) => {
   const root = rootOf(d)
-  const top = Math.max(...drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
+  const top = Math.max(...[...drafts, ...gone].filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
   return {
     ...d, root_id: root, label: `#${root}${d.version > 1 ? `v${d.version}` : ''}`,
     amendments: d.form_type === '1601-C' ? { made: top - 1, limit: AMENDMENT_LIMIT } : null,
@@ -429,7 +429,7 @@ const revise = async (id) => {
   if (d.status !== 'finalized') {
     return fail(400, `Only finalized forms can be revised; this one is in ${d.status} status`)
   }
-  const sameForm = drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
+  const sameForm = [...drafts, ...gone].filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
   if (d.form_type === '1601-C' && Math.max(...sameForm.map(x => x.version)) > AMENDMENT_LIMIT) {
     return fail(400, `This 1601-C has already been amended ${AMENDMENT_LIMIT} times for ${d.period}, the most allowed for one month`)
   }
@@ -447,17 +447,13 @@ const exportDraft = async () => delay().then(() => fail(501, 'PDF export is not 
 
 // A 1601-C's employee rows (contract §6): items 14, 19, 22 and 25 shared out, so the totals add up.
 const draftEmployees = async (id) => {
-  await delay(300)
-  const d = find(id)
-  if (!d) return fail(404, 'Draft not found')
-  if (d.form_type !== '1601-C') return fail(422, 'The employee list is only for a 1601-C')
+  const d = await delay(300).then(() => find(id))
+  if (!d || d.form_type !== '1601-C') return d ? fail(422, 'The employee list is only for a 1601-C') : fail(404, 'Draft not found')
   const keys = { compensation: 'total_compensation', ee: 'statutory_contributions_ee', taxable: 'total_taxable_compensation', tax_withheld: 'total_taxes_withheld' }
-  const share = (key, i) => money(Number(d.fields[keys[key]]?.system_value ?? d.fields[keys[key]]?.value ?? 0) / EMPLOYEES.length)
-  const employees = EMPLOYEES.map((e, i) => ({
-    employee_id: e.id, name: `${e.last_name}, ${e.first_name}`.toUpperCase(), tin: e.tin, category: e.annual ? 'mwe' : 'taxable',
-    payroll_count: 2, compensation: share('compensation', i), mwe_basic: '0.00', mwe_premium: '0.00', thirteenth: '0.00',
-    ee: share('ee', i), taxable: share('taxable', i), exempt_250k: '0.00', tax_withheld: share('tax_withheld', i),
-  }))
+  const share = (key) => money(Number(d.fields[keys[key]]?.system_value ?? d.fields[keys[key]]?.value ?? 0) / EMPLOYEES.length)
+  const employees = EMPLOYEES.map(e => ({ employee_id: e.id, name: `${e.last_name}, ${e.first_name}`.toUpperCase(), tin: e.tin,
+    category: e.annual ? 'mwe' : 'taxable', payroll_count: 2, mwe_basic: '0.00', mwe_premium: '0.00', thirteenth: '0.00', exempt_250k: '0.00',
+    ...Object.fromEntries(Object.keys(keys).map(k => [k, share(k)])) }))
   const totals = Object.fromEntries(['compensation', 'mwe_basic', 'mwe_premium', 'thirteenth', 'ee', 'taxable', 'exempt_250k', 'tax_withheld']
     .map(k => [k, money(employees.reduce((sum, r) => sum + Number(r[k]), 0))]))
   const differences = Object.entries(keys).map(([k, key]) => ({ k, key, form: d.fields[key]?.value }))
@@ -477,17 +473,22 @@ const setSwitch = async (enabled, password) => {
 }
 const setSwitchPassword = async ({ password, password_confirmation, current_password }) => {
   await delay(300)
-  if (!password || password.length < 8 || password !== password_confirmation) {
-    return fail(422, 'The password must be at least 8 characters and match its confirmation.')
-  }
+  if (!password || password.length < 8 || password !== password_confirmation) return fail(422, 'The password must be at least 8 characters and match its confirmation.')
   if (switchState.password && current_password !== switchState.password) return fail(422, 'The current company password is incorrect')
   switchState.password = password
   return ok({ switch_password_set: true }, 'Company password saved')
 }
 
-const getEmployees = async () => {
-  await delay(200)
-  return { data: clone(EMPLOYEES), pagination: { total: EMPLOYEES.length } }
+const getEmployees = async () => delay(200).then(() => ({ data: clone(EMPLOYEES), pagination: { total: EMPLOYEES.length } }))
+
+// Only a draft can be deleted (contract §6); a deleted one no longer blocks its period.
+const deleteDraft = async (id) => {
+  const d = await delay().then(() => find(id))
+  if (!d) return fail(404, 'Draft not found')
+  const { label } = decorate(d)
+  if (d.status !== 'draft') return fail(400, `Only a draft can be deleted; form ${label} is in ${d.status} status`)
+  drafts = drafts.filter(x => x !== d); gone.push(d)
+  return ok({ id: d.id, label }, `Draft ${label} deleted`)
 }
 
 const chat = mockChat({
@@ -496,5 +497,5 @@ const chat = mockChat({
 
 export const birMockApi = {
   getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees, actAs,
-  draftEmployees, setSwitch, setSwitchPassword,
+  draftEmployees, setSwitch, setSwitchPassword, deleteDraft,
 }
