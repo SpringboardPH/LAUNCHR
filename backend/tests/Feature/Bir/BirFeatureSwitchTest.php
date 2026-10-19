@@ -36,6 +36,7 @@ class BirFeatureSwitchTest extends TestCase
         'store' => ['POST', '/api/bir/drafts', 'draft', ['form_type' => '1601-C', 'period' => '2026-09']],
         'update a draft' => ['PUT', '/api/bir/drafts/{id}', 'draft', ['fields' => ['surcharge' => '1000.00']]],
         'update a pending form' => ['PUT', '/api/bir/drafts/{id}', 'pending', ['fields' => ['surcharge' => '1000.00']]],
+        'delete' => ['DELETE', '/api/bir/drafts/{id}', 'draft', []],
         'submit' => ['POST', '/api/bir/drafts/{id}/submit', 'draft', []],
         'approve' => ['POST', '/api/bir/drafts/{id}/approve', 'pending', []],
         'reject' => ['POST', '/api/bir/drafts/{id}/reject', 'pending', ['reason' => 'Recheck item 25']],

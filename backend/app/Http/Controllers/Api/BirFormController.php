@@ -261,6 +261,38 @@ class BirFormController extends Controller
     }
 
     /**
+     * Deletes a form in draft status, a returned one too. A soft delete: the row stays for the
+     * record and the Auditable trait logs who deleted it. A deleted correction still counts
+     * toward the amendment limit and its version number is never reused (BirFormDraft). The
+     * lock, as in transition(), keeps a submit at the same moment from moving it first.
+     */
+    public function destroy(int $id)
+    {
+        return DB::transaction(function () use ($id) {
+            $draft = BirFormDraft::lockForUpdate()->find($id);
+            if (!$draft) {
+                return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+            }
+
+            $label = $draft->label();
+            if ($draft->status !== 'draft') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Only a draft can be deleted; form {$label} is in {$draft->status} status",
+                ], 400);
+            }
+
+            $draft->delete();
+
+            return response()->json([
+                'success' => true,
+                'data' => ['id' => $draft->id, 'label' => $label],
+                'message' => "Draft {$label} deleted",
+            ]);
+        });
+    }
+
+    /**
      * True when every field has the same value, origin and edited flag in both sets. Who and
      * when (edited_by, edited_at) are left out: they are new on every save. Compared exactly,
      * so "1000" and "1000.00", or blank and No, count as different.
@@ -384,34 +416,40 @@ class BirFormController extends Controller
         }
     }
 
+    /**
+     * Locked, as in destroy(): a delete at the same moment either goes first (this finds nothing,
+     * 404) or waits and then finds the form moved on (400), so a deleted form is never moved.
+     */
     private function transition(int $id, string $to, ?string $reason = null)
     {
-        $draft = BirFormDraft::find($id);
-        if (!$draft) {
-            return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
-        }
+        return DB::transaction(function () use ($id, $to, $reason) {
+            $draft = BirFormDraft::lockForUpdate()->find($id);
+            if (!$draft) {
+                return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
+            }
 
-        $allowed = self::STATUS_FLOW[$draft->status] ?? [];
-        if (!in_array($to, $allowed, true)) {
-            return response()->json([
-                'success' => false,
-                'message' => "Cannot move a form in {$draft->status} status to {$to}",
-            ], 400);
-        }
+            $allowed = self::STATUS_FLOW[$draft->status] ?? [];
+            if (!in_array($to, $allowed, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Cannot move a form in {$draft->status} status to {$to}",
+                ], 400);
+            }
 
-        $draft->status = $to;
-        if ($to === 'pending') {
-            $draft->rejection_reason = null;
-        } elseif ($to === 'approved') {
-            $draft->approved_by = request()->user()->id;
-        } elseif ($to === 'draft') {
-            $draft->rejection_reason = $reason;
-        }
-        $draft->save();
+            $draft->status = $to;
+            if ($to === 'pending') {
+                $draft->rejection_reason = null;
+            } elseif ($to === 'approved') {
+                $draft->approved_by = request()->user()->id;
+            } elseif ($to === 'draft') {
+                $draft->rejection_reason = $reason;
+            }
+            $draft->save();
 
-        $draft->load('preparer', 'approver', 'employee');
+            $draft->load('preparer', 'approver', 'employee');
 
-        return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => "Draft moved to {$to}"]);
+            return response()->json(['success' => true, 'data' => new BirFormDraftResource($draft), 'message' => "Draft moved to {$to}"]);
+        });
     }
 
     /** draft -> pending, but only once the draft passes validation (see validatedTransition()). */

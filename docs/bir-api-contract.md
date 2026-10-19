@@ -50,7 +50,7 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move, or a form that is locked (finalized) |
+| 400 | Illegal status move, a form that is locked (finalized), or a delete of a form that isn't a draft |
 | 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
 | 409 | A form for that period already exists (`POST /bir/drafts`) |
@@ -111,7 +111,7 @@ the move itself is not allowed from the current status.
 | `parent_id` | `id` of the finalized draft this one corrects, set by `revise`. Null on an original draft. |
 | `root_id` | `id` of the original (version 1) this form is a version of: `parent_id` followed back. Its own `id` on an original. |
 | `label` | How the form is named on screen and in the chat: `"#64"` for an original, `"#64v2"` for its second version, `"#64v3"` for the third. Every version shares the original's number. |
-| `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
+| `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one, deleted corrections included) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
 | `prepared_by` | `{ id, name }` of whoever created the draft |
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
 | `rejection_reason` | Text a reviewer gave when returning the draft, else null |
@@ -324,7 +324,7 @@ original as filed.
 since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
 as filed) are accounting-only, and so is editing a pending or approved form; admin and HR
 get 403. Admin, HR and accounting can all list, view, create, edit a draft,
-submit, validate, revise, export and chat. Employees get 403 on every `/bir`
+delete a draft, submit, validate, revise, export and chat. Employees get 403 on every `/bir`
 route. The preparer may approve their own form (supervisor's decision: there
 is one accountant). The approver is still recorded in `approved_by`.
 
@@ -346,6 +346,7 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts` | Create | admin, hr, accounting |
 | GET | `/bir/drafts/{id}` | One draft | admin, hr, accounting |
 | PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending or approved form |
+| DELETE | `/bir/drafts/{id}` | Delete a draft (soft delete; draft status only) | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only |
@@ -545,6 +546,40 @@ pending or approved form edited by admin or HR still 403, whatever the body.
 `PUT` checks single answers only. Whether the draft as a whole is complete and
 adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
 
+### DELETE /bir/drafts/{id}
+
+No request body. Deletes a form in `draft` status, including one returned to the
+preparer (`draft` with a `rejection_reason`). Admin, HR and accounting; employees
+get 403, and so does everyone while the switch is off (§1).
+
+```json
+{
+  "success": true,
+  "data": { "id": 64, "label": "#64" },
+  "message": "Draft #64 deleted"
+}
+```
+
+| Code | When |
+|---|---|
+| 200 | Deleted. `message` is ready to show: "Draft #64 deleted", "Draft #64v2 deleted" |
+| 400 | Not a draft: "Only a draft can be deleted; form #64 is in pending status" (also approved, finalized). Nothing changes. |
+| 404 | Draft not found, or already deleted |
+
+- **Soft delete.** The row stays (`deleted_at` is set) and `audit_logs` records who
+  deleted it (`deleted_birformdraft`). A deleted form is gone from every endpoint:
+  the list, `GET`, `PUT`, the status moves, `export`, `employees` and the chat all
+  treat it as not found.
+- **The period is free again.** A deleted form doesn't count for `POST /bir/drafts`'s
+  409, so the same form type, period (and employee) can be created again, as a new
+  form with its own number, starting at version 1.
+- **A deleted correction still counts** (supervisor's rule: an unfinished correction
+  counts). It stays in `amendments.made` and toward the 1601-C's 5 amendments, and
+  its version number is never reused: delete `#64v2` and the next `revise` of #64
+  makes `#64v3`.
+- A delete and a status move at the same moment don't race: whichever comes second
+  sees the result of the first (404 or 400).
+
 ### POST /bir/drafts/{id}/validate
 
 No request body. Runs every check in §3 on the draft, stores the result on
@@ -617,7 +652,9 @@ A 1601-C can be amended 5 times per month (supervisor's rule,
 `BirFormDraft::AMENDMENT_LIMITS`): once the month's highest version is 6, `revise`
 returns 400 "This 1601-C has already been amended 5 times for 2026-07, the most
 allowed for one month" and creates nothing. An amendment counts once, however many
-boxes it changes. A 2316 has no limit. The chat (`POST /bir/chat`) offers to start
+boxes it changes, and a deleted correction still counts (`DELETE /bir/drafts/{id}`):
+the highest version includes deleted ones, so a version number is never reused.
+A 2316 has no limit. The chat (`POST /bir/chat`) offers to start
 a correction only while `revise` would allow it, and starts it through this endpoint.
 
 ### GET /bir/drafts/{id}/export
@@ -918,8 +955,10 @@ still placeholders. They show as `pending` until someone enters the real
 registration details.
 
 **Any finalized version can be revised; a 1601-C at most 5 times a month.** Decided:
-a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Versions never repeat — revising the same filed v1 twice
-gives v2 then v3, both with `parent_id` pointing at v1. Still open with the
+a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Version numbers never repeat within a form's versions — revising the same filed v1 twice
+gives v2 then v3, both with `parent_id` pointing at v1, and a deleted v2 still holds its number.
+A deleted original frees its period: the new form made for it is a separate form (its own
+number) and starts again at v1. Still open with the
 accountant: whether "revised" means a chain, where only the latest finalized
 version may be revised. If so, `revise` will refuse older versions; the
 numbering stays as it is.

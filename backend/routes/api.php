@@ -138,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/drafts', [BirFormController::class, 'store']);
             Route::get('/drafts/{id}', [BirFormController::class, 'show']);
             Route::put('/drafts/{id}', [BirFormController::class, 'update']);
+            Route::delete('/drafts/{id}', [BirFormController::class, 'destroy']);
             Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
             Route::middleware('role:accounting')->group(function () {
                 Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
