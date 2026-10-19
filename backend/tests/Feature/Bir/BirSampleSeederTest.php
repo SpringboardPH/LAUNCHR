@@ -21,6 +21,7 @@ class BirSampleSeederTest extends TestCase
 
         $ids = Employee::where('employee_id', 'like', 'TST-%')->pluck('id', 'employee_id');
         $this->assertCount(3, $ids);
+        $this->assertSame(0, BirFormDraft::onlyTrashed()->count(), 'The first run\'s 2316s are removed, not soft-deleted.');
 
         $year = fn (string $code) => BirAggregationService::annualCompensation($ids[$code], 2025);
         $this->assertSame(['taxable', 'exempt_250k', 'mwe'], array_map(fn ($code) => $year($code)['_meta']['category'], ['TST-001', 'TST-002', 'TST-003']));
