@@ -295,9 +295,9 @@ class BirChatWordingTest extends TestCase
             $this->model->willReturn($intent($month));
             $this->send($message)->assertJsonPath('data.reply', sprintf('Understood: a 1601-C covering 2025-%02d.', $month));
         }
-        // The slip only confirms the model's month; a month the message doesn't spell is still dropped.
+        // A month the message doesn't spell is dropped; the misspelled one is then guessed, for checking.
         $this->model->willReturn($intent(3));
-        $this->send('genrate the 1601c for novmber 2025')->assertJsonPath('data.reply', 'Could you tell me the month? I prepare one 1601-C at a time.');
+        $this->send('genrate the 1601c for novmber 2025')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2025-11. Please check this is right before creating the draft.');
     }
 
     public function test_a_correction_right_after_a_request_was_understood_builds_on_it(): void

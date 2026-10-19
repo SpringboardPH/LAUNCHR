@@ -27,7 +27,7 @@ class BirChatLookup
     private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source|who (?:changed|edited|typed|entered|put)|sino (?:ang )?(?:nagpalit|nagbago|nag-?edit|naglagay))\b/i';
 
     /** A question about what a box means, or a request for a new form: never read as a lookup by name. */
-    private const NOT_A_LOOKUP = '/\b(mean|means|meaning|ibig sabihin|explain|paliwanag|make|generate|prepare|create|gawa|gumawa|need|kailangan)\b/i';
+    private const NOT_A_LOOKUP = '/\b(mean|means|meaning|ibig sabihin|explain|paliwanag|make|generate|prepare|create|gawa|gumawa|needs?|needed|kailangan|employee\s*(?:id|number|no\.?|code)|emp\.?\s*id|(?:don\'?t|doesn\'?t|do not|does not)\s+have|without|missing|wala\s+pa|kulang|not\s+yet|hindi\s+pa|(?:which|what|alin)\s+(?:months|forms|employees|ones)|tax\s+group|group|category|kategorya|classification|average|avg|mean|median|combined|monthly|per\s+month|how\s+many|ilan|count|number\s+of)\b/i';
 
     /** A question about a form's versions or how often it was amended. */
     public const VERSIONS = '/\\b(how many (?:versions|amendments|corrections|times)|ilang (?:version|amendment|beses)|(?:what|which|anong) version|(?:list|show)(?: me)?(?: all)?(?: the)? versions|version history|versions of)\\b/i';
@@ -106,6 +106,30 @@ class BirChatLookup
     {
         $ref = $this->finder->reference($message);
         $wantsValue = preg_match(self::VALUE_WORDS, $message) === 1;
+        // "Hazel's and Gino's TIN" names two people, not one form: a question about the records (BirDataCompare).
+        if ($ref['number'] === null && $item === null && $this->employees->namedIn($message)->count() > 1) {
+            return null;
+        }
+        // "salary of Elias?", "how much tax did Hazel have withheld in March 2026?": no form named, no form open.
+        if ($ref['number'] === null && $item === null && $current === null && !preg_match('/2316|1601|\b(?:form|draft|item|box)\b/i', $message)
+            && $this->employees->namedIn($message)->count() === 1) {
+            return null;
+        }
+        // "is Mina's salary over 20k?": a comparison is a question about the records, not a box to read.
+        if ($ref['number'] === null && $item === null && !preg_match('/2316|1601/', $message) && BirDataWords::hasCondition($message)
+            && preg_match('/\b(?:over|above|more|higher|greater|less|lower|below|under|than|at least|at most|mahigit|lagpas|kulang)\b/i', $message)) {
+            return null;
+        }
+        // "Gino's salary and position": details from the record, not one box of a form.
+        if ($ref['number'] === null && $item === null && !preg_match('/2316|1601/', $message)
+            && count(array_filter(BirDataWords::SHOWN, fn (string $words) => preg_match($words, $message) === 1)) > 1) {
+            return null;
+        }
+        // "how much tax was withheld from her in December?" on her 2316: a month of her pay, not another form.
+        if ($ref['number'] === null && $item === null && $ref['month'] !== null && $current?->employee_id !== null && !preg_match('/1601/', $message)
+            && preg_match('/\b(?:she|he|her|him|his|niya|nya|siya|sya|kanya)\b/i', $message)) {
+            return null;
+        }
         // "how much tax was withheld from Mina?" with Teresa's 2316 open: never the open form's figure.
         if ($ref['person'] === BirEmployeeResolver::NOT_NAMED && $ref['number'] === null && $current?->employee_id !== null && $item === null) {
             $named = $this->employees->capitalisedName($message);
@@ -211,6 +235,9 @@ class BirChatLookup
     /** "open form #11": the chat moves to it. Null when the message names no form ("show me how"). */
     public function open(string $message, ?BirFormDraft $current, BirConversationState $state): ?array
     {
+        if ($this->employees->namedIn($message)->count() > 1) {
+            return null; // "show Hazel's and Gino's TIN": two people, not a form to open
+        }
         $ref = $this->finder->reference($message);
         if (!BirFormFinder::specific($ref) && $ref['form_type'] === null) {
             return null;

@@ -107,6 +107,9 @@ class BirChatTypoTest extends TestCase
             $this->model->willReturn($none);
             $this->send($message)->assertJsonPath('data.reply', "Understood: a 1601-C covering 2026-{$month}. Please check this is right before creating the draft.");
         }
+        // Read as another month ("Hulio" as August): that one is dropped, and the near one guessed.
+        $this->model->willReturn(['tax_month' => 8] + $none);
+        $this->send('1601-C ng Hulio 2026')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-07. Please check this is right before creating the draft.');
         // A 4-letter slip confirms the model's month without a check.
         $this->model->willReturn(['tax_month' => 3] + $none);
         $this->send('1601-C for Mrch 2026')->assertJsonPath('data.reply', 'Understood: a 1601-C covering 2026-03.');
@@ -133,6 +136,9 @@ class BirChatTypoTest extends TestCase
 
         $this->assertStringContainsString('"Item 19, Gross Compensation Income', $this->send("what is the gross compnsation on form #{$id}?")->json('data.reply'));
         $this->assertStringContainsString('Withheld', $this->send("what is the tax witheld on form #{$id}?")->json('data.reply'));
+        // "itm" with the form open, and no form named.
+        $this->actingAs($this->accounting)->postJson('/api/bir/chat', ['draft_id' => $id, 'message' => 'change itm 5 to 044'])
+            ->assertOk()->assertJsonPath('data.answer', ['field' => 'employee_rdo_code', 'value' => '044']);
     }
 
     // ---- helpers

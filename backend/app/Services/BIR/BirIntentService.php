@@ -316,10 +316,6 @@ class BirIntentService
         $bareMonth = ($known['form_type'] ?? null) === Form1601CSchema::FORM_TYPE && ($known['tax_month'] ?? null) === null
             && preg_match('/^\s*(1[0-2]|0?[1-9])\s*[.!]?\s*$/', $message, $n) ? (int) $n[1] : null;
         $month = $bareMonth ?? $month;
-        // A misspelled month the model didn't read ("Agosot", "Mrch") on a 1601-C: a guess the user checks.
-        $guessedMonth = $month === null && ($formsSaid === [Form1601CSchema::FORM_TYPE] || ($formsSaid === [] && ($known['form_type'] ?? null) === Form1601CSchema::FORM_TYPE))
-            ? BirMessageFacts::nearMonth($message) : null;
-        $month ??= $guessedMonth;
         if ($year !== null && BirMessageFacts::yearsSaid($message) === [] && preg_match(self::RELATIVE_PERIOD, $message)
             && abs($year - SystemClock::now()->year) > 1) {
             $year = null; // "last year" is never 1899
@@ -333,6 +329,10 @@ class BirIntentService
         if ($month !== null && $month !== $bareMonth && $month !== ($known['tax_month'] ?? null) && !self::mentionsMonth($message) && !BirMessageFacts::spellsMonth($message, $month)) {
             $month = null;
         }
+        // A misspelled month the model didn't read, or read as another ("Hulio" as August), ("Agosot", "Mrch") on a 1601-C: a guess the user checks.
+        $guessedMonth = $month === null && ($formsSaid === [Form1601CSchema::FORM_TYPE] || ($formsSaid === [] && ($known['form_type'] ?? null) === Form1601CSchema::FORM_TYPE))
+            ? BirMessageFacts::nearMonth($message) : null;
+        $month ??= $guessedMonth;
         $employee = is_string($raw['employee_query'] ?? null) && trim($raw['employee_query']) !== ''
             ? trim($raw['employee_query'])
             : null;
@@ -367,9 +367,14 @@ class BirIntentService
         if ($kind !== 'form_request' && self::onlyNamesAPeriodOrForm($message)) {
             $kind = 'form_request';
         }
-        // "how about August 2025?" right after a question about the records follows it up, naming no form.
-        if ($kind !== 'data_question' && isset($known['question']) && $formsSaid === [] && BirDataIntent::followsUp($message)) {
+        // "how about August 2025?" right after a question about the records, or "who is the highest?" read as anything else.
+        if ($kind !== 'data_question' && $formsSaid === [] && ((isset($known['question']) && BirDataWords::followsUp($message)) || BirDataWords::vague($message) !== null || BirDataCompare::asked($message) || BirDataWords::guessQuestion($message) !== null)) {
             $kind = 'data_question';
+        }
+        // "Mina Minwage" answering "which employee?" for a 2316 is an answer, not a question about Mina.
+        if ($kind === 'data_question' && ($known['form_type'] ?? null) !== null && !isset($known['question'])
+            && !BirAnswerParser::asksAbout($message) && !preg_match(BirDataIntent::ASKS_FOR_DATA, $message)) {
+            $kind = 'form_request';
         }
         // A question about the records (BirDataIntent): one PHP can answer, or else "other".
         $question = $kind === 'data_question' ? BirDataIntent::read($raw['question'] ?? [], $message, $raw, $known['question'] ?? null) : null;

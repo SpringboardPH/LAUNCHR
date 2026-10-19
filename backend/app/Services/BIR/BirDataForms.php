@@ -24,6 +24,14 @@ final class BirDataForms
         'returned' => ['was returned for changes', 'were returned for changes'], 'not_filed' => ['is not filed yet', 'are not filed yet'],
     ];
 
+    /** "January, February and May". */
+    public static function andList(array $items): string
+    {
+        $last = array_pop($items);
+
+        return $items === [] ? (string) $last : implode(', ', $items) . " and {$last}";
+    }
+
     /** "Which forms are still drafts?", "how many 2316s are filed?", "Teresa's forms". */
     public static function saved(array $q, ?Employee $person): string
     {
@@ -33,6 +41,13 @@ final class BirDataForms
         }
         if ($person !== null) {
             $query->where('employee_id', $person->id);
+        }
+        $statuses = $q['statuses'] ?? [];
+        if ($statuses !== []) {
+            $query->where(fn ($w) => collect($statuses)->each(fn (string $st) => $st === 'returned'
+                ? $w->orWhere(fn ($r) => $r->where('status', 'draft')->whereNotNull('rejection_reason'))
+                : $w->orWhere('status', $st)));
+            $q['status'] = null;
         }
         match ($q['status']) {
             null => null,
@@ -52,6 +67,9 @@ final class BirDataForms
             $q['tax_year'] !== null ? 'for ' . ($q['tax_month'] !== null ? BirFormNames::monthName(sprintf('%04d-%02d', $q['tax_year'], $q['tax_month'])) : $q['tax_year']) : null,
         ]));
         $status = $q['status'] !== null ? ' ' . self::STATUS_WORDS[$q['status']][$forms->count() === 1 ? 0 : 1] : '';
+        if ($statuses !== []) {
+            $status = ' ' . ($forms->count() === 1 ? 'is ' : 'are ') . str_replace(' and ', ' or ', self::andList(array_map(fn (string $st) => preg_replace('/^(?:is|are|was|were) (?:still )?/', '', self::STATUS_WORDS[$st][$forms->count() === 1 ? 0 : 1]), $statuses)));
+        }
         $lead = ($forms->count() === 1 ? '1 saved form' : "{$forms->count()} saved forms") . ($which !== '' ? " ({$which})" : '') . $status;
         if ($forms->isEmpty()) {
             return 'No saved forms' . ($which !== '' ? " ({$which})" : '') . ($q['status'] !== null ? ' ' . self::STATUS_WORDS[$q['status']][1] : '') . '.';

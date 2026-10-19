@@ -234,6 +234,7 @@ final class BirAnswerParser
      */
     public static function withCommandSpelled(string $message): string
     {
+        $message = preg_replace('/\b(?:itm|iten|itme)(?=\s*\d)/iu', 'item', $message); // "change itm 5 to 044"
         $first = strtok(mb_strtolower(trim($message)), " \t,:");
         if ($first === false || strlen($first) < 3 || in_array($first, self::COMMAND_WORDS, true)) {
             return $message;

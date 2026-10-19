@@ -28,9 +28,12 @@ class BirDataAnswers
 
     public const CAN_ANSWER = 'I can answer questions about your employees (who is taxable, a minimum wage earner or exempt at ₱250,000 a year or less, their TIN or hire date), payroll totals such as compensation and tax withheld, and the saved BIR forms, for example "who are the taxable employees?", "how much tax was withheld in December 2025?" or "which forms are still drafts?".';
 
-    public const CANT = "I can't answer that from the records I can read. " . self::CAN_ANSWER;
+    public const CANT = "I can't answer that from the records I can read, or I'm not sure what you're asking. " . self::CAN_ANSWER;
 
-    private const NO_PAYROLL = 'There is no finalized or paid payroll for that yet, so I have nothing to go by.';
+    /** A condition the model's labels left out or the message doesn't bear out: never answered as if there were none. */
+    public const UNREAD = 'I couldn\'t work out the condition in that question, so I won\'t guess a list. Try putting it like "who has a salary over 30,000?", "who was hired before 2025?" or "who are the taxable employees?".';
+
+    public const NO_PAYROLL = 'There is no finalized or paid payroll for that yet, so I have nothing to go by.';
 
     /** Each group, said of one employee and of several. */
     public const GROUPS = [
@@ -50,7 +53,8 @@ class BirDataAnswers
     ];
 
     /** Company detail => setting (BirSettingsService::values('1601-C') keys). */
-    private const COMPANY = ['name' => 'company_name', 'tin' => 'company_tin', 'rdo_code' => 'rdo_code', 'address' => 'company_address', 'zip' => 'company_zip'];
+    private const COMPANY = ['name' => 'company_name', 'tin' => 'company_tin', 'rdo_code' => 'rdo_code', 'address' => 'company_address', 'zip' => 'company_zip',
+        'email' => 'company_email', 'phone' => 'company_contact_number'];
 
     public function __construct(private readonly BirEmployeeResolver $employees) {}
 
@@ -60,9 +64,30 @@ class BirDataAnswers
      */
     public function answer(array $q, ?BirFormDraft $draft = null): array
     {
-        // On a 2316, "is he taxable?" is about its employee.
-        if ($q['employee'] === null && $q['topic'] === 'employee' && $draft?->form_type === Form2316Schema::FORM_TYPE && $draft->employee !== null) {
+        // "how many minimum wage earners and how many taxable": each group in turn.
+        if (count($q['groups'] ?? []) > 1) {
+            $replies = array_map(fn (string $g) => $this->answer(['group' => $g, 'groups' => []] + $q, $draft)['reply'], $q['groups']);
+
+            return ['reply' => implode("\n\n", $replies), 'candidates' => [], 'suggest' => null];
+        }
+        if (count($q['people'] ?? []) > 1 && in_array($q['topic'], ['employees', 'employee', 'amounts', 'unsupported'], true)
+            && ($compared = BirDataCompare::answer($q, Employee::whereIn('id', $q['people'])->get(), $draft)) !== null) {
+            return ['reply' => $compared, 'candidates' => [], 'suggest' => null];
+        }
+        if (in_array($q['per'] ?? null, ['department', 'position'], true)) {
+            return ['reply' => BirDataQuery::perValue($q), 'candidates' => [], 'suggest' => null];
+        }
+        // "total tax withheld per month in 2025", "which month had the most tax?".
+        if (($q['per'] ?? null) === 'month' && in_array($q['topic'], ['employees', 'amounts'], true) && $q['employee'] === null) {
+            return ['reply' => BirDataPeriod::perMonth($q, $draft), 'candidates' => [], 'suggest' => null];
+        }
+        // On a 2316, "is he taxable?" and "how much was she paid?" are about its employee.
+        if ($q['employee'] === null && ($q['topic'] === 'employee' || ($q['pronoun'] ?? false)) && $draft?->form_type === Form2316Schema::FORM_TYPE && $draft->employee !== null) {
             $q['employee'] = $draft->employee->employee_id;
+        }
+        // "how much was she paid?" with no one in view: ask who, never everyone's.
+        if ($q['employee'] === null && ($q['pronoun'] ?? false) && in_array($q['topic'], ['employee', 'amounts'], true)) {
+            return ['reply' => 'Which employee do you mean? Give their name or employee ID.', 'candidates' => [], 'suggest' => null];
         }
         $person = null;
         if ($q['employee'] !== null && in_array($q['topic'], ['employee', 'employees', 'amounts', 'forms'], true)) {
@@ -72,16 +97,30 @@ class BirDataAnswers
             }
             $person = Employee::withTrashed()->find($found['employee']->id); // the whole record: the resolver reads only names
         }
+        // "how much did Carlo make each month in 2025?": his, month by month.
+        if (($q['per'] ?? null) === 'month' && $person !== null && in_array($q['topic'], ['employee', 'employees', 'amounts'], true) && !($q['unread'] ?? false)) {
+            return ['reply' => BirDataPeriod::perMonth($q, $draft, $person), 'candidates' => [], 'suggest' => null];
+        }
 
         $reply = match (true) {
+            $q['unread'] ?? false => self::UNREAD,
             $q['topic'] === 'company' => $this->company($q),
+            // "is she in Administration?": a yes or no from her record.
+            ($place = BirDataPerson::place($q, $person)) !== null => $place,
             $q['topic'] === 'forms' => BirDataForms::saved($q, $person),
-            $q['topic'] === 'missing_forms' => BirDataForms::missing($q, $draft, $this->latestPaid()?->year) ?? self::NO_PAYROLL,
+            $q['topic'] === 'missing_forms' => BirDataForms::missing($q, $draft, BirDataPeriod::latestPaid()?->year) ?? self::NO_PAYROLL,
+            $person !== null && ($q['detail'] === 'salary' || $q['amount'] === 'salary') && $q['filters'] === [] && count($this->detailsAsked($q)) < 2 => $this->detail($person, 'salary'),
+            // "is Noel's salary more than 15k?", "Gino's salary and position".
+            $person !== null && in_array($q['topic'], ['employee', 'employees', 'amounts'], true) && ($q['filters'] !== [] || count($this->detailsAsked($q)) > 1)
+                => BirDataQuery::person($q, $person, $this->detailsAsked($q), $draft),
+            $person === null && in_array($q['topic'], ['employees', 'amounts'], true) && BirDataQuery::handles($q) => BirDataQuery::answer($q, $this, $draft),
+            $q['topic'] === 'unsupported' => self::CANT,
             $q['topic'] === 'amounts' || in_array($q['measure'], ['highest', 'lowest'], true) || ($q['amount'] !== null && ($q['measure'] === 'total' || $person !== null))
                 => $this->amounts($q, $person, $draft),
-            $person !== null && in_array($q['detail'], ['tin', 'hire_date', 'position', 'department', 'status', 'employee_id'], true) => $this->detail($person, $q['detail']),
+            $person !== null && in_array($q['detail'], ['tin', 'hire_date', 'position', 'department', 'status', 'employee_id', 'email', 'phone'], true) => $this->detail($person, $q['detail']),
             $person !== null => $this->group($q, $person, $draft),
-            $q['topic'] === 'employee' && ($q['detail'] !== null || $q['group'] !== null) => 'Which employee do you mean? Give their name or employee ID.',
+            // "what is her TIN?" with no one in view asks who; "who is our CEO?" is nothing these records hold.
+            $q['topic'] === 'employee' && $q['pronoun'] => 'Which employee do you mean? Give their name or employee ID.',
             $q['topic'] === 'employees' => $this->employeesWho($q, $draft),
             default => self::CANT,
         };
@@ -97,6 +136,25 @@ class BirDataAnswers
      */
     public function respond(array $q, BirConversationState $state, ?BirFormDraft $draft = null): array
     {
+        if ($q['employee'] === null && ($q['pronoun'] ?? false) && $draft?->form_type === Form2316Schema::FORM_TYPE && $draft->employee !== null) {
+            // "she" on her 2316, before anything is asked: who she is was the model's doubt, and it is settled.
+            [$q['employee'], $q['unsure']] = [$draft->employee->employee_id, false];
+        }
+        // Everyone the message names ("Teresa and Noel", "she … than Noel" on her form): two or more are compared.
+        $named = $this->employees->namedIn($q['message'] ?? '')->pluck('id');
+        if (($q['pronoun'] ?? false) && $draft?->form_type === Form2316Schema::FORM_TYPE && $draft->employee_id !== null) {
+            $named->push($draft->employee_id);
+        }
+        $q['people'] = $named->unique()->values()->all();
+        // "who else works in Finance?" with her form open: not her.
+        $q['exclude'] = ($q['else'] ?? false) && $draft?->employee_id !== null ? [$draft->employee_id] : [];
+        // Not sure what is asked: ask (BirDataDoubt), and answer once the reply says.
+        if (!($q['sure'] ?? false) && !($q['unread'] ?? false) && count($q['people']) < 2 && ($doubt = BirDataDoubt::check($q)) !== null) {
+            $state->setQuestion(['q' => $q, 'choices' => $doubt['choices'], 'confirm' => $doubt['confirm']]);
+            $buttons = array_map(fn (array $c, int $i) => ['name' => ucfirst($c['label']), 'employee_id' => (string) ($i + 1)], $doubt['choices'], array_keys($doubt['choices']));
+
+            return ['reply' => $doubt['reply'], 'candidates' => $buttons, 'suggest' => null];
+        }
         $answer = $this->answer($q, $draft);
         $state->setQuestion(['q' => $q, 'suggest' => $answer['suggest'], 'waiting' => $answer['suggest'] === null && $answer['candidates'] !== []]);
 
@@ -110,10 +168,28 @@ class BirDataAnswers
     public function resume(string $message, BirConversationState $state, ?BirFormDraft $draft = null): ?array
     {
         $held = $state->question();
-        if ($held === null || (empty($held['suggest']) && empty($held['waiting']))) {
+        if ($held === null || (empty($held['suggest']) && empty($held['waiting']) && empty($held['choices']) && empty($held['confirm']))) {
             return null;
         }
         $state->setQuestion(['q' => $held['q']]);
+        // A choice ("2", "tax withheld") or "yes" to how the question was read; "no" asks it again.
+        if (!empty($held['choices']) && ($chosen = BirDataDoubt::pick($message, $held['choices'])) !== null) {
+            return $this->respond(['sure' => true] + $chosen, $state, $draft);
+        }
+        if (!empty($held['choices']) && BirChatCommands::saysYes($message)) {
+            $state->setQuestion($held); // "yes" picks none of them: ask again, briefly
+
+            return ['reply' => 'Which one? Say ' . str_replace(' and ', ' or ', BirDataForms::andList(array_map('strval', range(1, count($held['choices']))))) . '.', 'candidates' => [], 'suggest' => null];
+        }
+        if (!empty($held['confirm']) && BirChatCommands::saysYes($message)) {
+            return $this->respond(['sure' => true] + $held['q'], $state, $draft);
+        }
+        if ((!empty($held['confirm']) || !empty($held['choices'])) && BirChatCommands::saysNo($message)) {
+            return ['reply' => BirDataDoubt::NOT_IT, 'candidates' => [], 'suggest' => null];
+        }
+        if (empty($held['suggest']) && empty($held['waiting'])) {
+            return null; // anything else is a new message
+        }
         if (!empty($held['suggest']) && BirChatCommands::saysNo($message)) {
             $state->setQuestion(['q' => $held['q'], 'waiting' => true]);
 
@@ -129,6 +205,15 @@ class BirDataAnswers
         }
 
         return $this->respond(['employee' => $code] + $held['q'], $state, $draft);
+    }
+
+    /** The details a question about one person asks for: the model's, and the message's own words. */
+    private function detailsAsked(array $q): array
+    {
+        $said = array_keys(array_filter(BirDataWords::SHOWN, fn (string $words) => preg_match($words, $q['message'] ?? '') === 1));
+        $fields = [...array_filter([$q['detail'] === 'salary' ? 'salary' : (in_array($q['detail'], ['tin', 'hire_date', 'position', 'department', 'status'], true) ? $q['detail'] : null)]), ...$q['show'], ...$said];
+
+        return array_values(array_unique(array_intersect($fields, BirDataIntent::FIELDS)));
     }
 
     /** A person not found, more than one, or only a close spelling: ask, never guess. */
@@ -164,13 +249,13 @@ class BirDataAnswers
             return self::names($people->values(), $lead, $q['measure'] === 'count', fn (Employee $e) => self::name($e) . ($e->position ? ", {$e->position}" : ''));
         }
 
-        $basis = $this->basis($q, $draft);
+        $basis = BirDataPeriod::basis($q, $draft);
         if ($basis === null) {
             return self::NO_PAYROLL;
         }
-        $rows = $this->rows($basis);
+        $rows = BirDataPeriod::rows($basis);
         if ($rows->isEmpty()) {
-            return $this->noPayroll($basis);
+            return BirDataPeriod::noPayroll($basis);
         }
         $picked = $rows->filter(fn (array $r) => self::inGroup($r, $q['group']) && self::passes($r, $q['filter']));
         $what = implode(' and ', array_filter([
@@ -189,16 +274,16 @@ class BirDataAnswers
     /** "Is Teresa taxable?", "why is Noel not taxable?": their group in the period, and why. */
     private function group(array $q, Employee $person, ?BirFormDraft $draft): string
     {
-        $basis = $this->basis($q, $draft);
-        $row = $basis !== null ? ($this->rows($basis)[$person->id] ?? null) : null;
+        $basis = BirDataPeriod::basis($q, $draft);
+        $row = $basis !== null ? (BirDataPeriod::rows($basis)[$person->id] ?? null) : null;
         $name = trim("{$person->first_name} {$person->last_name}");
         if ($row === null) {
             return "{$name} has no counted payroll " . ($basis !== null ? "in {$basis['period']}" : 'yet') . ', so I can\'t say which group they are in.';
         }
 
-        $yearly = $basis['month'] !== null ? $row['taxable'] * 12 : $row['taxable'];
-        $figure = $basis['month'] !== null
-            ? 'their taxable compensation for the month, ' . self::money($row['taxable']) . ', comes to ' . self::money($yearly) . ' a year'
+        $count = $basis['months'] !== null ? count($basis['months']) : ($basis['month'] !== null ? 1 : 12);
+        $figure = $count < 12
+            ? 'their taxable compensation for ' . ($count === 1 ? 'the month' : $basis['period']) . ', ' . self::money($row['taxable']) . ', comes to ' . self::money($row['taxable'] * 12 / $count) . ' a year'
             : 'their taxable compensation for the year is ' . self::money($row['taxable']);
         $why = match ($row['category']) {
             'mwe' => 'they are on the minimum wage earner list in the BIR settings',
@@ -213,21 +298,31 @@ class BirDataAnswers
     /** A total, the highest or the lowest, for everyone, a group, or one person. */
     private function amounts(array $q, ?Employee $person, ?BirFormDraft $draft): string
     {
-        $basis = $this->basis($q, $draft);
+        $basis = BirDataPeriod::basis($q, $draft);
         if ($basis === null) {
             return self::NO_PAYROLL;
         }
         $amount = $q['amount'] ?? 'compensation';
+        if ($amount === 'salary') {
+            return $person !== null ? $this->detail($person, 'salary') : BirDataQuery::answer($q, $this, $draft); // a rate on file, not paid in the period
+        }
         $label = self::AMOUNTS[$amount];
         $filter = $q['filter'] === 'tax_withheld' && $amount === 'tax_withheld' ? null : $q['filter']; // "total tax withheld" counts everyone
-        $rows = $this->rows($basis);
+        $rows = BirDataPeriod::rows($basis);
         if ($rows->isEmpty() && $person === null) {
-            return $this->noPayroll($basis);
+            return BirDataPeriod::noPayroll($basis);
         }
         $rows = $rows->filter(fn (array $r) => self::inGroup($r, $q['group']) && self::passes($r, $filter));
         $value = fn (array $r) => self::column($r, $amount);
 
         if ($person !== null && isset($rows[$person->id])) {
+            // "average monthly compensation of Bea in 2025": over the months with payroll.
+            if (preg_match('/\b(?:average|avg|karaniwan)\b/i', $q['message'] ?? '') && preg_match(BirDataWords::MONTHLY, $q['message'] ?? '') && $basis['month'] === null) {
+                $months = count($basis['months'] ?? BirDataPeriod::monthsPaid($basis['year']));
+
+                return ucfirst("average monthly {$label} for " . self::name($person) . " in {$basis['period']}: " . self::money($value($rows[$person->id]) / max(1, $months)) . " (over {$months} months with payroll).");
+            }
+
             return ucfirst("{$label} for " . self::name($person) . " in {$basis['period']}: " . self::money($value($rows[$person->id])) . '.');
         }
         if ($person !== null) {
@@ -248,11 +343,16 @@ class BirDataAnswers
             return "No employees fit that in {$basis['period']}.";
         }
         $sorted = $q['measure'] === 'highest' ? $rows->sortByDesc($value) : $rows->sortBy($value);
-        $people = Employee::withTrashed()->whereIn('id', $sorted->keys()->take(3))->get()->keyBy('id');
-        $top = $sorted->take(3)->map(fn (array $r, int $id) => ($people[$id] ?? null ? self::name($people[$id]) : "Employee #{$id}") . ' ' . self::money($value($r)))->values();
+        $people = Employee::withTrashed()->whereIn('id', $sorted->keys())->get()->keyBy('id');
+        $who = fn (int $id) => $people[$id] ?? null ? self::name($people[$id]) : "Employee #{$id}";
+        // Ties at the top are named together: "Noel and Mina, ₱0.00 each".
+        $best = $value($sorted->first());
+        $tied = $sorted->filter(fn (array $r) => round($value($r), 2) === round($best, 2));
+        $first = $tied->count() > 1 ? $tied->keys()->map($who)->implode(', ') . ', ' . self::money($best) . ' each' : $who($sorted->keys()->first()) . ' ' . self::money($best);
+        $next = $sorted->slice($tied->count())->take(max(0, 3 - $tied->count()))->map(fn (array $r, int $id) => $who($id) . ' ' . self::money($value($r)))->values();
 
-        return ucfirst("the {$q['measure']} {$label} in {$basis['period']}{$basis['note']}, among {$whose}: ") . $top[0] . '.'
-            . ($top->count() > 1 ? ' Next: ' . $top->slice(1)->implode(', ') . '.' : '');
+        return ucfirst("the {$q['measure']} {$label} in {$basis['period']}{$basis['note']}, among {$whose}: ") . $first . '.'
+            . ($next->isNotEmpty() ? ' Next: ' . $next->implode(', ') . '.' : '');
     }
 
     /** A detail from the employee's record. */
@@ -261,11 +361,12 @@ class BirDataAnswers
         $name = self::name($person);
         $value = match ($detail) {
             'tin' => trim((string) $person->tin_number) !== '' ? FieldFormat::tin($person->tin_number) : null,
+            'salary' => $person->salary !== null ? self::money((float) $person->salary) . ($person->rate_type === 'daily' ? ' a day' : ' a month') : null,
             'hire_date' => $person->hire_date?->format('F j, Y'),
             'employee_id' => $person->employee_id,
             default => trim((string) $person->{$detail}) ?: null,
         };
-        $what = ['tin' => 'TIN', 'hire_date' => 'hire date', 'employee_id' => 'employee ID'][$detail] ?? $detail;
+        $what = ['tin' => 'TIN', 'hire_date' => 'hire date', 'employee_id' => 'employee ID', 'salary' => 'salary', 'email' => 'email address', 'phone' => 'phone number'][$detail] ?? $detail;
 
         return match (true) {
             $value === null => "No {$what} is on file for {$name}.",
@@ -279,7 +380,7 @@ class BirDataAnswers
     private function company(array $q): string
     {
         $set = BirSettingsService::values(Form1601CSchema::FORM_TYPE);
-        $labels = ['name' => 'registered name', 'tin' => 'TIN', 'rdo_code' => 'RDO code', 'address' => 'registered address', 'zip' => 'ZIP code'];
+        $labels = ['name' => 'registered name', 'tin' => 'TIN', 'rdo_code' => 'RDO code', 'address' => 'registered address', 'zip' => 'ZIP code', 'email' => 'email address', 'phone' => 'contact number'];
         $value = fn (string $d) => $set[self::COMPANY[$d]] ?? null;
         if (isset(self::COMPANY[$q['detail']])) {
             $d = $q['detail'];
@@ -289,82 +390,6 @@ class BirDataAnswers
         $lines = array_map(fn (string $d) => '- ' . ucfirst($labels[$d]) . ': ' . ($value($d) ?? 'not set yet (an admin sets it in the BIR settings)'), array_keys(self::COMPANY));
 
         return "The company's details in the BIR settings:\n" . implode("\n", $lines);
-    }
-
-    /**
-     * The period a question goes by: ['year', 'month' (null for a year), 'period' ("December 2025"),
-     * 'label' (what the reply says it went by)]. Null when there is no counted payroll to go by.
-     */
-    private function basis(array $q, ?BirFormDraft $draft): ?array
-    {
-        [$year, $month, $why] = [$q['tax_year'], $q['tax_month'], null];
-        if ($year === null && $month !== null) {
-            $year = Payroll::query()->whereIn('status', BirAggregationService::COUNTED_STATUSES)->whereMonth(BirAggregationService::PERIOD_DATE, $month)
-                ->max(BirAggregationService::PERIOD_DATE);
-            $year = $year !== null ? (int) substr((string) $year, 0, 4) : SystemClock::now()->year;
-        }
-        if ($year === null && $draft !== null) {
-            [$year, $month, $why] = [(int) substr($draft->period, 0, 4), strlen($draft->period) === 7 ? (int) substr($draft->period, 5, 2) : null, 'this form\'s period'];
-        }
-        if ($year === null) {
-            $latest = $this->latestPaid();
-            if ($latest === null) {
-                return null;
-            }
-            [$year, $month, $why] = [$latest->year, $latest->month, 'the latest month with counted payroll'];
-        }
-        $period = $month !== null ? BirFormNames::monthName(sprintf('%04d-%02d', $year, $month)) : (string) $year;
-
-        $why ??= $month === null && $year >= SystemClock::now()->year ? 'so far' : null; // a year not over yet
-        $note = $why !== null ? " ({$why})" : '';
-
-        return ['year' => $year, 'month' => $month, 'period' => $period, 'note' => $note, 'label' => "the {$period} payroll{$note}"];
-    }
-
-    /** No counted payroll in the period: say so, and which month has the latest. */
-    private function noPayroll(array $basis): string
-    {
-        $latest = $this->latestPaid();
-
-        return "There is no finalized or paid payroll in {$basis['period']}, so I have nothing to go by."
-            . ($latest !== null ? ' The latest is in ' . $latest->format('F Y') . '.' : '');
-    }
-
-    /** The end of the latest counted payroll cutoff, or null when there is none. */
-    private function latestPaid(): ?Carbon
-    {
-        $date = Payroll::query()->whereIn('status', BirAggregationService::COUNTED_STATUSES)->max(BirAggregationService::PERIOD_DATE);
-
-        return $date !== null ? Carbon::parse($date) : null;
-    }
-
-    /**
-     * Each paid employee's group and amounts in the period, keyed by employee id; amounts in pesos.
-     * A month is the 1601-C's own rows; a year adds up its months, with the group the 2316 gives.
-     *
-     * @return Collection<int, array<string, mixed>>
-     */
-    private function rows(array $basis): Collection
-    {
-        $months = $basis['month'] !== null ? [$basis['month']] : range(1, 12);
-        $rows = [];
-        foreach ($months as $month) {
-            foreach (BirAggregationService::monthlyWithholding($basis['year'], $month)['_meta']['employees'] as $r) {
-                $id = (int) $r['employee_id'];
-                $rows[$id] ??= ['id' => $id, 'category' => $r['category'], 'compensation' => 0.0, 'tax_withheld' => 0.0, 'taxable' => 0.0, 'ee' => 0.0, 'thirteenth' => 0.0];
-                foreach (['compensation', 'tax_withheld', 'taxable', 'ee', 'thirteenth'] as $column) {
-                    $rows[$id][$column] += (float) $r[$column];
-                }
-            }
-        }
-        // A year's group is the 2316's: the year's taxable pay against P250,000.
-        if ($basis['month'] === null) {
-            foreach (array_keys($rows) as $id) {
-                $rows[$id]['category'] = BirAggregationService::annualCompensation($id, $basis['year'])['_meta']['category'];
-            }
-        }
-
-        return collect($rows);
     }
 
     private static function column(array $row, string $amount): float

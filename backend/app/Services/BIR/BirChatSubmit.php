@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR;
 
+use App\Models\AuditLog;
 use App\Models\BirFormDraft;
 
 /**
@@ -31,7 +32,7 @@ class BirChatSubmit
     private const DAYS = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu|thurs|fri|sat|sun';
 
     /** Also where a form stands: "why was form #5 returned?", "nasaan na ang form #2?", "sino ang gumawa ng form #4?", "kailan na-file ang form #4?". */
-    private const STANDING = '/^\s*(?:why|bakit)\b.*\b(?:returned|rejected|sent back|ibinalik|binalik|na-?reject)\b|^\s*nasaan\b|\b(?:who|sino)\b.*\b(?:prepared|made|created|submitted|approved|filed|gumawa|naghanda|nag-?submit|nag-?approve|nag-?file)\b|^\s*(?:when|kailan)\b.*\b(?:submitted|approved|filed|returned|na-?submit|na-?approve|na-?file|ibinalik)\b/i';
+    private const STANDING = '/^\s*(?:why|bakit)\b.*\b(?:returned|rejected|sent back|ibinalik|binalik|na-?reject)\b|^\s*nasaan\b|\b(?:who|sino)\b.*\b(?:prepared|made|created|submitted|approved|reviewed|checked|returned|filed|gumawa|naghanda|nag-?submit|nag-?approve|nag-?review|nag-?check|nag-?file)\b|^\s*(?:when|kailan)\b.*\b(?:submitted|approved|filed|returned|na-?submit|na-?approve|na-?file|ibinalik)\b/i';
 
     /** A question about submitting, or a "not yet": never a request to submit. */
     private const NOT_A_REQUEST = '/^\s*(?:how|paano|pano|what|ano|when|kailan|why|bakit|where|saan|which|who|is|are|was|were|has|have|did|does|can i|should i|do i|show|list)\b|\b(?:don\'?t|do not|not yet|hindi pa|huwag|wag|hold off|before)\b/i';
@@ -60,7 +61,10 @@ class BirChatSubmit
     /** True when the message asks where a form stands: submitted, approved, filed. */
     public static function asksForStatus(string $message): bool
     {
-        return (preg_match(self::STATUS, $message) === 1 || preg_match(self::STANDING, $message) === 1) && BirAnswerParser::itemMentioned($message) === null;
+        // "list all 2316s with their status" is about many forms: a question about the records (BirDataForms).
+        $many = BirFormFinder::formNumber($message) === null && preg_match('/\b(?:2316s|1601-?cs|forms|all|lahat|list|which|alin)\b/i', $message) === 1;
+
+        return (preg_match(self::STATUS, $message) === 1 || preg_match(self::STANDING, $message) === 1) && BirAnswerParser::itemMentioned($message) === null && !$many;
     }
 
     /** "approve form #9": the chat can't; says who can, and with which button. */
@@ -104,10 +108,37 @@ class BirChatSubmit
 
         // "who made / approved form #4?": the people on it too.
         $who = preg_match('/\b(?:who|sino)\b/i', $message) === 1
-            ? ' Prepared by ' . ($form->preparer?->name ?? 'someone no longer in the system') . ($form->approver ? ', approved by ' . $form->approver->name : '') . '.'
+            ? ' Prepared by ' . ($form->preparer?->name ?? 'someone no longer in the system') . match (true) {
+                $form->approver !== null => ', approved by ' . $form->approver->name . '.',
+                in_array($form->status, ['draft', 'pending'], true) && $form->rejection_reason === null => '. No one has reviewed it yet.',
+                default => '.',
+            }
             : '';
 
-        return BirChatCommands::result("{$name} is " . BirFormNames::statusWord($form) . ".{$next}{$who}", stay: true);
+        return BirChatCommands::result("{$name} is " . BirFormNames::statusWord($form) . ".{$next}{$who}" . self::when($message, $form), stay: true);
+    }
+
+    /** "when was form #12 approved?": the day it was, from the form's audit log. "" when not asked. */
+    private static function when(string $message, BirFormDraft $form): string
+    {
+        if (!preg_match('/^\s*(?:when|kailan|what (?:date|day|time))\b/i', $message)) {
+            return '';
+        }
+        $status = match (true) {
+            (bool) preg_match('/submit|na-?submit|review/i', $message) => ['pending', 'submitted for review'],
+            (bool) preg_match('/approv|na-?approve/i', $message) => ['approved', 'approved'],
+            (bool) preg_match('/return|ibinalik|sent back|reject/i', $message) => ['draft', 'returned'],
+            (bool) preg_match('/fil|na-?file/i', $message) => ['finalized', 'marked as filed'],
+            default => null,
+        };
+        if ($status === null) {
+            return '';
+        }
+        $log = AuditLog::where('auditable_type', BirFormDraft::class)->where('auditable_id', $form->id)->orderByDesc('id')->get()
+            ->first(fn (AuditLog $l) => ($l->new_values['status'] ?? null) === $status[0] && ($status[0] !== 'draft' || ($l->old_values['status'] ?? null) === 'pending'));
+
+        return $log !== null ? " It was {$status[1]} on " . $log->created_at->format('F j, Y \a\t g:i A') . '.'
+            : " I have no record of it being {$status[1]}" . (in_array($form->status, ['finalized', 'approved'], true) || $status[0] === 'pending' ? ' in the log I can read.' : ' yet.');
     }
 
     /**

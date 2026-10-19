@@ -97,6 +97,15 @@ class BirChatEmployees
 
         // The person picks a row, not the form: find the 1601-C without them.
         $form = ['form_type' => Form1601CSchema::FORM_TYPE, 'person' => BirEmployeeResolver::NOT_NAMED, 'employee' => null, 'candidates' => []] + $ref;
+        // "the taxable employees for March 2025" with no 1601-C named, and none saved for it, or with a
+        // condition the list can't apply ("more than 5,000 tax withheld"): the payroll answers (BirDataAnswers).
+        // So does one person over several months, or with no one 1601-C saved for the month (none, or a
+        // version and its amendment: the payroll, not a question about which), or several people.
+        if (($asksList || $person) && $ref['number'] === null && !preg_match('/1601/', $message) && $current?->form_type !== Form1601CSchema::FORM_TYPE
+            && (($asksList && !$person && BirDataWords::hasCondition($message)) || BirDataWords::monthsAsked($message) !== [] || $this->finder->forms($form)->count() !== 1
+                || $this->employees->namedIn($message)->count() > 1)) {
+            return null;
+        }
         $draft = !BirFormFinder::specific($form) && $current?->form_type === Form1601CSchema::FORM_TYPE
             ? $current
             : $this->lookup->target($form, $current, $message, $state);
@@ -110,7 +119,7 @@ class BirChatEmployees
             return BirChatCommands::result(ucfirst($on) . ' was made before the employee list existed, so I don\'t have its employees. A new draft for that month has them.', stay: true);
         }
 
-        return $person ? $this->row($ref, $list, $on, $message, $state) : $this->everyone($list, $on, BirDataIntent::groupSaid($message));
+        return $person ? $this->row($ref, $list, $on, $message, $state) : $this->everyone($list, $on, BirDataWords::groupSaid($message));
     }
 
     /** An employee list asked for with no 1601-C to read it from: say which form has one. */
