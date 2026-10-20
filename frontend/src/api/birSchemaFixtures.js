@@ -156,11 +156,18 @@ const systemFilled = {
   '2316': [],
 }
 
+// Fields with no place on the printed form (pdf_anchor null in the PHP schema): figures the system works with.
+const notPrinted = {
+  '1601-C': [],
+  '2316': ['basic_salary_annual', 'has_previous_employer', 'taxes_withheld_payroll', 'year_end_refund', 'is_substituted_filing'],
+}
+
 export const birMockSchemas = Object.fromEntries(
   Object.entries(rows).map(([form, list]) => [
     form,
     list.map(([key, item, label, type, source, required, guidance, options]) => ({
       key, item, label, type, source, required, guidance, ...(options && { options }),
+      pdf_anchor: notPrinted[form].includes(key) ? null : `${form.replace('-', '')}.${item ?? key}`,
       ...(formats[form][key] && { format: formats[form][key] }),
       ...(key in fixed[form] && { fixed: fixed[form][key] }),
       ...(systemFilled[form].includes(key) && { system_filled: true }),

@@ -7,7 +7,7 @@ import { useAuth } from '../../store/AuthContext'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
 import { describePeriod, formName } from './BirChatPanel'
 import { formLabel, versionLabel } from './BirDraftList'
-import FieldRow, { KINDS, kindOf, partsOf, partOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
+import FieldRow, { KINDS, kindOf, partsOf, partsByKey, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
 import BirApprovalBar, { REVIEWED } from './BirApprovalBar'
 import BirFormEmployees from './BirFormEmployees'
 import BirFormHistory from './BirFormHistory'
@@ -207,10 +207,11 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   const requiredMissing = rows.filter(({ field, entry }) => field.required && kindOf(entry) === 'pending').length
   const visible = rows.filter(({ entry }) => filter === 'all' || kindOf(entry) === filter)
   // The form's parts, with how many of each part's boxes are filled.
+  const partOfKey = partsByKey(draft.form_type, rows.map(({ field }) => field))
   const parts = partsOf(draft.form_type).map(part => {
-    const inPart = fillable.filter(({ field }) => partOf(draft.form_type, field.item)?.key === part.key)
+    const inPart = fillable.filter(({ field }) => partOfKey[field.key]?.key === part.key)
     return { ...part, total: inPart.length, filled: inPart.filter(({ entry }) => entry.value !== null && entry.value !== '').length }
-  }).filter(part => rows.some(({ field }) => partOf(draft.form_type, field.item)?.key === part.key))
+  }).filter(part => rows.some(({ field }) => partOfKey[field.key]?.key === part.key))
   const goToPart = (key) => {
     setFilter('all')
     setTimeout(() => partRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
@@ -368,8 +369,8 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
 
       <ul className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
         {visible.map(({ field, entry }, i) => {
-          const part = partOf(draft.form_type, field.item)
-          const starts = part && part.key !== partOf(draft.form_type, visible[i - 1]?.field.item)?.key
+          const part = partOfKey[field.key]
+          const starts = part && part.key !== partOfKey[visible[i - 1]?.field.key]?.key
           const stats = starts && parts.find(p => p.key === part.key)
           return (<Fragment key={field.key}>
           {starts && (

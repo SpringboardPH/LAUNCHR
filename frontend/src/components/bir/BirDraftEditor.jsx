@@ -38,9 +38,17 @@ const PARTS = {
   ],
 }
 export const partsOf = (formType) => (PARTS[formType] ?? []).map(([from, to, name, title, color]) => ({ key: name, from, to, name, title, ...PART_COLORS[color] }))
-export const partOf = (formType, item) => {
-  const n = parseInt(item, 10)
-  return partsOf(formType).find(p => n >= p.from && n <= p.to) ?? null
+// Each field's part, by key. A field with no item number (e.g. the 2316's yearly basic salary, or
+// "had another employer") sits in the schema just before the boxes it decides, so it joins the
+// part of the next numbered box, or of the one before it when it comes last (the CTC/ID lines).
+export const partsByKey = (formType, fields) => {
+  const parts = partsOf(formType)
+  const byItem = fields.map(field => {
+    const n = parseInt(field.item, 10)
+    return Number.isNaN(n) ? null : parts.find(p => n >= p.from && n <= p.to) ?? null
+  })
+  const nearest = (i) => byItem.slice(i).find(Boolean) ?? byItem.slice(0, i).reverse().find(Boolean) ?? null
+  return Object.fromEntries(fields.map((field, i) => [field.key, byItem[i] ?? nearest(i)]))
 }
 
 export const kindOf = (entry) => (entry.edited ? 'edited' : (KINDS[entry.origin] ? entry.origin : 'pending'))

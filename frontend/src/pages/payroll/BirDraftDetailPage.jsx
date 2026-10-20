@@ -16,7 +16,7 @@ export default function BirDraftDetailPage() {
   useEffect(() => { setBirMockUser(user) }, [user])
 
   return (
-    <div className="max-w-4xl">
+    <div>{/* full width: the form gets the whole screen */}
       <Link to="/hr/bir-forms" className="mb-3 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
         <ArrowLeft size={12} /> All BIR forms
       </Link>
