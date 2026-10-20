@@ -670,8 +670,8 @@ A 1601-C can be amended 5 times per month (supervisor's rule,
 `BirFormDraft::AMENDMENT_LIMITS`): once the month's highest version is 6, `revise`
 returns 400 "This 1601-C has already been amended 5 times for 2026-07, the most
 allowed for one month" and creates nothing. An amendment counts once, however many
-boxes it changes, and a deleted correction still counts (`DELETE /bir/drafts/{id}`):
-the highest version includes deleted ones, so a version number is never reused.
+boxes it changes, and a voided correction still counts (`POST /bir/drafts/{id}/void`):
+the highest version includes voided ones, so a version number is never reused.
 A 2316 has no limit. The chat (`POST /bir/chat`) offers to start
 a correction only while `revise` would allow it, and starts it through this endpoint.
 
@@ -974,8 +974,8 @@ registration details.
 
 **Any finalized version can be revised; a 1601-C at most 5 times a month.** Decided:
 a 2316 has no limit on revisions, and a 1601-C stops at 5 amendments per month (§6, revise). Version numbers never repeat within a form's versions — revising the same filed v1 twice
-gives v2 then v3, both with `parent_id` pointing at v1, and a deleted v2 still holds its number.
-A deleted original frees its period: the new form made for it is a separate form (its own
+gives v2 then v3, both with `parent_id` pointing at v1, and a voided v2 still holds its number.
+A voided original frees its period: the new form made for it is a separate form (its own
 number) and starts again at v1. Still open with the
 accountant: whether "revised" means a chain, where only the latest finalized
 version may be revised. If so, `revise` will refuse older versions; the
