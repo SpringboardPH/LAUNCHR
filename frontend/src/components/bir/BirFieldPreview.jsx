@@ -214,7 +214,9 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   }).filter(part => rows.some(({ field }) => partOfKey[field.key]?.key === part.key))
   const goToPart = (key) => {
     setFilter('all')
-    setTimeout(() => partRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+    // To the part's first box, not its header: the headers are sticky, so one scrolled past
+    // stays pinned (behind the current one) and the browser would think it is already in view.
+    setTimeout(() => partRefs.current[key]?.nextElementSibling?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
 
   const comparedRows = rows.filter(({ field }) => isCompared(field))
