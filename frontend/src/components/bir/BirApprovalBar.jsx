@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Trash2, Eye } from 'lucide-react'
+import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Ban, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  birKeys, getBirConfig, exportBirDraft, deleteBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
+  birKeys, getBirConfig, exportBirDraft, voidBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
 } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { formatValue, formatWhen } from './BirDraftEditor'
@@ -24,6 +24,7 @@ const STATUS_NOTE = {
   pending: 'Waiting for review. The reviewer may correct boxes before approving.',
   approved: 'Approved, not filed yet. Mark it as filed once it is filed with the BIR. Boxes can still be changed, but a change sends it back to draft to be submitted and approved again.',
   finalized: 'Filed. This is the record of what was filed and can never be changed. To correct it, start a new version.',
+  void: 'Void. Kept for the record and can no longer be changed. Its period can be prepared again as a new form.',
 }
 
 // Only accounting reviews: approves or returns a submitted form (contract §5). The preparer
@@ -37,13 +38,14 @@ export const REVIEWED = ['pending', 'approved']
  * The form's next steps, driven by `status_flow` from /bir/config rather than a hardcoded list.
  * Approve and Return show only to accounting (the server refuses anyone else).
  */
-export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = [], onShowEdits }) {
+export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [], onShowEdits }) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const [returning, setReturning] = useState(false)
   const [reason, setReason] = useState('')
   const [confirmFinalize, setConfirmFinalize] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [voiding, setVoiding] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
   const [previewing, setPreviewing] = useState(false)
   const [notice, setNotice] = useState(null)
 
@@ -84,19 +86,19 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
     },
   })
   // The official PDF, any status: until approved the server stamps it "DRAFT — NOT FOR FILING".
-  // Only a draft can be deleted; submitted, approved and filed forms are records (server says 400).
-  const remove = useMutation({
-    mutationFn: () => deleteBirDraft(draft.id),
+  // Forms are never deleted: only a draft is voided, with a reason, and stays on the list (server says 400 otherwise).
+  const voidForm = useMutation({
+    mutationFn: () => voidBirDraft(draft.id, voidReason.trim()),
     onMutate: () => setNotice(null),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: birKeys.lists })
-      qc.removeQueries({ queryKey: birKeys.detail(draft.id) })
-      onDeleted?.(draft, res?.message)
+      qc.invalidateQueries({ queryKey: birKeys.history(draft.id) })
+      qc.setQueryData(birKeys.detail(draft.id), res.data)
+      setVoiding(false)
+      setVoidReason('')
+      onVoided?.(res.data, res.message)
     },
-    onError: (err) => {
-      setConfirmDelete(false)
-      setNotice({ tone: 'error', text: err?.response?.data?.message || 'Could not delete the draft. Please try again.' })
-    },
+    onError: (err) => setNotice({ tone: 'error', text: err?.response?.data?.message || 'Could not void the form. Please try again.' }),
   })
 
   const download = useMutation({
@@ -113,17 +115,19 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
   const people = [
     draft.prepared_by && `Prepared by ${draft.prepared_by.name}${isPreparer ? ' (you)' : ''}`,
     draft.approved_by && `approved by ${draft.approved_by.name}`,
+    draft.void?.by && `voided by ${draft.void.by.name}`,
   ].filter(Boolean).join(' · ')
 
   return (
     <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 space-y-2">
       <p className="flex gap-2 text-xs text-gray-600">
-        {draft.status === 'finalized'
+        {['finalized', 'void'].includes(draft.status)
           ? <Lock size={13} className="mt-0.5 shrink-0 text-gray-400" />
           : <Clock size={13} className="mt-0.5 shrink-0 text-gray-400" />}
         <span>
           {STATUS_NOTE[draft.status] ?? `Status: ${draft.status}.`}
           {REVIEWED.includes(draft.status) && !REVIEWER_ROLES.includes(user?.role) && ' Only accounting can change its boxes now.'}
+          {draft.void?.reason && <span className="block text-gray-700">Reason: {draft.void.reason}</span>}
           {people && <span className="block text-[11px] text-gray-400">{people}</span>}
         </span>
       </p>
@@ -174,26 +178,34 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
           title={['approved', 'finalized'].includes(draft.status) ? 'The official BIR form' : 'Marked DRAFT until the form is approved'}>
           <Download size={12} /> {download.isPending ? 'Preparing PDF…' : 'Download PDF'}
         </button>
-        {draft.status === 'draft' && (confirmDelete ? (
-          <span className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
-            Delete {draft.label ?? `#${draft.id}`}? It disappears from the list.
-            <button onClick={() => remove.mutate()} disabled={remove.isPending} className="btn-danger py-1.5 text-xs">
-              {remove.isPending ? 'Deleting…' : 'Yes, delete'}
-            </button>
-            <button onClick={() => setConfirmDelete(false)} disabled={remove.isPending} className="btn-ghost py-1.5 text-xs">Cancel</button>
-          </span>
-        ) : (
-          <button onClick={() => setConfirmDelete(true)} disabled={busy} className="btn-ghost py-1.5 text-xs text-red-600 hover:text-red-700"
-            title="Only a draft can be deleted. Submitted, approved and filed forms are kept.">
-            <Trash2 size={12} /> Delete draft
+        {draft.status === 'draft' && !voiding && (
+          <button onClick={() => setVoiding(true)} disabled={busy} className="btn-ghost py-1.5 text-xs text-red-600 hover:text-red-700"
+            title="Forms are never deleted. A voided draft stays on the list, marked void, for the record.">
+            <Ban size={12} /> Void
           </button>
-        ))}
+        )}
         {draft.amendments && (
           <span className="ml-auto text-[11px] text-gray-500" title="A 1601-C can be amended 5 times per month">
             {draft.version > 1 ? `Amendment ${draft.version - 1} · ` : ''}{draft.amendments.made} of {draft.amendments.limit} amendments used
           </span>
         )}
       </div>
+
+      {voiding && (
+        <div className="rounded-lg border border-red-200 bg-red-50/60 px-3 py-2 space-y-2">
+          <label htmlFor="void-reason" className="block text-xs text-gray-700">
+            Void {draft.label ?? `#${draft.id}`}? It stays on the list, marked void, and can no longer be changed. Why is it being voided?
+          </label>
+          <textarea id="void-reason" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} rows={2} maxLength={1000}
+            className="input text-xs" placeholder="e.g. Made for the wrong month" autoFocus />
+          <div className="flex gap-2">
+            <button onClick={() => voidForm.mutate()} disabled={!voidReason.trim() || voidForm.isPending} className="btn-danger py-1.5 text-xs">
+              {voidForm.isPending ? 'Voiding…' : 'Yes, void it'}
+            </button>
+            <button onClick={() => { setVoiding(false); setVoidReason('') }} disabled={voidForm.isPending} className="btn-ghost py-1.5 text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* Every box changed by hand, so the reviewer sees them all before approving. */}
       {edits.length > 0 && (

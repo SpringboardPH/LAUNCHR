@@ -35,6 +35,12 @@ class BirFormDraftResource extends JsonResource
             'prepared_by' => $this->whenLoaded('preparer', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'approved_by' => $this->whenLoaded('approver', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'rejection_reason' => $this->rejection_reason,
+            // Set on a voided form only: why, by whom and when (the form is kept, never deleted).
+            'void' => $this->status === BirFormDraft::VOID ? [
+                'reason' => $this->void_reason,
+                'by' => $this->voider ? ['id' => $this->voider->id, 'name' => $this->voider->name] : null,
+                'at' => $this->voided_at?->toIso8601String(),
+            ] : null,
             // Empty fields is an object keyed by field name, so it must encode as {} not [].
             'fields' => $this->fields ?: new \stdClass(),
             'validation_errors' => $this->validation_errors ?? [],

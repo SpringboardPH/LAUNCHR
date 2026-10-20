@@ -171,6 +171,7 @@ export function StatusBadge({ status }) {
     rejected:    'badge-red',
     draft:       'badge-gray',
     finalized:   'badge-blue',
+    void:        'badge-red',
     full_time:   'badge-blue',
     part_time:   'badge-yellow',
     contractual: 'badge-gray',

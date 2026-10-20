@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -9,9 +10,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Traits\Auditable;
 
 /**
- * Soft-deleted (DELETE /bir/drafts/{id}, drafts only): normal queries skip a deleted form, but
- * the version numbering and the amendment count include it (withTrashed), so a deleted
- * correction still counts toward the limit and its version number is never reused.
+ * Voided (POST /bir/drafts/{id}/void, drafts only), never deleted: the form stays with status
+ * 'void'. The notVoid scope makes every normal query skip it, as it once skipped a deleted form
+ * (rows soft-deleted before voiding replaced deleting stay hidden too). The list, the form
+ * itself and its history include it (withVoid), and so do the version numbering and the
+ * amendment count (everything()): a voided correction still counts, its number is never reused.
  */
 class BirFormDraft extends Model
 {
@@ -20,6 +23,8 @@ class BirFormDraft extends Model
     use SoftDeletes;
 
     protected $table = 'bir_form_drafts';
+
+    public const VOID = 'void';
 
     /**
      * Statuses whose fields can be changed with PUT. pending is included so the approver can
@@ -63,6 +68,9 @@ class BirFormDraft extends Model
         'prepared_by',
         'approved_by',
         'rejection_reason',
+        'void_reason',
+        'voided_by',
+        'voided_at',
     ];
 
     // Never serialised to the API. Hiding it also keeps the frozen payroll rows out of audit_logs.
@@ -75,7 +83,25 @@ class BirFormDraft extends Model
         'source_snapshot' => 'array',
         'validation_errors' => 'array',
         'version' => 'integer',
+        'voided_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('notVoid', fn (Builder $query) => $query->where($query->qualifyColumn('status'), '!=', self::VOID));
+    }
+
+    /** Voided forms included: the list, a form opened on its own, its PDF and its history. */
+    public static function withVoid(): Builder
+    {
+        return static::withoutGlobalScope('notVoid');
+    }
+
+    /** Every form ever made, voided and soft-deleted ones too: for version numbers and amendment counts. */
+    public static function everything(): Builder
+    {
+        return static::withTrashed()->withoutGlobalScope('notVoid');
+    }
 
     /**
      * The number of the original this form is a version of (its own for an original):
@@ -85,7 +111,7 @@ class BirFormDraft extends Model
     {
         $seen = [];
         $form = $this;
-        while ($form->parent_id !== null && !isset($seen[$form->id]) && ($parent = self::withTrashed()->find($form->parent_id)) !== null) {
+        while ($form->parent_id !== null && !isset($seen[$form->id]) && ($parent = self::everything()->find($form->parent_id)) !== null) {
             $seen[$form->id] = true;
             $form = $parent;
         }
@@ -125,10 +151,10 @@ class BirFormDraft extends Model
         return $fields;
     }
 
-    /** Amendments made to this form so far: its highest version, less the original. A deleted correction counts. */
+    /** Amendments made to this form so far: its highest version, less the original. A voided correction counts. */
     public function amendmentsMade(): int
     {
-        return (int) self::withTrashed()->where('form_type', $this->form_type)
+        return (int) self::everything()->where('form_type', $this->form_type)
             ->where('period', $this->period)
             ->where('employee_id', $this->employee_id)
             ->max('version') - 1;
@@ -166,6 +192,11 @@ class BirFormDraft extends Model
     public function approver()
     {
         return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function voider()
+    {
+        return $this->belongsTo(User::class, 'voided_by');
     }
 
     public function parent()

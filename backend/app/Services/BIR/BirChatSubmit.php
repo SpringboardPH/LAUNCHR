@@ -38,7 +38,7 @@ class BirChatSubmit
     private const NOT_A_REQUEST = '/^\s*(?:how|paano|pano|what|ano|when|kailan|why|bakit|where|saan|which|who|is|are|was|were|has|have|did|does|can i|should i|do i|show|list)\b|\b(?:don\'?t|do not|not yet|hindi pa|huwag|wag|hold off|before)\b/i';
 
     /** Approving, returning, filing or deleting: done with the buttons by accounting, never by the chat. */
-    private const WORKFLOW = '/^\s*(?:(?:please|pls|kindly|paki-?|can you|could you|would you|pwede bang?)\s*)?(?<verb>approve|aprubahan|i-?approve|reject|return|i-?return|mark|file|i-?file|finali[sz]e|delete|remove|burahin|i-?delete|cancel)\b/i';
+    private const WORKFLOW = '/^\s*(?:(?:please|pls|kindly|paki-?|can you|could you|would you|pwede bang?)\s*)?(?<verb>approve|aprubahan|i-?approve|reject|return|i-?return|mark|file|i-?file|finali[sz]e|delete|remove|burahin|i-?delete|cancel|void)\b/i';
 
     /** Asking where a form stands: "is it submitted?", "did you submit it?", "status of form #11". */
     private const STATUS = '/\b(?:status|estado)\b|\b(?:na-?submit|naisubmit|submitted|na-?approve|approved|na-?file|filed|naibalik|returned)\s+na\b|^\s*(?:is|was|were|has|have|did|does|nasaan)\b.*\b(?:submit\w*|approv\w*|filed?|returned|review\w*|pending|draft)\b/i';
@@ -78,9 +78,9 @@ class BirChatSubmit
         $reply = match (true) {
             in_array($verb, ['approve', 'aprubahan', 'reject', 'return'], true) => 'I can\'t approve or return forms from the chat. Accounting does that with the "Approve" and "Return to preparer" buttons above the form, once it is submitted for review.',
             in_array($verb, ['mark', 'file', 'finalize', 'finalise'], true) => 'I can\'t mark forms as filed from the chat. Accounting does that with the "Mark as filed" button above the form, once it is approved and filed with the BIR.',
-            // Drafts (a returned one too) can be deleted on screen; nothing under review, approved or filed (Kyle's DELETE).
-            $form instanceof BirFormDraft && $form->status !== 'draft' => 'Only drafts can be deleted. A form under review or approved stays as it is, and a filed form stays as the record of what was filed.',
-            default => 'I can\'t delete forms from the chat. A draft can be deleted with the "Delete draft" button above it.',
+            // Forms are never deleted; a draft (a returned one too) can be voided on screen (POST /void).
+            $form instanceof BirFormDraft && $form->status !== 'draft' => 'Only drafts can be voided, and forms are never deleted. A form under review or approved stays as it is, and a filed form stays as the record of what was filed.',
+            default => 'I can\'t void forms from the chat, and forms are never deleted. A draft can be voided with the "Void" button above it; it stays on the list for the record.',
         };
 
         return BirChatCommands::result($lead . $reply, stay: true);

@@ -45,7 +45,8 @@ class BirRoleAccessTest extends TestCase
         'update a draft' => ['PUT', '/api/bir/drafts/{id}', 'draft', ['fields' => ['surcharge' => '1000.00']], self::ALL, 200],
         'update a pending form' => ['PUT', '/api/bir/drafts/{id}', 'pending', ['fields' => ['surcharge' => '1000.00']], self::ACCOUNTING, 200],
         'update an approved form' => ['PUT', '/api/bir/drafts/{id}', 'approved', ['fields' => ['surcharge' => '1000.00']], self::ACCOUNTING, 200],
-        'delete' => ['DELETE', '/api/bir/drafts/{id}', 'draft', [], self::ALL, 200],
+        'void' => ['POST', '/api/bir/drafts/{id}/void', 'draft', ['reason' => 'Made by mistake'], self::ALL, 200],
+        'history' => ['GET', '/api/bir/drafts/{id}/history', 'draft', [], self::ALL, 200],
         // 422: a fresh 1601-C still has unanswered required boxes, so validation refuses it.
         'submit' => ['POST', '/api/bir/drafts/{id}/submit', 'draft', [], self::ALL, 422],
         'approve' => ['POST', '/api/bir/drafts/{id}/approve', 'pending', [], self::ACCOUNTING, 422],

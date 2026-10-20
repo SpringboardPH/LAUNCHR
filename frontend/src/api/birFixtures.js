@@ -12,6 +12,7 @@
 
 import { birMockSchemas } from './birSchemaFixtures'
 import { mockChat } from './birMockChat'
+import { mockHistory } from './birMockHistory'
 
 const STATUS_FLOW = {
   draft: ['pending'],
@@ -253,7 +254,7 @@ const stored = (f, value) => (f.type === 'boolean' && typeof value !== 'boolean'
   ? TRUE.includes(String(value).toLowerCase()) : f.type === 'decimal' ? String(value) : value)
 
 // Session-lived store: mutations stick until the page reloads.
-let drafts = seed(), gone = [] // gone: deleted drafts, which still count toward versions and amendments
+let drafts = seed() // voided forms stay here: they still count toward versions and amendments
 let nextId = 100
 
 const clone = (x) => structuredClone(x)
@@ -269,7 +270,7 @@ const fail = (status, message, extra = {}) => {
 const rootOf = (d) => (d.parent_id ? rootOf(find(d.parent_id) ?? { id: d.parent_id }) : d.id)
 const decorate = (d) => {
   const root = rootOf(d)
-  const top = Math.max(...[...drafts, ...gone].filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
+  const top = Math.max(...drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
   return {
     ...d, root_id: root, label: `#${root}${d.version > 1 ? `v${d.version}` : ''}`,
     amendments: d.form_type === '1601-C' ? { made: top - 1, limit: AMENDMENT_LIMIT } : null,
@@ -278,6 +279,7 @@ const decorate = (d) => {
 const AMENDMENT_LIMIT = 5
 const ok = (data, message) => ({ success: true, data: clone(data?.fields ? decorate(data) : data), message })
 const find = (id) => drafts.find(d => d.id === Number(id))
+const live = (id) => (find(id)?.status === 'void' ? undefined : find(id)) // the API answers 404 for changes to a void form
 
 // The logged-in user, as the real API takes them from the session (set by setBirMockUser).
 // Seeded drafts stay Jane's, so the signed-in user can review and approve them.
@@ -289,14 +291,10 @@ const ACCOUNTING_ONLY = 'Unauthorized. Only accounting users can do this.'
 const preparer = () => caller ?? JANE
 const approver = () => caller ?? MARK
 
-const getConfig = async () => {
-  await delay(150)
-  return {
-    enabled: switchState.enabled, switch_password_set: !!switchState.password,
-    form_types: ['1601-C', '2316'], status_flow: clone(STATUS_FLOW),
-    schemas: clone(birMockSchemas),
-  }
-}
+const getConfig = async () => delay(150).then(() => ({
+  enabled: switchState.enabled, switch_password_set: !!switchState.password,
+  form_types: ['1601-C', '2316'], status_flow: clone(STATUS_FLOW), schemas: clone(birMockSchemas),
+}))
 
 const getDrafts = async ({ status, form_type, per_page = 15, page = 1 } = {}) => {
   await delay()
@@ -306,19 +304,10 @@ const getDrafts = async ({ status, form_type, per_page = 15, page = 1 } = {}) =>
     .sort((a, b) => b.id - a.id)
   const start = (page - 1) * perPage
   const data = matching.slice(start, start + perPage)
-  return {
-    data: clone(data.map(decorate)),
-    pagination: {
-      total: matching.length, count: data.length, per_page: perPage,
-      current_page: Number(page), last_page: Math.max(1, Math.ceil(matching.length / perPage)),
-    },
-  }
+  const last_page = Math.max(1, Math.ceil(matching.length / perPage))
+  return { data: clone(data.map(decorate)), pagination: { total: matching.length, count: data.length, per_page: perPage, current_page: Number(page), last_page } }
 }
-const getDraft = async (id) => {
-  await delay()
-  const d = find(id)
-  return d ? clone(decorate(d)) : fail(404, 'Draft not found')
-}
+const getDraft = async (id) => delay().then(() => (find(id) ? clone(decorate(find(id))) : fail(404, 'Draft not found')))
 
 const createDraft = async ({ form_type, period, employee_id = null }) => {
   await delay(900)
@@ -326,7 +315,7 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
     return fail(422, 'The form type and period are required.')
   }
   // One return per period (contract §6): the latest version of an existing form answers 409.
-  const same = drafts.filter(d => d.form_type === form_type && d.period === period && (form_type === '1601-C' || d.employee_id === Number(employee_id)))
+  const same = drafts.filter(d => d.status !== 'void' && d.form_type === form_type && d.period === period && (form_type === '1601-C' || d.employee_id === Number(employee_id)))
   if (same.length) {
     const e = decorate(same.reduce((a, b) => (b.version > a.version ? b : a)))
     const filed = e.status === 'finalized'
@@ -343,11 +332,12 @@ const createDraft = async ({ form_type, period, employee_id = null }) => {
   }
   draft.prepared_by = preparer()
   drafts.push(draft)
+  log(draft, 'created', 'Form created from payroll data')
   return ok(draft, 'Draft created (mock)')
 }
 const updateDraft = async (id, fields = {}) => {
   await delay()
-  const d = find(id)
+  const d = live(id)
   if (!d) return fail(404, 'Draft not found')
   if (d.status === 'finalized') {
     return fail(400, 'Only draft, pending and approved forms can be edited; this form is in finalized status')
@@ -362,7 +352,7 @@ const updateDraft = async (id, fields = {}) => {
   })
   if (Object.keys(errors).length) return fail(422, Object.values(errors)[0][0], { errors })
 
-  const now = new Date().toISOString()
+  const now = new Date().toISOString(), before = clone(d.fields)
   Object.entries(fields).forEach(([key, value]) => {
     const f = fieldOf(d.form_type, key)
     const prev = d.fields[key] ?? pending()
@@ -379,13 +369,16 @@ const updateDraft = async (id, fields = {}) => {
       d.fields[key] = { value: stored(f, value), origin: 'user', ...blank }
     }
   })
+  const changes = schemaOf(d.form_type).filter(f => (before[f.key]?.value ?? null) !== (d.fields[f.key]?.value ?? null))
+    .map(f => ({ key: f.key, item: f.item, label: f.label, type: f.type, from: before[f.key]?.value ?? null, to: d.fields[f.key]?.value ?? null }))
   // A change to an approved form sends it back to draft, to be submitted and approved again.
-  if (d.status === 'approved') { d.status = 'draft'; d.approved_by = null }
+  if (d.status === 'approved') { d.status = 'draft'; d.approved_by = null; log(d, 'reopened', 'A box was changed after approval, so it went back to draft', { changes }) }
+  else if (changes.length) log(d, 'edited', `Changed ${changes.length} box${changes.length === 1 ? '' : 'es'}`, { changes })
   return ok(d, 'Draft updated (mock)')
 }
 const validate = async (id) => {
   await delay(300)
-  const d = find(id)
+  const d = live(id)
   if (!d) return fail(404, 'Draft not found')
   if (d.status === 'finalized') return fail(400, "Finalized forms are locked and can't be revalidated")
   d.validation_errors = checks(d)
@@ -396,7 +389,7 @@ const validate = async (id) => {
 
 const transition = async (id, to, reason = null) => {
   await delay()
-  const d = find(id)
+  const d = live(id)
   if (!d) return fail(404, 'Draft not found')
   if (!(STATUS_FLOW[d.status] ?? []).includes(to)) {
     return fail(400, `Cannot move a form in ${d.status} status to ${to}`)
@@ -416,6 +409,7 @@ const transition = async (id, to, reason = null) => {
       return fail(422, `Draft has ${errors} error${errors === 1 ? '' : 's'}; fix them before ${verb}`, { data: clone(d) })
     }
   }
+  log(d, ...MOVES[`${d.status}>${to}`], { reason: to === 'draft' ? reason : null })
   d.status = to
   d.rejection_reason = to === 'draft' ? reason : null
   if (to === 'approved') d.approved_by = approver()
@@ -429,7 +423,7 @@ const revise = async (id) => {
   if (d.status !== 'finalized') {
     return fail(400, `Only finalized forms can be revised; this one is in ${d.status} status`)
   }
-  const sameForm = [...drafts, ...gone].filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
+  const sameForm = drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id)
   if (d.form_type === '1601-C' && Math.max(...sameForm.map(x => x.version)) > AMENDMENT_LIMIT) {
     return fail(400, `This 1601-C has already been amended ${AMENDMENT_LIMIT} times for ${d.period}, the most allowed for one month`)
   }
@@ -440,6 +434,7 @@ const revise = async (id) => {
   // Every version after the original is an amended return: item 2 is Yes.
   if (d.form_type === '1601-C') revision.fields.is_amended = { value: true, origin: 'payroll', ...blank }
   drafts.push(revision)
+  log(revision, 'created', `Correction started (version ${revision.version})`)
   return ok(revision, 'Revision created (mock)')
 }
 
@@ -481,15 +476,19 @@ const setSwitchPassword = async ({ password, password_confirmation, current_pass
 
 const getEmployees = async () => delay(200).then(() => ({ data: clone(EMPLOYEES), pagination: { total: EMPLOYEES.length } }))
 
-// Only a draft can be deleted (contract §6); a deleted one no longer blocks its period.
-const deleteDraft = async (id) => {
+// Forms are never deleted: only a draft is voided, with a reason, and stays on the list (contract §6).
+const voidDraft = async (id, reason) => {
   const d = await delay().then(() => find(id))
   if (!d) return fail(404, 'Draft not found')
   const { label } = decorate(d)
-  if (d.status !== 'draft') return fail(400, `Only a draft can be deleted; form ${label} is in ${d.status} status`)
-  drafts = drafts.filter(x => x !== d); gone.push(d)
-  return ok({ id: d.id, label }, `Draft ${label} deleted`)
+  if (d.status !== 'draft') return fail(400, d.status === 'void' ? `Form ${label} is already void` : `Only a draft can be voided; form ${label} is in ${d.status} status`)
+  if (!reason?.trim()) return fail(422, 'A reason is required to void a form.', { errors: { reason: ['A reason is required to void a form.'] } })
+  Object.assign(d, { status: 'void', void: { reason: reason.trim(), by: preparer(), at: new Date().toISOString() } })
+  log(d, 'voided', 'Voided', { reason: reason.trim() })
+  return ok(d, `Form ${label} voided`)
 }
+// What happened to each form, like GET /bir/drafts/{id}/history.
+const { log, getHistory, MOVES } = mockHistory({ find, fail, delay, ok, by: preparer, seededBy: JANE })
 
 const chat = mockChat({
   find, schemas: birMockSchemas, missingFor, errorCount, employees: EMPLOYEES, delay, fail,
@@ -497,5 +496,5 @@ const chat = mockChat({
 
 export const birMockApi = {
   getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees, actAs,
-  draftEmployees, setSwitch, setSwitchPassword, deleteDraft,
+  draftEmployees, setSwitch, setSwitchPassword, voidDraft, getHistory,
 }

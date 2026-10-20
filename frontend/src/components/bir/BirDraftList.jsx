@@ -11,7 +11,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const periodName = (formType, period) => (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)
   ? `${MONTH_NAMES[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}` : describePeriod(formType, period))
 
-const STATUSES = [['', 'All statuses'], ['draft', 'Draft'], ['pending', 'Waiting for review'], ['approved', 'Approved'], ['finalized', 'Finalized (filed)']]
+const STATUSES = [['', 'All statuses'], ['draft', 'Draft'], ['pending', 'Waiting for review'], ['approved', 'Approved'], ['finalized', 'Finalized (filed)'], ['void', 'Void']]
 const PER_PAGE = 8
 // With versions grouped, a page holds whole forms: fetch more at once.
 const PER_PAGE_GROUPED = 50

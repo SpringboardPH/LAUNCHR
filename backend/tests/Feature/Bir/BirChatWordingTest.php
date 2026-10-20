@@ -81,9 +81,9 @@ class BirChatWordingTest extends TestCase
             ->assertJsonPath('data.reply', "Form #{$id} (the September 2026 1601-C) is waiting for review. I can't approve or return forms from the chat. Accounting does that with the \"Approve\" and \"Return to preparer\" buttons above the form, once it is submitted for review.");
         $this->assertStringContainsString("I can't approve or return forms from the chat.", $this->send("return form #{$id} to the preparer")->json('data.reply'));
         $this->assertStringContainsString("I can't mark forms as filed from the chat.", $this->send("mark form #{$id} as filed")->json('data.reply'));
-        $this->assertStringContainsString('Only drafts can be deleted.', $this->send("delete form #{$id}")->json('data.reply'));
+        $this->assertStringContainsString('Only drafts can be voided, and forms are never deleted.', $this->send("delete form #{$id}")->json('data.reply'));
         $draft = $this->draft1601C('2026-08');
-        $this->assertStringEndsWith('A draft can be deleted with the "Delete draft" button above it.', $this->send("delete form #{$draft}")->json('data.reply'));
+        $this->assertStringEndsWith('A draft can be voided with the "Void" button above it; it stays on the list for the record.', $this->send("delete form #{$draft}")->json('data.reply'));
         $this->assertStringContainsString("I can't approve or return forms from the chat.", $this->send('please approve it')->json('data.reply'));
 
         $this->assertSame('pending', BirFormDraft::findOrFail($id)->status);

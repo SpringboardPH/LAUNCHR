@@ -31,6 +31,7 @@ class BirFormController extends Controller
         'pending' => ['approved', 'draft'], // approve, or reject back to draft
         'approved' => ['finalized'],
         'finalized' => [],
+        'void' => [], // BirFormRecordController::void(); never moves again
     ];
 
     public function config()
@@ -50,7 +51,7 @@ class BirFormController extends Controller
 
     public function index(Request $request)
     {
-        $query = BirFormDraft::with('preparer', 'approver', 'employee');
+        $query = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider');
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);
@@ -85,7 +86,7 @@ class BirFormController extends Controller
 
         // One return per period: a second original for the same form type, period and employee
         // (null on a 1601-C) is refused in any status and any version; corrections go through
-        // revise. A deleted form (soft delete) doesn't count, so the period can be created again. The lock, as in revise, keeps two creates at the same moment from both finding
+        // revise. A voided form doesn't count (notVoid scope), so the period can be created again. The lock, as in revise, keeps two creates at the same moment from both finding
         // nothing. On MySQL the loser of that race deadlocks and is retried (3 attempts), and the
         // retry finds the winner's form, so it gets the 409 rather than a 500.
         [$draft, $existing] = DB::transaction(function () use ($request, $formType, $period, $employeeId) {
@@ -194,7 +195,7 @@ class BirFormController extends Controller
 
     public function show(int $id)
     {
-        $draft = BirFormDraft::with('preparer', 'approver', 'employee')->find($id);
+        $draft = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider')->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
@@ -258,38 +259,6 @@ class BirFormController extends Controller
             'data' => new BirFormDraftResource($draft),
             'message' => $changed ? 'Draft updated' : 'No changes to save',
         ]);
-    }
-
-    /**
-     * Deletes a form in draft status, a returned one too. A soft delete: the row stays for the
-     * record and the Auditable trait logs who deleted it. A deleted correction still counts
-     * toward the amendment limit and its version number is never reused (BirFormDraft). The
-     * lock, as in transition(), keeps a submit at the same moment from moving it first.
-     */
-    public function destroy(int $id)
-    {
-        return DB::transaction(function () use ($id) {
-            $draft = BirFormDraft::lockForUpdate()->find($id);
-            if (!$draft) {
-                return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
-            }
-
-            $label = $draft->label();
-            if ($draft->status !== 'draft') {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Only a draft can be deleted; form {$label} is in {$draft->status} status",
-                ], 400);
-            }
-
-            $draft->delete();
-
-            return response()->json([
-                'success' => true,
-                'data' => ['id' => $draft->id, 'label' => $label],
-                'message' => "Draft {$label} deleted",
-            ]);
-        });
     }
 
     /**
@@ -417,8 +386,9 @@ class BirFormController extends Controller
     }
 
     /**
-     * Locked, as in destroy(): a delete at the same moment either goes first (this finds nothing,
-     * 404) or waits and then finds the form moved on (400), so a deleted form is never moved.
+     * Locked, as in BirFormRecordController::void(): a void at the same moment either goes first
+     * (this finds nothing, 404) or waits and then finds the form moved on (400), so a voided form
+     * is never moved.
      */
     private function transition(int $id, string $to, ?string $reason = null)
     {
@@ -534,11 +504,11 @@ class BirFormController extends Controller
         // parent's: revising the same filed v1 twice gives v2 then v3, never two v2s. Whether
         // only the latest version may be revised is still open with the accountant. The lock
         // keeps two revisions created at the same moment from reading the same highest version,
-        // and so from both getting past the amendment limit (null: the limit is reached). Deleted
-        // corrections count (withTrashed), as in amendmentsMade(): a number is never reused.
+        // and so from both getting past the amendment limit (null: the limit is reached). Voided
+        // corrections count (everything()), as in amendmentsMade(): a number is never reused.
         $limit = BirFormDraft::AMENDMENT_LIMITS[$draft->form_type] ?? null;
         $revision = DB::transaction(function () use ($draft, $request, $limit) {
-            $highest = BirFormDraft::withTrashed()->where('form_type', $draft->form_type)
+            $highest = BirFormDraft::everything()->where('form_type', $draft->form_type)
                 ->where('period', $draft->period)
                 ->where('employee_id', $draft->employee_id)
                 ->lockForUpdate()
@@ -585,7 +555,7 @@ class BirFormController extends Controller
      */
     public function export(BirPdfService $pdf, int $id)
     {
-        $draft = BirFormDraft::with('employee')->find($id);
+        $draft = BirFormDraft::withVoid()->with('employee')->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }

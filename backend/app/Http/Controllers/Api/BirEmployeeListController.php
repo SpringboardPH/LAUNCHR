@@ -16,7 +16,7 @@ class BirEmployeeListController extends Controller
 {
     public function show(int $id)
     {
-        $draft = BirFormDraft::find($id);
+        $draft = BirFormDraft::withVoid()->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }

@@ -587,6 +587,7 @@ export const birKeys = {
   all2316: ['bir', 'drafts', 'all-2316'],
   formEmployees: (id) => ['bir', 'drafts', id, 'employees'],
   pdf: (id) => ['bir', 'drafts', id, 'pdf'],
+  history: (id) => ['bir', 'drafts', id, 'history'],
 }
 
 // Returns { enabled, form_types, status_flow, schemas? } — schemas is the per-form field
@@ -619,10 +620,16 @@ export const updateBirDraft = bir(
   birMockApi.updateDraft,
 )
 
-// Only a form still in draft can be deleted (soft delete on the server); anything else is 400.
-export const deleteBirDraft = bir(
-  (id) => api.delete(`/bir/drafts/${id}`).then(r => r.data),
-  birMockApi.deleteDraft,
+// Forms are never deleted: a draft is voided with a reason and stays on the list; anything else is 400.
+export const voidBirDraft = bir(
+  (id, reason) => api.post(`/bir/drafts/${id}/void`, { reason }).then(r => r.data),
+  birMockApi.voidDraft,
+)
+
+// Returns [{ id, at, by, event, text, reason, changes: [{ key, item, label, type, from, to }] }], newest first.
+export const getBirDraftHistory = bir(
+  (id) => api.get(`/bir/drafts/${id}/history`).then(r => r.data),
+  birMockApi.getHistory,
 )
 
 export const validateBirDraft = bir(

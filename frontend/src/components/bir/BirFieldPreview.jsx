@@ -10,6 +10,7 @@ import { formLabel, versionLabel } from './BirDraftList'
 import FieldRow, { KINDS, kindOf, partsOf, partOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
 import BirApprovalBar, { REVIEWED } from './BirApprovalBar'
 import BirFormEmployees from './BirFormEmployees'
+import BirFormHistory from './BirFormHistory'
 
 // Boxes can be changed until a form is filed: approved too, since it isn't filed yet and a
 // change sends it back to draft (contract §5). Waiting for review or approved, only accounting
@@ -75,7 +76,7 @@ const forwardRow = (el, key, refs) => { if (el) refs.current[key] = el; else del
  * filed, for the go/no-go check; Week 6 makes the boxes editable and adds the
  * submit / approve / file steps.
  */
-export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft, onDeleted }) {
+export default function BirFieldPreview({ draftId, askingField = null, onOpenDraft, onVoided }) {
   const { user } = useAuth()
   const qc = useQueryClient()
   const [editing, setEditing] = useState(null)
@@ -325,9 +326,10 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
 
       </div>
 
-      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft} onDeleted={onDeleted}
+      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft} onVoided={onVoided}
         edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
       {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
+      <BirFormHistory key={`history-${draft.id}`} draft={draft} />
       {/* Checking against what was really filed: its own strip, apart from the form's status. */}
       {comparedRows.length > 0 && (
         <div className="px-4 py-2.5 border-b border-gray-100 space-y-1.5">

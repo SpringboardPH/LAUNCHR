@@ -137,16 +137,15 @@ export default function BirFormsPage() {
     setParams({ draft: String(draft.id) })
     setOpened(n => n + 1)
   }
-  // A deleted draft closes; the note says which one went.
-  const [deletedNote, setDeletedNote] = useState(null)
-  const [deletedId, setDeletedId] = useState(null)
-  const onDeleted = (draft, message) => {
+  // A voided form stays open, read-only and marked void; the note says which one.
+  const [voidedNote, setVoidedNote] = useState(null)
+  const [voidedId, setVoidedId] = useState(null)
+  const onVoided = (draft, message) => {
     setAskingField(null)
-    setParams({})
-    setDeletedId(draft.id) // the chat lets go of it too
-    setDeletedNote(message || `Draft ${draft.label ?? `#${draft.id}`} deleted.`)
+    setVoidedId(draft.id) // the chat lets go of it: it can no longer be changed
+    setVoidedNote(message || `Form ${draft.label ?? `#${draft.id}`} voided`)
   }
-  useEffect(() => { if (draftId) setDeletedNote(null) }, [draftId])
+  useEffect(() => { setVoidedNote(null) }, [draftId])
 
   const onQuestion = (field) => {
     setAskingField(field)
@@ -195,8 +194,8 @@ export default function BirFormsPage() {
               </Link>
             )}
           </h2>
-          {deletedNote && <p className="px-4 pt-3 text-xs text-green-700" role="status">{deletedNote}</p>}
-          <BirFieldPreview draftId={draftId} askingField={askingField} onOpenDraft={onDraft} onDeleted={onDeleted} />
+          {voidedNote && <p className="px-4 pt-3 text-xs text-green-700" role="status">{voidedNote}</p>}
+          <BirFieldPreview draftId={draftId} askingField={askingField} onOpenDraft={onDraft} onVoided={onVoided} />
         </section>
 
         <div className="lg:col-span-2 space-y-5">
@@ -238,7 +237,7 @@ export default function BirFormsPage() {
             onQuestion={onQuestion}
             openDraftId={draftId}
             openKey={opened}
-            deletedDraftId={deletedId}
+            voidedDraftId={voidedId}
           />
         </div>
         <button

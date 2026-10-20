@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\EmployeeRequestController;
 use App\Http\Controllers\Api\DtrController;
 use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\BirFormController;
+use App\Http\Controllers\Api\BirFormRecordController;
 use App\Http\Controllers\Api\BirChatController;
 use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
@@ -138,7 +139,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/drafts', [BirFormController::class, 'store']);
             Route::get('/drafts/{id}', [BirFormController::class, 'show']);
             Route::put('/drafts/{id}', [BirFormController::class, 'update']);
-            Route::delete('/drafts/{id}', [BirFormController::class, 'destroy']);
+            Route::post('/drafts/{id}/void', [BirFormRecordController::class, 'void']);
+            Route::get('/drafts/{id}/history', [BirFormRecordController::class, 'history']);
             Route::post('/drafts/{id}/submit', [BirFormController::class, 'submit']);
             Route::middleware('role:accounting')->group(function () {
                 Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
