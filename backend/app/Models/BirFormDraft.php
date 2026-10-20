@@ -71,7 +71,13 @@ class BirFormDraft extends Model
         'void_reason',
         'voided_by',
         'voided_at',
+        'signing_method',
     ];
+
+    /** signing_method values: e-signatures, or a wet signature on the printout. Null = not chosen. */
+    public const SIGN_DIGITAL = 'digital';
+
+    public const SIGN_PAPER = 'paper';
 
     // Never serialised to the API. Hiding it also keeps the frozen payroll rows out of audit_logs.
     protected $hidden = ['source_snapshot'];
@@ -202,5 +208,33 @@ class BirFormDraft extends Model
     public function parent()
     {
         return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    public function signatures()
+    {
+        return $this->hasMany(BirFormSignature::class);
+    }
+
+    public function signatureBy(string $role): ?BirFormSignature
+    {
+        return $this->signatures->firstWhere('role', $role);
+    }
+
+    /**
+     * Fully signed: marked for a wet signature, or a 1601-C the employer signed, or a 2316 both the
+     * employer and the employee signed. Informational only; it never blocks anything.
+     */
+    public function signingComplete(): bool
+    {
+        if ($this->signing_method === self::SIGN_PAPER) {
+            return true;
+        }
+
+        $employer = $this->signatureBy(BirFormSignature::EMPLOYER) !== null;
+        if ($this->form_type !== '2316') {
+            return $employer;
+        }
+
+        return $employer && $this->signatureBy(BirFormSignature::EMPLOYEE) !== null;
     }
 }

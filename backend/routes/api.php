@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\BirFormRecordController;
 use App\Http\Controllers\Api\BirChatController;
 use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
+use App\Http\Controllers\Api\BirSigningController;
 use App\Http\Controllers\Api\UserSignatureController;
 
 // Public routes
@@ -134,7 +135,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // BIR Form Assistant (contract: docs/bir-api-contract.md). Employees are
     // refused everywhere. Approve, reject and finalize are accounting-only
     // (Week 7, confirmed by the supervisor); editing a pending form is also
-    // accounting-only, checked in UpdateBirDraftFieldsRequest/update().
+    // accounting-only, checked in UpdateBirDraftFieldsRequest/update(). Signing a finalized form
+    // (sign, wet-signature) is accounting-only too: accounting signs as the employer.
     // With bir_forms_enabled off, everything but GET /config and the switch routes is 403 for
     // every role (bir.enabled). The switch routes are admin-only and need the company password.
     Route::prefix('bir')->middleware('role:admin,hr,accounting')->group(function () {
@@ -155,6 +157,8 @@ Route::middleware('auth:sanctum')->group(function () {
                 Route::post('/drafts/{id}/approve', [BirFormController::class, 'approve']);
                 Route::post('/drafts/{id}/reject', [BirFormController::class, 'reject']);
                 Route::post('/drafts/{id}/finalize', [BirFormController::class, 'finalize']);
+                Route::post('/drafts/{id}/sign', [BirSigningController::class, 'sign']);
+                Route::post('/drafts/{id}/wet-signature', [BirSigningController::class, 'wetSignature']);
             });
             Route::post('/drafts/{id}/revise', [BirFormController::class, 'revise']);
             Route::post('/drafts/{id}/validate', [BirFormController::class, 'validateDraft']);

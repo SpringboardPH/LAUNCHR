@@ -43,6 +43,8 @@ class BirFeatureSwitchTest extends TestCase
         'reject' => ['POST', '/api/bir/drafts/{id}/reject', 'pending', ['reason' => 'Recheck item 25']],
         'finalize' => ['POST', '/api/bir/drafts/{id}/finalize', 'approved', []],
         'revise' => ['POST', '/api/bir/drafts/{id}/revise', 'finalized', []],
+        'sign' => ['POST', '/api/bir/drafts/{id}/sign', 'finalized', []],
+        'wet signature' => ['POST', '/api/bir/drafts/{id}/wet-signature', 'finalized', []],
         'validate' => ['POST', '/api/bir/drafts/{id}/validate', 'draft', []],
         'export' => ['GET', '/api/bir/drafts/{id}/export', 'draft', []],
         'employees' => ['GET', '/api/bir/drafts/{id}/employees', 'draft', []],

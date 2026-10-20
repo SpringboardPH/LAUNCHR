@@ -51,7 +51,7 @@ class BirFormController extends Controller
 
     public function index(Request $request)
     {
-        $query = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider');
+        $query = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider', 'signatures.user');
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);
@@ -195,7 +195,7 @@ class BirFormController extends Controller
 
     public function show(int $id)
     {
-        $draft = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider')->find($id);
+        $draft = BirFormDraft::withVoid()->with('preparer', 'approver', 'employee', 'voider', 'signatures.user')->find($id);
         if (!$draft) {
             return response()->json(['success' => false, 'message' => 'Draft not found'], 404);
         }
@@ -528,6 +528,8 @@ class BirFormController extends Controller
                 'prepared_by' => $request->user()->id,
                 'approved_by' => null,
                 'rejection_reason' => null,
+                // A correction starts unsigned; the filed version keeps its own signatures.
+                'signing_method' => null,
                 // stdClass so an empty set stores {} rather than [].
                 'fields' => BirFormDraft::fieldsForRevision($draft) ?: new \stdClass(),
                 'validation_errors' => [],

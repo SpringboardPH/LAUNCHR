@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\BirFormDraft;
+use App\Models\BirFormSignature;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -41,9 +42,28 @@ class BirFormDraftResource extends JsonResource
                 'by' => $this->voider ? ['id' => $this->voider->id, 'name' => $this->voider->name] : null,
                 'at' => $this->voided_at?->toIso8601String(),
             ] : null,
+            // Who signed and when, never the images, IP, user agent or hash. Optional: an unsigned
+            // finalized form is still complete.
+            'signing' => $this->signing(),
             // Empty fields is an object keyed by field name, so it must encode as {} not [].
             'fields' => $this->fields ?: new \stdClass(),
             'validation_errors' => $this->validation_errors ?? [],
+        ];
+    }
+
+    /** @return array{method: ?string, employer: ?array, employee: ?array, complete: bool} */
+    private function signing(): array
+    {
+        $signer = fn (?BirFormSignature $signature) => $signature ? [
+            'name' => $signature->user?->name,
+            'signed_at' => $signature->signed_at?->toIso8601String(),
+        ] : null;
+
+        return [
+            'method' => $this->signing_method,
+            'employer' => $signer($this->signatureBy(BirFormSignature::EMPLOYER)),
+            'employee' => $signer($this->signatureBy(BirFormSignature::EMPLOYEE)),
+            'complete' => $this->signingComplete(),
         ];
     }
 }

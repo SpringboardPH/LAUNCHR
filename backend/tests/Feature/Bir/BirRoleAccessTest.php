@@ -15,7 +15,7 @@ use Tests\TestCase;
  * Every role against every /bir action (contract §1, §5, §6), as one table. Allowed means the
  * exact status below, which may still be a business refusal (422 for a form with unanswered
  * boxes); refused means 403 and nothing changed. Employees are refused everywhere; approve,
- * reject, finalize and editing a pending form are accounting-only.
+ * reject, finalize, signing and editing a pending form are accounting-only.
  *
  * The form is a real 1601-C made through POST /bir/drafts by a separate accounting preparer,
  * so the caller is never the preparer and a 403 on approve can only mean the role rule.
@@ -53,6 +53,9 @@ class BirRoleAccessTest extends TestCase
         'reject' => ['POST', '/api/bir/drafts/{id}/reject', 'pending', ['reason' => 'Recheck item 25'], self::ACCOUNTING, 200],
         'finalize' => ['POST', '/api/bir/drafts/{id}/finalize', 'approved', [], self::ACCOUNTING, 200],
         'revise' => ['POST', '/api/bir/drafts/{id}/revise', 'finalized', [], self::ALL, 201],
+        // 422: the caller has no saved signature, so it can only mean the role got through.
+        'sign' => ['POST', '/api/bir/drafts/{id}/sign', 'finalized', [], self::ACCOUNTING, 422],
+        'wet signature' => ['POST', '/api/bir/drafts/{id}/wet-signature', 'finalized', [], self::ACCOUNTING, 200],
         'validate' => ['POST', '/api/bir/drafts/{id}/validate', 'draft', [], self::ALL, 200],
         'export' => ['GET', '/api/bir/drafts/{id}/export', 'draft', [], self::ALL, 200],
         'employees' => ['GET', '/api/bir/drafts/{id}/employees', 'draft', [], self::ALL, 200],
