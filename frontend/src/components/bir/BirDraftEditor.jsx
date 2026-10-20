@@ -12,6 +12,37 @@ export const KINDS = {
   pending:  { label: 'Awaiting input',    tag: 'bg-gray-100 text-gray-500',    bar: 'bg-gray-200' },
   manual:   { label: 'Signed on paper',   tag: 'bg-gray-100 text-gray-500',    bar: 'bg-gray-200' },
 }
+// The printed form's parts, by item number, each with its own color (classes spelled out for Tailwind).
+const PART_COLORS = {
+  sky:     { bar: 'bg-sky-500',     head: 'bg-sky-50 text-sky-800' },
+  violet:  { bar: 'bg-violet-500',  head: 'bg-violet-50 text-violet-800' },
+  indigo:  { bar: 'bg-indigo-500',  head: 'bg-indigo-50 text-indigo-800' },
+  fuchsia: { bar: 'bg-fuchsia-500', head: 'bg-fuchsia-50 text-fuchsia-800' },
+  emerald: { bar: 'bg-emerald-500', head: 'bg-emerald-50 text-emerald-800' },
+  rose:    { bar: 'bg-rose-500',    head: 'bg-rose-50 text-rose-800' },
+  slate:   { bar: 'bg-slate-400',   head: 'bg-slate-100 text-slate-700' },
+}
+const PARTS = {
+  '1601-C': [
+    [1, 13, 'Part I', 'Background Information', 'sky'],
+    [14, 36, 'Part II', 'Computation of Tax', 'violet'],
+  ],
+  '2316': [
+    [1, 11, 'Part I', 'Employee Information', 'sky'],
+    [12, 15, 'Part II', 'Employer Information (Present)', 'violet'],
+    [16, 18, 'Part III', 'Employer Information (Previous)', 'indigo'],
+    [19, 28, 'Part IV-A', 'Summary', 'fuchsia'],
+    [29, 38, 'Part IV-B (A)', 'Non-Taxable/Exempt Compensation', 'emerald'],
+    [39, 52, 'Part IV-B (B)', 'Taxable Compensation', 'rose'],
+    [53, 56, 'Signatures', 'Employer and employee', 'slate'],
+  ],
+}
+export const partsOf = (formType) => (PARTS[formType] ?? []).map(([from, to, name, title, color]) => ({ key: name, from, to, name, title, ...PART_COLORS[color] }))
+export const partOf = (formType, item) => {
+  const n = parseInt(item, 10)
+  return partsOf(formType).find(p => n >= p.from && n <= p.to) ?? null
+}
+
 export const kindOf = (entry) => (entry.edited ? 'edited' : (KINDS[entry.origin] ? entry.origin : 'pending'))
 
 export const peso = (n) => `₱${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -94,7 +125,7 @@ function ValueInput({ field, value, onChange, onKeyDown, inputRef }) {
  * figure. Validation problems are shown on the box they belong to.
  */
 export default function FieldRow({
-  field, entry, issues = [], asked, flash, rowRef, compare, filed, onFiled, notApplicable,
+  field, entry, issues = [], asked, flash, rowRef, compare, filed, onFiled, notApplicable, partBar,
   editing, onEdit, onCancel, onSave, saving, saveError,
 }) {
   const [help, setHelp] = useState(false)
@@ -126,14 +157,14 @@ export default function FieldRow({
   return (
     <li
       ref={rowRef}
-      className={clsx('relative pl-4 pr-3 py-2 scroll-mt-2',
+      className={clsx('relative pl-4 pr-3 py-2 scroll-mt-10',
         notApplicable && !editing ? 'bg-gray-50 opacity-50' : style.row,
         editing ? 'ring-2 ring-inset ring-brand-300 bg-white'
           : flash ? clsx('ring-2 ring-inset transition-colors', flash === 'warning' ? 'ring-amber-400 bg-amber-50' : 'ring-red-400 bg-red-50')
           : asked ? 'ring-2 ring-inset ring-brand-400 bg-brand-50/60' : hasError && 'ring-1 ring-inset ring-red-200')}
       title={notApplicable ? 'Does not apply to a non-taxable employee' : undefined}
     >
-      <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', style.bar)} />
+      <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', partBar ?? style.bar)} />
       <div className="flex items-start gap-3">
         <span className="w-8 shrink-0 pt-0.5 text-[11px] font-medium text-gray-400 tabular-nums">{field.item ?? ''}</span>
         <div className="min-w-0 flex-1">

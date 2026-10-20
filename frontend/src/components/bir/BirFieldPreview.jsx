@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, AlertTriangle, RefreshCw, Scale, Upload, X, Info } from 'lucide-react'
 import clsx from 'clsx'
@@ -7,7 +7,7 @@ import { useAuth } from '../../store/AuthContext'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
 import { describePeriod, formName } from './BirChatPanel'
 import { formLabel, versionLabel } from './BirDraftList'
-import FieldRow, { KINDS, kindOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
+import FieldRow, { KINDS, kindOf, partsOf, partOf, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
 import BirApprovalBar, { REVIEWED } from './BirApprovalBar'
 import BirFormEmployees from './BirFormEmployees'
 
@@ -82,6 +82,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   const [saveError, setSaveError] = useState(null)
   const [filter, setFilter] = useState('all')
   const rowRefs = useRef({})
+  const partRefs = useRef({})
   // Clicking "N errors" / "N warnings" walks through those boxes: the next one each click, briefly lit up.
   const [flash, setFlash] = useState(null)
   const jumpRef = useRef({ severity: null, index: -1 })
@@ -204,6 +205,15 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   const filledCount = fillable.filter(({ entry }) => entry.value !== null && entry.value !== '').length
   const requiredMissing = rows.filter(({ field, entry }) => field.required && kindOf(entry) === 'pending').length
   const visible = rows.filter(({ entry }) => filter === 'all' || kindOf(entry) === filter)
+  // The form's parts, with how many of each part's boxes are filled.
+  const parts = partsOf(draft.form_type).map(part => {
+    const inPart = fillable.filter(({ field }) => partOf(draft.form_type, field.item)?.key === part.key)
+    return { ...part, total: inPart.length, filled: inPart.filter(({ entry }) => entry.value !== null && entry.value !== '').length }
+  }).filter(part => rows.some(({ field }) => partOf(draft.form_type, field.item)?.key === part.key))
+  const goToPart = (key) => {
+    setFilter('all')
+    setTimeout(() => partRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+  }
 
   const comparedRows = rows.filter(({ field }) => isCompared(field))
   const tally = comparedRows.reduce((acc, { field, entry }) => {
@@ -293,7 +303,8 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
           </p>
         )}
 
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter boxes by source">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter boxes by source">
+          <span className="text-[11px] text-gray-400 mr-0.5">Source:</span>
           {[['all', 'All', rows.length], ...Object.entries(KINDS).filter(([k]) => counts[k]).map(([k, v]) => [k, v.label, counts[k]])].map(([key, label, n]) => (
             <button
               key={key}
@@ -302,6 +313,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
               className={clsx('rounded-full border px-2.5 py-1 text-[11px] transition-colors',
                 filter === key ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600 hover:border-gray-300')}
             >
+              {KINDS[key] && <span aria-hidden="true" className={clsx('mr-1 inline-block h-2 w-2 rounded-full align-middle', KINDS[key].bar)} />}
               {label} <span className="tabular-nums text-gray-400">{n}</span>
             </button>
           ))}
@@ -338,10 +350,35 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
         </div>
       )}
 
+      {/* Legend: one color per part of the printed form; click a part to jump to it. */}
+      {parts.length > 0 && (
+        <div className="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-1.5" role="group" aria-label="Parts of the form">
+          <span className="text-[11px] text-gray-400 mr-0.5">Form parts:</span>
+          {parts.map(part => (
+            <button key={part.key} onClick={() => goToPart(part.key)} title={`Go to ${part.name}`}
+              className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:border-gray-300">
+              <span aria-hidden="true" className={clsx('mr-1 inline-block h-2 w-2 rounded-full align-middle', part.bar)} />
+              <span className="font-medium">{part.name}</span> {part.title}
+            </button>
+          ))}
+        </div>
+      )}
+
       <ul className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
-        {visible.map(({ field, entry }) => (
+        {visible.map(({ field, entry }, i) => {
+          const part = partOf(draft.form_type, field.item)
+          const starts = part && part.key !== partOf(draft.form_type, visible[i - 1]?.field.item)?.key
+          const stats = starts && parts.find(p => p.key === part.key)
+          return (<Fragment key={field.key}>
+          {starts && (
+            <li ref={(el) => forwardRow(el, part.key, partRefs)}
+              className={clsx('sticky top-0 z-10 flex items-center gap-2 px-4 py-1.5 text-xs scroll-mt-0', part.head)}>
+              <span aria-hidden="true" className={clsx('h-2.5 w-2.5 rounded-full', part.bar)} />
+              <span className="font-semibold">{part.name}</span> {part.title}
+              {stats?.total > 0 && <span className="ml-auto tabular-nums opacity-70">{stats.filled} of {stats.total} filled</span>}
+            </li>
+          )}
           <FieldRow
-            key={field.key}
             field={field}
             entry={entry}
             issues={issues[field.key]}
@@ -352,6 +389,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             filed={filed[field.key]}
             onFiled={setFiled}
             notApplicable={!!nonTaxable && isTaxableSection(field)}
+            partBar={part?.bar}
             editing={editing === field.key}
             onEdit={() => startEdit(field.key)}
             onCancel={() => { setEditing(null); setSaveError(null) }}
@@ -359,7 +397,8 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             saving={save.isPending && save.variables?.key === field.key}
             saveError={saveError?.key === field.key ? saveError.text : null}
           />
-        ))}
+          </Fragment>)
+        })}
         {!visible.length && <li className="px-4 py-8 text-center text-xs text-gray-400">No boxes in this group.</li>}
       </ul>
     </div>
