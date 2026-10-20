@@ -401,6 +401,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             onSave={editable ? (key, value) => save.mutate({ key, value }) : undefined}
             saving={save.isPending && save.variables?.key === field.key}
             saveError={saveError?.key === field.key ? saveError.text : null}
+            year={String(draft.period ?? '').slice(0, 4)}
           />
           </Fragment>)
         })}

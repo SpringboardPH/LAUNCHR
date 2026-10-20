@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR;
 
+use App\Helpers\SystemClock;
 use App\Models\BirFormDraft;
 use App\Services\BIR\Schemas\FieldFormat;
 use App\Services\BIR\Schemas\Form1601CSchema;
@@ -50,6 +51,10 @@ class BirConversationService
      */
     public function nextQuestion(BirFormDraft $draft): ?array
     {
+        if ($this->asksPeriodTo($draft)) {
+            return $this->periodToQuestion($draft);
+        }
+
         $missing = $this->missingFields($draft)[0] ?? null;
         if ($missing === null) {
             return null;
@@ -68,6 +73,40 @@ class BirConversationService
             'reason' => $missing['reason'],
             'guidance' => $field['guidance'] ?? null,
             'text' => $this->questionText($missing, $field, $schema),
+        ];
+    }
+
+    /**
+     * A 2316 draft for a year that isn't over yet is one an employee asked for early, so the
+     * chat first asks up to what date it covers (item 2 "To"). Any answer, the same date too,
+     * is saved as an edit, so it is asked once (team, 10/2026).
+     */
+    private function asksPeriodTo(BirFormDraft $draft): bool
+    {
+        return $draft->form_type === Form2316Schema::FORM_TYPE
+            && $draft->status === 'draft'
+            && (int) $draft->period === SystemClock::today()->year
+            && empty(($draft->fields ?? [])['period_to']['edited']);
+    }
+
+    /** nextQuestion() for item 2 "To", with what the chat's date picker needs (picker). */
+    private function periodToQuestion(BirFormDraft $draft): array
+    {
+        $field = Form2316Schema::byKey()['period_to'];
+        $value = ($draft->fields ?? [])['period_to']['value'] ?? '12/31';
+
+        return [
+            'field' => $field['key'],
+            'item' => $field['item'],
+            'label' => $field['label'],
+            'type' => $field['type'],
+            'options' => null,
+            'format' => $field['format'],
+            'reason' => 'year_not_over',
+            'guidance' => $field['guidance'] ?? null,
+            'text' => "This {$draft->period} 2316 is for a year that isn't over yet. Up to what date should it cover? "
+                . "It says {$value} now: pick a date, or answer {$value} to keep it.",
+            'picker' => ['year' => (int) $draft->period, 'value' => $value],
         ];
     }
 

@@ -52,7 +52,7 @@ const rows = {
   '2316': [
     ["tax_year","1","For the Year (YYYY)","integer","payroll",true,"The calendar year this certificate covers. Filled in from the draft's year.",null],
     ["period_from","2","For the Period From (MM/DD)","string","payroll",false,"The first day covered this year (MM/DD): 01/01, or the hire date for someone hired during the year.",null],
-    ["period_to","2","For the Period To (MM/DD)","string","payroll",false,"The last day covered this year (MM/DD): 12/31, or the last payroll cutoff for someone who has left.",null],
+    ["period_to","2","For the Period To (MM/DD)","string","payroll",false,"The last day covered this year (MM/DD): 12/31, or the last payroll cutoff for someone who has left. For a certificate an employee asks for before the year ends, pick the day it covers up to.",null],
     ["employee_tin","3","TIN","string","payroll",true,"The employee's Taxpayer Identification Number, from their employee record. If it's missing, update the employee record.",null],
     ["employee_last_name","4","Employee's Name — Last Name","string","payroll",true,"The employee's last name, from their employee record.",null],
     ["employee_first_name","4","Employee's Name — First Name","string","payroll",true,"The employee's first name, from their employee record.",null],

@@ -29,7 +29,7 @@ class Form2316Schema
     private const GUIDANCE = [
         'tax_year' => "The calendar year this certificate covers. Filled in from the draft's year.",
         'period_from' => 'The first day covered this year (MM/DD): 01/01, or the hire date for someone hired during the year.',
-        'period_to' => 'The last day covered this year (MM/DD): 12/31, or the last payroll cutoff for someone who has left.',
+        'period_to' => 'The last day covered this year (MM/DD): 12/31, or the last payroll cutoff for someone who has left. For a certificate an employee asks for before the year ends, pick the day it covers up to.',
         'employee_tin' => "The employee's Taxpayer Identification Number, from their employee record. If it's missing, update the employee record.",
         'employee_last_name' => "The employee's last name, from their employee record.",
         'employee_first_name' => "The employee's first name, from their employee record.",

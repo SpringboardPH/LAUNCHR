@@ -41,6 +41,8 @@ class BirChatEditTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Their 2026 forms are for a year that is over, so the chat doesn't first ask item 2 "To" (BirChatPeriodToTest).
+        \Carbon\Carbon::setTestNow('2027-01-15 09:00:00');
 
         $this->accounting = User::factory()->create(['role' => 'accounting', 'name' => 'Carlo Reyes']);
         $this->model = new FakeLlmClient;

@@ -149,7 +149,7 @@ class BirSampleSeeder extends Seeder
 
         // Revisions point at their parent, so the highest versions go first. Removed for good, not
         // soft-deleted: a deleted correction still counts toward the amendment limit.
-        BirFormDraft::withTrashed()->whereIn('employee_id', $old)->orderByDesc('version')->get()->each->forceDelete();
+        BirFormDraft::everything()->whereIn('employee_id', $old)->orderByDesc('version')->get()->each->forceDelete();
         Payroll::whereIn('employee_id', $old)->delete();
         Employee::withTrashed()->whereIn('id', $old)->forceDelete(); // schedules and leave balances go with it
         User::withTrashed()->where('email', 'like', '%' . self::EMAIL_DOMAIN)->get()->each(function (User $user) {

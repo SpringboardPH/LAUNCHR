@@ -118,7 +118,7 @@ class BirDemoSeeder extends Seeder
 
         // Revisions point at their parent, so the highest versions go first. Removed for good, not
         // soft-deleted: a deleted correction still counts toward the amendment limit.
-        BirFormDraft::withTrashed()
+        BirFormDraft::everything()
             ->where(fn ($q) => $q->whereIn('employee_id', $old)
                 ->orWhere(fn ($q) => $q->where('form_type', '1601-C')->whereIn('period', self::MONTHS_1601C)))
             ->orderByDesc('version')

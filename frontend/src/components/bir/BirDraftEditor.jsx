@@ -91,20 +91,25 @@ const PLACEHOLDER = { decimal: '0.00', integer: '0', month: 'MM/YYYY' }
 
 // The editor's text for a stored value, and the value PUT receives for the editor's text.
 // Empty means "clear": the server restores a calculated figure or empties a typed one (§3).
-const toInput = (value, type) => {
+// 2316 item 2 "To" is picked on a calendar of the form's year (a certificate an employee asks
+// for before the year ends): YYYY-MM-DD in the picker, MM/DD on the form.
+const pickerYear = (field, year) => (field.key === 'period_to' && /^\d{4}$/.test(year ?? '') ? year : null)
+const toInput = (value, field, year) => {
   if (value === null || value === undefined) return ''
-  if (type === 'boolean') return isYes(value) ? 'true' : 'false'
-  return String(value)
+  if (field.type === 'boolean') return isYes(value) ? 'true' : 'false'
+  const md = pickerYear(field, year) && String(value).match(/^(\d{2})\/(\d{2})$/)
+  return md ? `${year}-${md[1]}-${md[2]}` : String(value)
 }
-const fromInput = (text, type) => {
+const fromInput = (text, field) => {
   const t = text.trim()
   if (t === '') return null
-  if (type === 'boolean') return t === 'true'
-  if (type === 'decimal') return t.replace(/[₱,\s]/g, '')
-  return t
+  if (field.type === 'boolean') return t === 'true'
+  if (field.type === 'decimal') return t.replace(/[₱,\s]/g, '')
+  const ymd = field.format === 'mmdd' && t.match(/^\d{4}-(\d{2})-(\d{2})$/)
+  return ymd ? `${ymd[1]}/${ymd[2]}` : t
 }
 
-function ValueInput({ field, value, onChange, onKeyDown, inputRef }) {
+function ValueInput({ field, year, value, onChange, onKeyDown, inputRef }) {
   const common = { ref: inputRef, value, onKeyDown, onChange: (e) => onChange(e.target.value), className: 'input py-1 text-sm' }
   if (field.type === 'boolean' || field.type === 'enum') {
     const options = field.type === 'boolean' ? [['true', 'Yes'], ['false', 'No']] : (field.options ?? []).map(o => [o, o])
@@ -116,6 +121,8 @@ function ValueInput({ field, value, onChange, onKeyDown, inputRef }) {
     )
   }
   if (field.type === 'text') return <textarea {...common} rows={2} maxLength={1000} />
+  const pick = pickerYear(field, year)
+  if (pick) return <input {...common} type="date" min={`${pick}-01-01`} max={`${pick}-12-31`} />
   return (
     <input
       {...common}
@@ -134,7 +141,7 @@ function ValueInput({ field, value, onChange, onKeyDown, inputRef }) {
  */
 export default function FieldRow({
   field, entry, issues = [], asked, flash, rowRef, compare, filed, onFiled, notApplicable, partBar,
-  editing, onEdit, onCancel, onSave, saving, saveError,
+  editing, onEdit, onCancel, onSave, saving, saveError, year,
 }) {
   const [help, setHelp] = useState(false)
   const [text, setText] = useState('')
@@ -152,11 +159,11 @@ export default function FieldRow({
 
   useEffect(() => {
     if (!editing) return
-    setText(toInput(entry.value, field.type))
+    setText(toInput(entry.value, field, year))
     setTimeout(() => inputRef.current?.focus(), 0)
   }, [editing]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const save = () => onSave(field.key, fromInput(text, field.type))
+  const save = () => onSave(field.key, fromInput(text, field))
   const onKeyDown = (e) => {
     if (e.key === 'Escape') onCancel()
     if (e.key === 'Enter' && field.type !== 'text') { e.preventDefault(); save() }
@@ -197,7 +204,7 @@ export default function FieldRow({
           )}
           {editing ? (
             <div className="mt-1 space-y-1.5">
-              <ValueInput field={field} value={text} onChange={setText} onKeyDown={onKeyDown} inputRef={inputRef} />
+              <ValueInput field={field} year={year} value={text} onChange={setText} onKeyDown={onKeyDown} inputRef={inputRef} />
               {['payroll', 'settings'].includes(field.source) && (
                 <p className="text-[11px] text-gray-500">
                   {entry.edited ? 'Leave it empty to go back to the calculated figure.' : 'This replaces the calculated figure. The change is recorded with your name.'}

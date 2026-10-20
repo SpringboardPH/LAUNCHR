@@ -180,6 +180,28 @@ function Message({ msg, onConfirm, onDecline, onPick, onOpen, busy }) {
   )
 }
 
+// 2316 item 2 "To", asked when the year isn't over: a day of the form's year, sent as the
+// answer in MM/DD, or the date it already has.
+function ChatDatePicker({ picker, onSend }) {
+  const { year, value } = picker
+  const md = String(value).match(/^(\d{2})\/(\d{2})$/)
+  const [date, setDate] = useState(md ? `${year}-${md[1]}-${md[2]}` : `${year}-12-31`)
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-3 pt-3">
+      <input
+        type="date" value={date} min={`${year}-01-01`} max={`${year}-12-31`}
+        onChange={(e) => setDate(e.target.value)}
+        className="input py-1 text-sm w-auto" aria-label="Last day this 2316 covers"
+      />
+      <button type="button" onClick={() => onSend(`${date.slice(5, 7)}/${date.slice(8, 10)}`)} disabled={!date} className="btn-primary py-1.5 text-xs">
+        Use this date
+      </button>
+      <button type="button" onClick={() => onSend(value)} className="btn-ghost py-1.5 text-xs">Keep {value}</button>
+    </div>
+  )
+}
+
 function TypingIndicator() {
   return (
     <div className="flex gap-2.5" aria-live="polite" aria-label="Assistant is typing">
@@ -276,7 +298,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
         guidance: res.question?.guidance ?? null,
       })
       if ('draft_id' in res) {
-        setFilling({ draftId: res.draft_id, field: res.question?.field ?? null })
+        setFilling({ draftId: res.draft_id, field: res.question?.field ?? null, picker: res.question?.picker ?? null })
         onQuestion?.(res.question?.field ?? null) // the preview highlights the box being asked about
       }
     },
@@ -470,6 +492,8 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
           </div>
         )}
       </div>
+
+      {filling?.picker && !busy && <ChatDatePicker key={`${filling.draftId}-${filling.field}`} picker={filling.picker} onSend={send} />}
 
       <form
         onSubmit={(e) => { e.preventDefault(); send(input) }}
