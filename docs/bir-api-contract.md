@@ -15,9 +15,15 @@ If something here has to change after sign-off, raise it on Friday under
 
 All routes are under `/api/bir`, behind `auth:sanctum` and
 `role:admin,hr,accounting`. Employees cannot reach any of them. `approve`,
-`reject` and `finalize` also need `role:accounting`, and only accounting may
+`reject`, `finalize`, `sign` and `wet-signature` also need `role:accounting`, and only accounting may
 `PUT` to a pending or approved form (§5). The two switch routes, `PUT /bir/switch` and
 `PUT /bir/switch/password`, are admin-only and allow 5 tries a minute (§6).
+
+E-signatures (§6, "E-signatures") add two groups of routes outside `/bir`, open to
+every logged-in role, employees included: `/api/me/signature` (your own saved
+signature; not behind the feature switch) and `/api/my/bir-forms` (your own 2316s to
+sign; behind the feature switch, ownership checked on every call). Without a login,
+both answer 401.
 
 **Feature switch:** while the system setting `bir_forms_enabled` is off (or has
 no row), every route except `GET /bir/config`, `PUT /bir/switch` and
@@ -50,11 +56,12 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move, a form that is locked (finalized), or a void of a form that isn't a draft |
-| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
-| 404 | Draft not found |
-| 409 | A form for that period already exists (`POST /bir/drafts`) |
-| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6) |
+| 400 | Illegal status move, a form that is locked (finalized), or a void of a form that isn't a draft. Signing: the form isn't finalized ("Only a finalized form can be signed"), it is marked for a wet signature ("This form is signed by hand on paper"), or the employee signs before the employer ("The employer has to sign this form first") |
+| 401 | Not logged in (every route; listed because `/me/signature` and `/my/bir-forms` are open to employees) |
+| 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, `sign`, `wet-signature`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config, the switch routes and `/me/signature`) |
+| 404 | Draft not found. On `/my/bir-forms`, also a form that isn't the caller's (never 403, so ids can't be probed) |
+| 409 | A form for that period already exists (`POST /bir/drafts`). Signing: that role has already signed the form, or `wet-signature` on a form that already has an e-signature |
+| 422 | Request body failed validation, or `submit`/`approve` refused a form that fails validation, or a wrong or missing company password on the switch routes (§6). Signing: the caller has no saved signature ("Upload your signature first"), or a signature upload of the wrong type, size or dimensions |
 | 429 | Too many tries on the switch or its password: more than 5 in a minute by the same user, counted across both routes (§6) |
 
 400 for illegal status moves matches `LeaveController::approve`, which returns
@@ -92,6 +99,7 @@ the move itself is not allowed from the current status.
   "prepared_by": { "id": 5, "name": "Jane Dela Cruz" },
   "approved_by": null,
   "rejection_reason": "Item 25 total tax withheld does not match the payroll register — please recheck May.",
+  "signing": { "method": null, "employer": null, "employee": null, "complete": false },
   "fields": { },
   "validation_errors": [ ]
 }
@@ -116,6 +124,7 @@ the move itself is not allowed from the current status.
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
 | `rejection_reason` | Text a reviewer gave when returning the draft, else null |
 | `void` | On a void form, `{ reason, by: { id, name }, at }`; else null |
+| `signing` | Always present. `method`: `"digital"`, `"paper"` (wet signature) or null (not chosen). `employer` and `employee`: `{ name, signed_at }` or null; `employee` is always null on a 1601-C. `complete`: true when `method` is `"paper"`, or a 1601-C the employer signed, or a 2316 both signed. Informational only: it never blocks anything. Never holds the images, IP, user agent or hash (§6, "E-signatures"). |
 
 ---
 
@@ -337,6 +346,11 @@ person who prepared the form. The approver's edits are
 recorded like any other (`edited_by`, §3), and `approve` validates again, so an
 edit that breaks the form blocks approval until it is fixed.
 
+**Signing** comes after `finalized` and is not a status: it never changes the form's
+status or fields, and never blocks anything. A finalized form is complete whether
+or not it is signed. Accounting may e-sign it, mark it for a wet signature on the
+printout, or leave it unsigned (§6, "E-signatures").
+
 ---
 
 ## 6. Endpoints
@@ -355,6 +369,8 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only |
 | POST | `/bir/drafts/{id}/reject` | pending → draft | accounting only |
 | POST | `/bir/drafts/{id}/finalize` | approved → finalized | accounting only |
+| POST | `/bir/drafts/{id}/sign` | The employer e-signs a finalized form | accounting only |
+| POST | `/bir/drafts/{id}/wet-signature` | Mark a finalized form as signed by hand on paper | accounting only |
 | POST | `/bir/drafts/{id}/revise` | New version from a finalized draft | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/export` | The official BIR PDF, filled in (Dev C) | admin, hr, accounting |
 | GET | `/bir/drafts/{id}/employees` | A 1601-C's employee list, frozen when the draft was made | admin, hr, accounting |
@@ -362,7 +378,8 @@ edit that breaks the form blocks approval until it is fixed.
 | PUT | `/bir/switch/password` | Set or change the company password for the switch | admin only |
 | PUT | `/bir/switch` | Turn the BIR Form Assistant on or off, with the company password | admin only |
 
-Employees get 403 on all of them.
+Employees get 403 on all of them. The routes open to employees, `/me/signature` and
+`/my/bir-forms`, are under "E-signatures" at the end of this section.
 
 ### GET /bir/config
 
@@ -665,7 +682,9 @@ same form (form type, period and employee) so two drafts never share a number, `
 is untouched. On a 1601-C the copy's item 2 "Amended Return?" (`is_amended`) is
 set to Yes, filled in by the system (origin `payroll`, `system_filled` §4), since
 every version after the original is an amended return; its
-`label` is the original's number with the version, like `"#64v2"`.
+`label` is the original's number with the version, like `"#64v2"`. The copy starts
+unsigned: no signatures and `signing.method` null. The filed version keeps its own
+signatures.
 
 A 1601-C can be amended 5 times per month (supervisor's rule,
 `BirFormDraft::AMENDMENT_LIMITS`): once the month's highest version is 6, `revise`
@@ -955,6 +974,133 @@ php artisan bir:clear-switch-password
 It asks "Are you sure?", then deletes the saved hash and turns
 `bir_forms_enabled` off. An admin then sets a new password with
 `PUT /bir/switch/password` (no `current_password` needed) and turns BIR back on.
+
+### E-signatures
+
+Requested by the supervisor. The rules:
+
+- **Who signs.** A 2316 is signed by the employer (accounting) first, then by that
+  employee. A 1601-C is signed by the employer only.
+- **Finalized only, and optional.** Only a `finalized` form can be signed. Signing
+  never changes the form's fields or status and never blocks anything (§5). On a
+  finalized form accounting chooses one of: sign digitally (`POST .../sign`), mark
+  it for a wet signature, signed by hand with a pen on the printout
+  (`POST .../wet-signature`; `signing.method` becomes `"paper"`, the employee is not
+  asked to e-sign and gets no email, the PDF keeps empty signature lines, no scan is
+  stored), or nothing.
+- **Order.** The employee can't sign before the employer. Each role signs a form
+  once (one row per form and role, enforced by the database).
+- **One saved signature, frozen copies.** Each user uploads one signature image and
+  reuses it (`/me/signature`). Signing copies that image; replacing or removing your
+  saved signature later never changes a form already signed.
+- **What a signature records:** who, role (`employer` or `employee`), when
+  (`SystemClock`), IP, user agent, and a SHA-256 hash of the form's `fields` at
+  signing time (keys sorted, so the same answers always give the same hash).
+- **Corrections.** `revise` starts unsigned; the filed version keeps its signatures.
+- **Privacy.** Images live on the private disk (`storage/app/private`), never public
+  and never in API JSON. The API shows only the signer's name and `signed_at`
+  (`signing`, §2); paths, IP, user agent and hash are never returned and are left out
+  of the audit log. Only the owner can fetch their own saved image, for a preview.
+
+### GET / POST / DELETE /api/me/signature
+
+The caller's own saved signature. Any logged-in role, employees included; not behind
+the feature switch. There is no user id in these routes: they always mean the caller.
+
+| Method | Path | Does |
+|---|---|---|
+| GET | `/api/me/signature` | `{ "has_signature": true, "uploaded_at": "2026-10-20T09:15:00+08:00" }` (`uploaded_at` null without one). Never the image or its path. |
+| GET | `/api/me/signature/image` | The image bytes, `Content-Type` `image/png` or `image/jpeg`, `Cache-Control: no-store, private`. 404 without a signature. |
+| POST | `/api/me/signature` | Multipart, field `signature`. Upload (201 "Signature uploaded") or replace (200 "Signature replaced"); the old file is deleted. Same `data` as GET. |
+| DELETE | `/api/me/signature` | Removes the image and the record. 200 `{ "has_signature": false, "uploaded_at": null }`, also when there was none. |
+
+The upload must be PNG or JPG, at most 1 MB, at most 2000 × 1000 pixels; anything
+else is 422 with the usual Laravel `{ "message", "errors": { "signature": [...] } }`
+and nothing changes. Stored as `signatures/<user id>/<random>.png|jpg` on the private
+disk.
+
+### POST /bir/drafts/{id}/sign
+
+No request body. The employer signs: accounting only (admin and HR get 403, checked
+first by the route). Checked in this order, inside one locked transaction:
+
+| Code | When |
+|---|---|
+| 404 | "Draft not found" (a voided form is not found either) |
+| 400 | "Only a finalized form can be signed" |
+| 400 | "This form is signed by hand on paper": it is marked for a wet signature |
+| 409 | "The employer has already signed this form", by anyone |
+| 422 | "Upload your signature first": the caller has no saved signature |
+| 200 | "Form signed by the employer", with the draft (§2): `signing.method` `"digital"`, `signing.employer` set |
+
+On a 2316, a 200 also queues the signing email to the employee (below).
+
+### POST /bir/drafts/{id}/wet-signature
+
+No request body. Marks a finalized form as signed by hand on paper; nothing is
+uploaded or stored. Accounting only.
+
+| Code | When |
+|---|---|
+| 404 | "Draft not found" |
+| 400 | "Only a finalized form can be signed" |
+| 409 | "This form has already been signed digitally": any e-signature exists |
+| 200 | "Form marked for a wet signature", with the draft: `signing.method` `"paper"`, `signing.complete` true. Also 200 when it was already marked. |
+
+### GET /api/my/bir-forms, GET /api/my/bir-forms/{id}/pdf, POST /api/my/bir-forms/{id}/sign
+
+The caller's own 2316s. Any logged-in role, behind the feature switch (403 "The BIR
+Form Assistant is not enabled" while off). A form is the caller's when it is a 2316
+whose employee record has `user_id` equal to the caller. Anyone else's form, or a
+1601-C, is 404 "Form not found", never 403, for every role: HR and accounting too,
+unless it is their own 2316.
+
+**GET /api/my/bir-forms** lists the caller's finalized 2316s that the employer has
+e-signed, newest tax year first. Forms not signed by the employer yet, or marked for
+a wet signature, are not listed.
+
+```json
+[
+  {
+    "id": 64,
+    "label": "#64",
+    "tax_year": "2026",
+    "signing": { "method": "digital", "employer": { "name": "Jane Dela Cruz", "signed_at": "2026-10-20T09:15:00+08:00" }, "employee": null, "complete": false },
+    "needs_my_signature": true
+  }
+]
+```
+
+**GET /api/my/bir-forms/{id}/pdf** is the same PDF as `GET /bir/drafts/{id}/export`,
+sent `inline` so it can be previewed, for a form in that list only (else 404).
+
+**POST /api/my/bir-forms/{id}/sign**, no request body, signs as the employee. It
+looks at all of the caller's 2316s, so it can say why one can't be signed yet:
+
+| Code | When |
+|---|---|
+| 404 | "Form not found": missing, or not the caller's |
+| 400 | "Only a finalized form can be signed" |
+| 400 | "This form is signed by hand on paper" |
+| 400 | "The employer has to sign this form first" |
+| 409 | "You have already signed this form" |
+| 422 | "Upload your signature first" |
+| 200 | "Form signed", with the list item above: `signing.employee` set, `needs_my_signature` false, `complete` true |
+
+Same frozen copy and hash as the employer's signature.
+
+### The signing email
+
+When the employer signs a 2316, `BirFormToSignMail` is queued (`Mail::...->queue`,
+sent by `php artisan queue:work`) to the address on the employee's record
+(`employees.email`, the one payslips use). Subject: "Your BIR Form 2316 for 2026 is
+ready to sign". It holds a "Review and sign" link to `<frontend_url>/my-bir-forms`,
+no amounts and no attachment. `frontend_url` is `config('app.frontend_url')`, from
+`FRONTEND_URL` in `.env` (default `http://localhost:5173`): set it on the server.
+
+No email for a 1601-C, a wet signature, or an employee with no email or no login
+(`employees.user_id`), who couldn't sign anyway. It is queued only after the
+signature is saved.
 
 ---
 
