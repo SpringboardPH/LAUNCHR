@@ -174,7 +174,7 @@ export default function BirFormsPage() {
   }
 
   return (
-    <div className="pb-20">{/* room for the chat bubble */}
+    <div className="pb-36">{/* room for the chat bubble */}
       <PageHeader
         title="Compliance"
         action={BIR_USE_MOCKS && (
@@ -228,10 +228,11 @@ export default function BirFormsPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
+      {/* Raised above the island bubble in the corner, and the same size as it. */}
+      <div className="fixed bottom-24 right-5 z-40 flex flex-col items-end gap-3">
         <div className={chatOpen ? 'block' : 'hidden'}>
           <BirChatPanel
-            className="w-[min(400px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-7rem))] shadow-2xl"
+            className="w-[min(400px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-12rem))] shadow-2xl"
             onClose={toggleChat}
             onDraftCreated={onDraft}
             onQuestion={onQuestion}
@@ -242,13 +243,13 @@ export default function BirFormsPage() {
         </div>
         <button
           onClick={toggleChat}
-          className="relative w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 flex items-center justify-center transition-colors"
+          className="relative w-12 h-12 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 flex items-center justify-center transition-colors"
           aria-label={chatOpen ? 'Close the form assistant' : 'Open the form assistant'}
           aria-expanded={chatOpen}
           title="Form assistant"
         >
-          {chatOpen ? <X size={22} /> : <MessageCircle size={24} />}
-          {unread && !chatOpen && <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-red-500 ring-2 ring-white" />}
+          {chatOpen ? <X size={20} /> : <MessageCircle size={22} />}
+          {unread && !chatOpen && <span className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-red-500 ring-2 ring-white" />}
         </button>
       </div>
 
