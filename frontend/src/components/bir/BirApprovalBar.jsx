@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Trash2 } from 'lucide-react'
+import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Trash2, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import {
   birKeys, getBirConfig, exportBirDraft, deleteBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
 } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { formatValue, formatWhen } from './BirDraftEditor'
+import BirPdfPreview from './BirPdfPreview'
 
 const DONE = {
   submit: 'Submitted for review.',
@@ -43,6 +44,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
   const [reason, setReason] = useState('')
   const [confirmFinalize, setConfirmFinalize] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
   const [notice, setNotice] = useState(null)
 
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig, staleTime: Infinity })
@@ -165,6 +167,9 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
             <GitBranch size={12} /> {doing === 'revise' ? 'Creating…' : 'Start a correction (new version)'}
           </button>
         ))}
+        <button onClick={() => setPreviewing(true)} className="btn-ghost py-1.5 text-xs" title="See the filled official BIR form">
+          <Eye size={12} /> Preview PDF
+        </button>
         <button onClick={() => download.mutate()} disabled={download.isPending} className="btn-ghost py-1.5 text-xs"
           title={['approved', 'finalized'].includes(draft.status) ? 'The official BIR form' : 'Marked DRAFT until the form is approved'}>
           <Download size={12} /> {download.isPending ? 'Preparing PDF…' : 'Download PDF'}
@@ -255,6 +260,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, onDeleted, edits = 
           {notice.text}
         </p>
       )}
+      <BirPdfPreview draft={draft} open={previewing} onClose={() => setPreviewing(false)} />
     </div>
   )
 }

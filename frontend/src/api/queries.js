@@ -586,6 +586,7 @@ export const birKeys = {
   employees: ['bir', 'employees'],
   all2316: ['bir', 'drafts', 'all-2316'],
   formEmployees: (id) => ['bir', 'drafts', id, 'employees'],
+  pdf: (id) => ['bir', 'drafts', id, 'pdf'],
 }
 
 // Returns { enabled, form_types, status_flow, schemas? } — schemas is the per-form field
@@ -655,18 +656,14 @@ export const reviseBirDraft = bir(
 )
 // Downloads the filled official PDF. The server names the file (Content-Disposition), e.g.
 // BIR-2316-2026-EMP-0001-v1-DRAFT.pdf; until a form is approved every page is stamped DRAFT.
-export const exportBirDraft = bir(
+// The official PDF as a file: { blob, name }. Errors arrive as a blob too, so their JSON is read
+// back for the message. Until approved the server stamps it "DRAFT — NOT FOR FILING".
+export const getBirDraftPdf = bir(
   (id) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(res => {
     const header = res.headers['content-disposition'] ?? ''
     const name = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ?? header.match(/filename="?([^";]+)"?/i)?.[1]
-    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name ? decodeURIComponent(name) : `bir-draft-${id}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
+    return { blob: new Blob([res.data], { type: 'application/pdf' }), name: name ? decodeURIComponent(name) : `bir-draft-${id}.pdf` }
   }, async (err) => {
-    // An error comes back as a blob too: read its JSON so the message can be shown.
     const body = err?.response?.data
     if (body instanceof Blob) {
       try { err.response.data = JSON.parse(await body.text()) } catch { /* not JSON: keep the blob */ }
@@ -675,6 +672,18 @@ export const exportBirDraft = bir(
   }),
   birMockApi.exportDraft,
 )
+
+// Saves the official PDF under the server's file name.
+export const saveBirPdf = ({ blob, name }) => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export const exportBirDraft = (id) => getBirDraftPdf(id).then(saveBirPdf)
 
 // A 1601-C's employee rows as frozen when it was made: { employees, totals, differences } (§6).
 export const getBirDraftEmployees = bir(

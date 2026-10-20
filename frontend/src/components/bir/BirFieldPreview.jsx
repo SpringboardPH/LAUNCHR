@@ -334,7 +334,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
         edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
       {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
 
-      <ul className="divide-y divide-gray-100 max-h-[calc(100vh-420px)] min-h-[200px] overflow-y-auto">
+      <ul className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
         {visible.map(({ field, entry }) => (
           <FieldRow
             key={field.key}

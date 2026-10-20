@@ -1,0 +1,55 @@
+import { useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Download, AlertTriangle, ExternalLink } from 'lucide-react'
+import { birKeys, getBirDraftPdf, saveBirPdf } from '../../api/queries'
+import { Modal } from '../ui/index.jsx'
+
+/**
+ * The filled official BIR form, shown in the browser's PDF viewer. Fetched fresh each time it
+ * opens, so it shows the boxes as they are now; "DRAFT — NOT FOR FILING" until approved.
+ */
+export default function BirPdfPreview({ draft, open, onClose }) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: birKeys.pdf(draft.id),
+    queryFn: () => getBirDraftPdf(draft.id),
+    enabled: open,
+    staleTime: 0,
+    gcTime: 0,
+  })
+  const url = useMemo(() => (data ? URL.createObjectURL(data.blob) : null), [data])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      title={`PDF preview — ${draft.form_type} ${draft.label ?? `#${draft.id}`}`}
+      headerAction={data && (
+        <>
+          {/* For browsers that won't show a PDF inside the page */}
+          <a href={url} target="_blank" rel="noreferrer" className="btn-ghost py-1.5 text-xs"><ExternalLink size={12} /> Open in new tab</a>
+          <button onClick={() => saveBirPdf(data)} className="btn-secondary py-1.5 text-xs">
+            <Download size={12} /> Download
+          </button>
+        </>
+      )}
+    >
+      {isLoading && <div className="h-[70vh] animate-pulse rounded-lg bg-gray-100" aria-label="Loading the PDF" />}
+      {isError && (
+        <p className="flex gap-2 text-sm text-red-600">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          {error?.response?.data?.message || 'Could not load the PDF. Please try again.'}
+        </p>
+      )}
+      {url && (
+        <>
+          {!['approved', 'finalized'].includes(draft.status) && (
+            <p className="mb-2 text-xs text-amber-700">Marked "DRAFT — NOT FOR FILING" until the form is approved.</p>
+          )}
+          <iframe src={url} title="BIR form PDF" className="w-full h-[70vh] rounded-lg border border-gray-200" />
+        </>
+      )}
+    </Modal>
+  )
+}
