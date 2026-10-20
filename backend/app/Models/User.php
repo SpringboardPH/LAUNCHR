@@ -39,6 +39,11 @@ class User extends Authenticatable
         return $this->hasOne(Employee::class);
     }
 
+    public function signature()
+    {
+        return $this->hasOne(UserSignature::class);
+    }
+
     public function isAdminOrHr()
     {
         return in_array($this->role, ['admin', 'hr', 'accounting'], true);

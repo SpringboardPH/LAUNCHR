@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\BirFormRecordController;
 use App\Http\Controllers\Api\BirChatController;
 use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
+use App\Http\Controllers\Api\UserSignatureController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -47,6 +48,14 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Employees
     Route::put('/profile', [EmployeeController::class, 'updateProfile']);
+
+    // The caller's own saved signature, any role (contract: docs/bir-api-contract.md).
+    Route::prefix('me/signature')->group(function () {
+        Route::get('/', [UserSignatureController::class, 'show']);
+        Route::get('/image', [UserSignatureController::class, 'image']);
+        Route::post('/', [UserSignatureController::class, 'store']);
+        Route::delete('/', [UserSignatureController::class, 'destroy']);
+    });
     Route::get('/employees/groups', [EmployeeController::class, 'groups'])->middleware('role:admin,hr,accounting');
     Route::apiResource('employees', EmployeeController::class)->middleware('role:admin,hr,accounting');
     Route::patch('/employees/{id}/deactivate', [EmployeeController::class, 'deactivate'])->middleware('role:admin,hr');
