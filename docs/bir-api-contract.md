@@ -50,7 +50,7 @@ Every response uses the envelope already used across LAUNCHR:
 |---|---|
 | 200 | Success |
 | 201 | Draft or revision created |
-| 400 | Illegal status move, a form that is locked (finalized), or a delete of a form that isn't a draft |
+| 400 | Illegal status move, a form that is locked (finalized), or a void of a form that isn't a draft |
 | 403 | Caller's role can't do this (employees on any `/bir` route; admin or HR on `approve`, `reject`, `finalize`, or a `PUT` to a pending or approved form; HR or accounting on the switch routes), or the feature is switched off (`bir_forms_enabled`, any route but config and the switch routes) |
 | 404 | Draft not found |
 | 409 | A form for that period already exists (`POST /bir/drafts`) |
@@ -111,10 +111,11 @@ the move itself is not allowed from the current status.
 | `parent_id` | `id` of the finalized draft this one corrects, set by `revise`. Null on an original draft. |
 | `root_id` | `id` of the original (version 1) this form is a version of: `parent_id` followed back. Its own `id` on an original. |
 | `label` | How the form is named on screen and in the chat: `"#64"` for an original, `"#64v2"` for its second version, `"#64v3"` for the third. Every version shares the original's number. |
-| `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one, deleted corrections included) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
+| `amendments` | On a 1601-C, `{ made, limit }`: amendments made to this form's month so far (its highest version less one, voided corrections included) and the most allowed (`BirFormDraft::AMENDMENT_LIMITS`, 5). Null on a 2316, which has no limit. |
 | `prepared_by` | `{ id, name }` of whoever created the draft |
 | `approved_by` | `{ id, name }` or null. Null on a new revision. |
 | `rejection_reason` | Text a reviewer gave when returning the draft, else null |
+| `void` | On a void form, `{ reason, by: { id, name }, at }`; else null |
 
 ---
 
@@ -324,7 +325,7 @@ original as filed.
 since Week 7. `approve`, `reject` (return to the preparer) and `finalize` (mark
 as filed) are accounting-only, and so is editing a pending or approved form; admin and HR
 get 403. Admin, HR and accounting can all list, view, create, edit a draft,
-delete a draft, submit, validate, revise, export and chat. Employees get 403 on every `/bir`
+void a draft, read a form's history, submit, validate, revise, export and chat. Employees get 403 on every `/bir`
 route. The preparer may approve their own form (supervisor's decision: there
 is one accountant). The approver is still recorded in `approved_by`.
 
@@ -346,7 +347,8 @@ edit that breaks the form blocks approval until it is fixed.
 | POST | `/bir/drafts` | Create | admin, hr, accounting |
 | GET | `/bir/drafts/{id}` | One draft | admin, hr, accounting |
 | PUT | `/bir/drafts/{id}` | Edit field values | admin, hr, accounting on a draft; accounting only on a pending or approved form |
-| DELETE | `/bir/drafts/{id}` | Delete a draft (soft delete; draft status only) | admin, hr, accounting |
+| POST | `/bir/drafts/{id}/void` | Void a draft, with a reason; it is kept, never deleted | admin, hr, accounting |
+| GET | `/bir/drafts/{id}/history` | What happened to the form, from the audit log | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/validate` | Run the checks and store `validation_errors` | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/submit` | draft → pending, if the draft passes validation | admin, hr, accounting |
 | POST | `/bir/drafts/{id}/approve` | pending → approved, if the form passes validation | accounting only |
@@ -546,39 +548,55 @@ pending or approved form edited by admin or HR still 403, whatever the body.
 `PUT` checks single answers only. Whether the draft as a whole is complete and
 adds up is `validate`'s job: call it afterwards to refresh `validation_errors`.
 
-### DELETE /bir/drafts/{id}
+### POST /bir/drafts/{id}/void
 
-No request body. Deletes a form in `draft` status, including one returned to the
-preparer (`draft` with a `rejection_reason`). Admin, HR and accounting; employees
-get 403, and so does everyone while the switch is off (§1).
+Forms are never deleted (accountant's rule); a draft is voided instead. Request body:
+`{ "reason": "Made for the wrong month" }` (required, up to 1000 characters). Only a form
+in `draft` status, including one returned to the preparer. Admin, HR and accounting;
+employees get 403, and so does everyone while the switch is off (§1). `DELETE
+/bir/drafts/{id}` is gone (405).
+
+| Code | When |
+|---|---|
+| 200 | Voided. `data` is the form (§2) with `status: "void"` and `void: { reason, by, at }`; `message` is ready to show: "Form #64 voided" |
+| 400 | Not a draft: "Only a draft can be voided; form #64 is in pending status" (also approved, finalized), or "Form #64 is already void". Nothing changes. |
+| 404 | Draft not found |
+| 422 | No reason given |
+
+- **Kept for the record.** A void form stays in `GET /bir/drafts` (filter `status=void`),
+  opens with `GET /bir/drafts/{id}`, and its `export`, `employees` and `history` still work.
+  Everything that changes a form (`PUT`, the status moves, `validate`, `revise`) treats it
+  as not found (404), and so does the chat.
+- **The period is free again.** A void form doesn't count for `POST /bir/drafts`'s 409, so
+  the same form type, period (and employee) can be created again, as a new form with its
+  own number, starting at version 1.
+- **A voided correction still counts** (supervisor's rule: an unfinished correction
+  counts). It stays in `amendments.made` and toward the 1601-C's 5 amendments, and its
+  version number is never reused: void `#64v2` and the next `revise` of #64 makes `#64v3`.
+- Forms deleted before voiding replaced deleting stay hidden everywhere, as before.
+
+### GET /bir/drafts/{id}/history
+
+The form's history, newest first, read from `audit_logs`. Any status, void included.
 
 ```json
 {
   "success": true,
-  "data": { "id": 64, "label": "#64" },
-  "message": "Draft #64 deleted"
+  "data": [
+    { "id": 912, "at": "2026-10-20T09:14:00+08:00", "by": { "id": 4, "name": "Accounting Officer" },
+      "event": "voided", "text": "Voided", "reason": "Made for the wrong month", "changes": [] },
+    { "id": 905, "at": "2026-10-20T09:02:00+08:00", "by": { "id": 4, "name": "Accounting Officer" },
+      "event": "edited", "text": "Changed 1 box", "reason": null,
+      "changes": [{ "key": "sheets_attached", "item": "4", "label": "Number of Sheet/s Attached", "type": "integer", "from": null, "to": 2 }] }
+  ],
+  "message": "History of form #64"
 }
 ```
 
-| Code | When |
-|---|---|
-| 200 | Deleted. `message` is ready to show: "Draft #64 deleted", "Draft #64v2 deleted" |
-| 400 | Not a draft: "Only a draft can be deleted; form #64 is in pending status" (also approved, finalized). Nothing changes. |
-| 404 | Draft not found, or already deleted |
-
-- **Soft delete.** The row stays (`deleted_at` is set) and `audit_logs` records who
-  deleted it (`deleted_birformdraft`). A deleted form is gone from every endpoint:
-  the list, `GET`, `PUT`, the status moves, `export`, `employees` and the chat all
-  treat it as not found.
-- **The period is free again.** A deleted form doesn't count for `POST /bir/drafts`'s
-  409, so the same form type, period (and employee) can be created again, as a new
-  form with its own number, starting at version 1.
-- **A deleted correction still counts** (supervisor's rule: an unfinished correction
-  counts). It stays in `amendments.made` and toward the 1601-C's 5 amendments, and
-  its version number is never reused: delete `#64v2` and the next `revise` of #64
-  makes `#64v3`.
-- A delete and a status move at the same moment don't race: whichever comes second
-  sees the result of the first (404 or 400).
+`event` is one of `created`, `edited`, `submitted`, `returned` (with the reason), `approved`,
+`reopened` (an approved form changed, back to draft, with its `changes`), `filed`, `voided`
+(with the reason), or `deleted` (forms deleted before voiding existed). Saves that only
+re-ran the checks are left out.
 
 ### POST /bir/drafts/{id}/validate
 
