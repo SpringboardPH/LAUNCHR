@@ -443,6 +443,61 @@ class BirDraftValidatorTest extends TestCase
         $this->assertSame([], $this->errorsWithCode($this->create2316(), 'empty_period'));
     }
 
+    public function test_a_2316_period_from_after_its_to_is_a_period_order_error_and_cannot_be_submitted(): void
+    {
+        $id = $this->create2316WithPeriod('10/15', '03/31');
+
+        $errors = $this->errorsWithCode($id, 'period_order');
+        $schema = Form2316Schema::byKey();
+        $this->assertCount(1, $errors);
+        $this->assertSame('period_from', $errors[0]['field']);
+        $this->assertSame('error', $errors[0]['severity']);
+        $this->assertSame(
+            "\"{$schema['period_from']['label']}\" (10/15) is after \"{$schema['period_to']['label']}\" (03/31).",
+            $errors[0]['message'],
+        );
+
+        $this->actingAs($this->accounting())->postJson("/api/bir/drafts/{$id}/submit")->assertStatus(422);
+        $this->assertSame('draft', BirFormDraft::findOrFail($id)->status);
+    }
+
+    public function test_a_2316_full_year_period_is_not_a_period_order_error(): void
+    {
+        $this->assertSame([], $this->errorsWithCode($this->create2316WithPeriod('01/01', '12/31'), 'period_order'));
+    }
+
+    public function test_a_2316_one_day_period_is_not_a_period_order_error(): void
+    {
+        $this->assertSame([], $this->errorsWithCode($this->create2316WithPeriod('06/30', '06/30'), 'period_order'));
+    }
+
+    public function test_a_blank_or_malformed_period_date_is_not_a_period_order_error(): void
+    {
+        $malformed = $this->create2316WithPeriod('13/45', '03/31');
+        $this->assertSame([], $this->errorsWithCode($malformed, 'period_order'));
+        $this->assertSame('invalid_format', $this->errorsByField($malformed)['period_from']['code'], 'Only the format error.');
+
+        // The same draft: a second 2316 for the same employee and year would be a 409.
+        $this->storeEntry($malformed, 'period_from', ['value' => null, 'origin' => 'pending']);
+        $this->assertSame([], $this->errorsWithCode($malformed, 'period_order'));
+    }
+
+    public function test_a_1601c_never_gets_a_period_order_error(): void
+    {
+        $this->assertSame([], $this->errorsWithCode($this->create1601C(), 'period_order'));
+    }
+
+    /** A 2316 with item 2 written straight into the draft, as the other tests write fields. */
+    private function create2316WithPeriod(?string $from, ?string $to): int
+    {
+        $this->payrollFor('2026-09-01', '2026-09-15', ['Withholding Tax' => 300]);
+        $id = $this->create2316();
+        $this->storeEntry($id, 'period_from', ['value' => $from, 'origin' => $from === null ? 'pending' : 'user']);
+        $this->storeEntry($id, 'period_to', ['value' => $to, 'origin' => $to === null ? 'pending' : 'user']);
+
+        return $id;
+    }
+
     private function create2316(): int
     {
         $employeeId = Employee::where('employee_id', 'EMP-BIR-V1')->value('id');

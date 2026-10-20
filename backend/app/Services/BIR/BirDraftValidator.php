@@ -19,6 +19,7 @@ use App\Services\BIR\Schemas\Form2316Schema;
  * from a period with no counted payroll is empty_period. A field with a schema 'fixed'
  * value (1601-C items 13, 13A) that doesn't hold it is fixed_value. A system_filled field
  * (1601-C item 2) that doesn't hold the value the draft's version gives it is system_value.
+ * A 2316 whose item 2 "From" is after its "To" is period_order.
  *
  * severity is "error" (blocks submit) or "warning" (shown, never blocks); see WARNING_CODES.
  */
@@ -112,6 +113,7 @@ class BirDraftValidator
             ...$this->systemValueErrors($draft, $schema),
             ...$this->invalidAmountErrors($draft->fields ?? [], $schema),
             ...$this->invalidFormatErrors($draft->fields ?? [], $schema),
+            ...$this->periodOrderErrors($draft, $schema),
             ...$this->totalErrors($totals, $draft->fields ?? [], $schema),
             ...$this->payrollMismatchErrors($draft, $schema),
             ...$this->emptyPeriodErrors($draft),
@@ -274,6 +276,35 @@ class BirDraftValidator
         }
 
         return $errors;
+    }
+
+    /**
+     * One error on a 2316 whose item 2 "From" is after its "To" (10/15 to 03/31); the same day is
+     * fine. Skipped while either is blank or not MM/DD, which other rules report. PUT doesn't refuse
+     * it, so From and To can be fixed in either order. Zero-padded MM/DD compares as month, then day.
+     *
+     * @param  array<string, array<string, mixed>>  $schema
+     * @return array<int, array{field: string, code: string, message: string}>
+     */
+    private function periodOrderErrors(BirFormDraft $draft, array $schema): array
+    {
+        if ($draft->form_type !== Form2316Schema::FORM_TYPE) {
+            return [];
+        }
+
+        [$from, $to] = [$schema['period_from'], $schema['period_to']];
+        $fromValue = ($draft->fields ?? [])['period_from']['value'] ?? null;
+        $toValue = ($draft->fields ?? [])['period_to']['value'] ?? null;
+        if (!FieldFormat::matches($from['format'], $fromValue) || !FieldFormat::matches($to['format'], $toValue)
+            || strcmp($fromValue, $toValue) <= 0) {
+            return [];
+        }
+
+        return [[
+            'field' => 'period_from',
+            'code' => 'period_order',
+            'message' => "\"{$from['label']}\" ({$fromValue}) is after \"{$to['label']}\" ({$toValue}).",
+        ]];
     }
 
     /**
