@@ -94,7 +94,7 @@ function ValueInput({ field, value, onChange, onKeyDown, inputRef }) {
  * figure. Validation problems are shown on the box they belong to.
  */
 export default function FieldRow({
-  field, entry, issues = [], asked, rowRef, compare, filed, onFiled, notApplicable,
+  field, entry, issues = [], asked, flash, rowRef, compare, filed, onFiled, notApplicable,
   editing, onEdit, onCancel, onSave, saving, saveError,
 }) {
   const [help, setHelp] = useState(false)
@@ -128,7 +128,9 @@ export default function FieldRow({
       ref={rowRef}
       className={clsx('relative pl-4 pr-3 py-2 scroll-mt-2',
         notApplicable && !editing ? 'bg-gray-50 opacity-50' : style.row,
-        editing ? 'ring-2 ring-inset ring-brand-300 bg-white' : asked ? 'ring-2 ring-inset ring-brand-400 bg-brand-50/60' : hasError && 'ring-1 ring-inset ring-red-200')}
+        editing ? 'ring-2 ring-inset ring-brand-300 bg-white'
+          : flash ? clsx('ring-2 ring-inset transition-colors', flash === 'warning' ? 'ring-amber-400 bg-amber-50' : 'ring-red-400 bg-red-50')
+          : asked ? 'ring-2 ring-inset ring-brand-400 bg-brand-50/60' : hasError && 'ring-1 ring-inset ring-red-200')}
       title={notApplicable ? 'Does not apply to a non-taxable employee' : undefined}
     >
       <span aria-hidden="true" className={clsx('absolute inset-y-0 left-0 w-1', style.bar)} />

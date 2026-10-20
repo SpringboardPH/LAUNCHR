@@ -82,6 +82,9 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
   const [saveError, setSaveError] = useState(null)
   const [filter, setFilter] = useState('all')
   const rowRefs = useRef({})
+  // Clicking "N errors" / "N warnings" walks through those boxes: the next one each click, briefly lit up.
+  const [flash, setFlash] = useState(null)
+  const jumpRef = useRef({ severity: null, index: -1 })
   const [compare, setCompare] = useState(false)
   const [filedByDraft, setFiledByDraft] = useState({})
   const [importNote, setImportNote] = useState(null)
@@ -129,7 +132,12 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
     },
   })
 
-  useEffect(() => { setEditing(null); setSaveError(null) }, [draftId])
+  useEffect(() => { setEditing(null); setSaveError(null); setFlash(null); jumpRef.current = { severity: null, index: -1 } }, [draftId])
+  useEffect(() => {
+    if (!flash) return
+    const t = setTimeout(() => setFlash(null), 2500)
+    return () => clearTimeout(t)
+  }, [flash])
 
   const filed = filedByDraft[draftId] ?? {}
   const setFiled = (key, value) => setFiledByDraft(prev => ({ ...prev, [draftId]: { ...(prev[draftId] ?? {}), [key]: value } }))
@@ -175,6 +183,17 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
 
   // validation_errors is the last validate result; entries are read by key, never by position.
   const issues = (draft.validation_errors ?? []).reduce((acc, e) => ({ ...acc, [e.field]: [...(acc[e.field] ?? []), e] }), {})
+  const goToIssue = (severity) => {
+    const fields = [...new Set((draft.validation_errors ?? [])
+      .filter(e => (severity === 'warning') === (e.severity === 'warning')).map(e => e.field))]
+    if (!fields.length) return
+    const last = jumpRef.current
+    const index = last.severity === severity ? (last.index + 1) % fields.length : 0
+    jumpRef.current = { severity, index }
+    setFilter('all')
+    setFlash({ field: fields[index], severity })
+    setTimeout(() => rowRefs.current[fields[index]]?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
   const errorTotal = (draft.validation_errors ?? []).filter(e => e.severity !== 'warning').length
   const warningTotal = (draft.validation_errors ?? []).length - errorTotal
   const nonTaxable = nonTaxableReason(draft)
@@ -236,9 +255,19 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             <span>{filledCount} of {fillable.length} boxes filled</span>
             {(draft.validation_errors ?? []).length > 0 ? (
               <span>
-                {errorTotal > 0 && <span className="text-red-600">{errorTotal} error{errorTotal === 1 ? '' : 's'} to fix before {draft.status === 'pending' ? 'approving' : 'submitting'}</span>}
+                {errorTotal > 0 && (
+                  <button type="button" onClick={() => goToIssue('error')} className="text-red-600 hover:underline"
+                    title={errorTotal > 1 ? 'Show the next box with an error' : 'Show the box with the error'}>
+                    {errorTotal} error{errorTotal === 1 ? '' : 's'} to fix before {draft.status === 'pending' ? 'approving' : 'submitting'}
+                  </button>
+                )}
                 {errorTotal > 0 && warningTotal > 0 && ' · '}
-                {warningTotal > 0 && <span className="text-amber-700">{warningTotal} warning{warningTotal === 1 ? '' : 's'} to review</span>}
+                {warningTotal > 0 && (
+                  <button type="button" onClick={() => goToIssue('warning')} className="text-amber-700 hover:underline"
+                    title={warningTotal > 1 ? 'Show the next box with a warning' : 'Show the box with the warning'}>
+                    {warningTotal} warning{warningTotal === 1 ? '' : 's'} to review
+                  </button>
+                )}
               </span>
             ) : requiredMissing > 0 && <span className="text-amber-700">{requiredMissing} required still empty</span>}
           </div>
@@ -313,6 +342,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             entry={entry}
             issues={issues[field.key]}
             asked={field.key === askingField}
+            flash={flash?.field === field.key ? flash.severity : null}
             rowRef={(el) => forwardRow(el, field.key, rowRefs)}
             compare={compare}
             filed={filed[field.key]}
