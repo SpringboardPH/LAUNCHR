@@ -237,9 +237,10 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             <p className="text-xs text-gray-400">
               Form {formLabel(draft)}{formLabel(draft) !== `#${draft.id}` && ` (#${draft.id})`} · {versionLabel(draft)}{isFetching && ' · updating…'}
             </p>
+            <p className="text-sm font-semibold text-brand-600">{draft.form_type}</p>
             <p className="text-base font-semibold text-gray-900 leading-snug">{formName(draft.form_type)}</p>
             <p className="text-sm text-gray-600">
-              {describePeriod(draft.form_type, draft.period)}{draft.employee_name && ` · ${draft.employee_name}`}
+              {draft.form_type === '2316' ? `Taxable year ${draft.period}` : describePeriod(draft.form_type, draft.period)}
             </p>
           </div>
           <StatusBadge status={draft.status} />
@@ -272,7 +273,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             ) : requiredMissing > 0 && <span className="text-amber-700">{requiredMissing} required still empty</span>}
           </div>
           <div className="mt-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-            <div className="h-full bg-brand-500 transition-all" style={{ width: `${fillable.length ? (filledCount / fillable.length) * 100 : 0}%` }} />
+            <div className="h-full bg-green-500 transition-all" style={{ width: `${fillable.length ? (filledCount / fillable.length) * 100 : 0}%` }} />
           </div>
         </div>
 
@@ -310,9 +311,16 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
           <p className="text-[11px] text-gray-400">Item numbers and official labels appear once the server provides the form layout.</p>
         )}
 
-        {comparedRows.length > 0 && (
+      </div>
+
+      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft} onDeleted={onDeleted}
+        edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
+      {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
+      {/* Checking against what was really filed: its own strip, apart from the form's status. */}
+      {comparedRows.length > 0 && (
+        <div className="px-4 py-2.5 border-b border-gray-100 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setCompare(c => !c)} className={clsx('text-xs', compare ? 'btn-primary py-1.5' : 'btn-secondary py-1.5')}>
+            <button onClick={() => setCompare(c => !c)} className={clsx('text-xs', compare ? 'btn-primary py-1.5' : 'btn-ghost py-1.5')}>
               {compare ? <X size={12} /> : <Scale size={12} />} {compare ? 'Close comparison' : 'Compare with filed form'}
             </button>
             {compare && (
@@ -326,13 +334,9 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
               </>
             )}
           </div>
-        )}
-        {compare && importNote && <p className="text-[11px] text-gray-500">{importNote}</p>}
-      </div>
-
-      <BirApprovalBar key={draft.id} draft={draft} onOpenDraft={onOpenDraft} onDeleted={onDeleted}
-        edits={rows.filter(({ entry }) => entry.edited)} onShowEdits={() => setFilter('edited')} />
-      {draft.form_type === '1601-C' && <BirFormEmployees key={`emp-${draft.id}`} draftId={draft.id} />}
+          {compare && importNote && <p className="text-[11px] text-gray-500">{importNote}</p>}
+        </div>
+      )}
 
       <ul className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
         {visible.map(({ field, entry }) => (

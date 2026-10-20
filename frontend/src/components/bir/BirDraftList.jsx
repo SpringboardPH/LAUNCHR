@@ -6,6 +6,11 @@ import { birKeys, getBirDrafts } from '../../api/queries'
 import { PagePagination, StatusBadge } from '../ui/index.jsx'
 import { describePeriod } from './BirChatPanel'
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+// The list names a 1601-C's month in words ("October 2026"); a 2316 keeps "Tax year 2026".
+const periodName = (formType, period) => (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)
+  ? `${MONTH_NAMES[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}` : describePeriod(formType, period))
+
 const STATUSES = [['', 'All statuses'], ['draft', 'Draft'], ['pending', 'Waiting for review'], ['approved', 'Approved'], ['finalized', 'Finalized (filed)']]
 const PER_PAGE = 8
 // With versions grouped, a page holds whole forms: fetch more at once.
@@ -32,7 +37,7 @@ function DraftRow({ d, activeId, onOpen, nested = false }) {
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-gray-900 truncate">
-            {d.form_type} · {describePeriod(d.form_type, d.period)}
+            {d.form_type} · {periodName(d.form_type, d.period)}
             {d.employee_name && <span className="font-normal text-gray-600"> · {d.employee_name}</span>}
           </p>
           <p className="text-[11px] text-gray-400">

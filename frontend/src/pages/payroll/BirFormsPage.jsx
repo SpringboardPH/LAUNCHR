@@ -177,8 +177,7 @@ export default function BirFormsPage() {
   return (
     <div className="pb-20">{/* room for the chat bubble */}
       <PageHeader
-        title="BIR Forms"
-        description="Prepare the Monthly Remittance Return of Income Taxes Withheld on Compensation and each employee's Certificate of Compensation Payment/Tax Withheld from payroll data."
+        title="Compliance"
         action={BIR_USE_MOCKS && (
           <span className="badge-purple gap-1" title="Set VITE_BIR_MOCK=false to use the real API">
             <FlaskConical size={12} /> Mock data
