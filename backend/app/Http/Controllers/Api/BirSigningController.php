@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\BirFormDraftResource;
+use App\Mail\BirFormToSignMail;
 use App\Models\BirFormDraft;
 use App\Models\BirFormSignature;
 use App\Services\BIR\BirFormSigner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * The employer's side of signing a finalized form (contract: docs/bir-api-contract.md):
@@ -26,7 +28,24 @@ class BirSigningController extends Controller
             return response()->json(['success' => false, 'message' => $message], $status);
         }
 
+        // Sent after the transaction, so never for a signature that didn't save.
+        $this->tellTheEmployee($draft);
+
         return $this->formResponse($draft, $message);
+    }
+
+    /**
+     * A 2316 is the employee's to sign next: email them, at the address payslips use. Not when
+     * they have no email or no login, since they couldn't sign anyway.
+     */
+    private function tellTheEmployee(BirFormDraft $draft): void
+    {
+        $employee = $draft->employee;
+        if ($draft->form_type !== '2316' || !$employee || empty($employee->email) || !$employee->user_id) {
+            return;
+        }
+
+        Mail::to($employee->email)->queue(new BirFormToSignMail($draft));
     }
 
     /** Records that the form is (or was) signed by hand. Nothing is uploaded or stored. */

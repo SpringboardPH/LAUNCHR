@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\BirChatController;
 use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
 use App\Http\Controllers\Api\BirSigningController;
+use App\Http\Controllers\Api\BirMyFormsController;
 use App\Http\Controllers\Api\UserSignatureController;
 
 // Public routes
@@ -166,6 +167,15 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/drafts/{id}/employees', [BirEmployeeListController::class, 'show']);
             Route::post('/chat', [BirChatController::class, 'message']);
         });
+    });
+
+    // The caller's own 2316s to sign, any role (contract: docs/bir-api-contract.md). Not under
+    // /bir, which refuses employees: ownership is checked on every call instead (another
+    // person's form is 404).
+    Route::prefix('my/bir-forms')->middleware('bir.enabled')->group(function () {
+        Route::get('/', [BirMyFormsController::class, 'index']);
+        Route::get('/{id}/pdf', [BirMyFormsController::class, 'pdf']);
+        Route::post('/{id}/sign', [BirMyFormsController::class, 'sign']);
     });
 
     // Dashboard
