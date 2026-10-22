@@ -1,0 +1,132 @@
+x-php-common: &php-common
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+    target: dev
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    DB_CONNECTION: ${DB_CONNECTION:-mysql}
+    DB_HOST: ${DB_HOST}
+    DB_PORT: ${DB_PORT:-3306}
+    DB_DATABASE: ${DB_DATABASE:-launchr}
+    DB_USERNAME: ${DB_USERNAME:-launchr}
+    DB_PASSWORD: ${DB_PASSWORD:-}
+    APP_KEY: ${APP_KEY}
+    APP_URL: ${APP_URL:-http://localhost:8080}
+    FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+    SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:8080}
+    APP_ENV: ${APP_ENV:-local}
+    APP_DEBUG: ${APP_DEBUG:-true}
+    APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Manila}
+    QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+    CACHE_STORE: ${CACHE_STORE:-database}
+    SESSION_DRIVER: ${SESSION_DRIVER:-database}
+    FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+    MAIL_MAILER: ${MAIL_MAILER:-log}
+    MAIL_HOST: ${MAIL_HOST:-}
+    MAIL_PORT: ${MAIL_PORT:-587}
+    MAIL_USERNAME: ${MAIL_USERNAME:-}
+    MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+    MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-}
+    MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-hello@example.com}
+    MAIL_FROM_NAME: ${MAIL_FROM_NAME:-LAUNCHR}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  working_dir: /var/www/backend
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  php:
+    <<: *php-common
+    environment:
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-launchr}
+      DB_USERNAME: ${DB_USERNAME:-launchr}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost:8080}
+      APP_ENV: ${APP_ENV:-local}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Manila}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+      CACHE_STORE: ${CACHE_STORE:-database}
+      SESSION_DRIVER: ${SESSION_DRIVER:-database}
+      FILESYSTEM_DISK: ${FILESYSTEM_DISK:-local}
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-hello@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-LAUNCHR}
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "php -r 'exit(@fsockopen(\"127.0.0.1\", 9000) ? 0 : 1);'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 90s
+
+  queue:
+    <<: *php-common
+    command: ["php", "artisan", "queue:work", "--tries=1", "--sleep=3"]
+    depends_on:
+      php:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+        required: false
+
+  scheduler:
+    <<: *php-common
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      php:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+        required: false
+
+  mysql:
+    profiles: ["mysql"]
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-launchr}
+      MYSQL_USER: ${DB_USERNAME:-launchr}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-launchr}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-launchr}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  mysql_data:
+  php_vendor:
+  frontend_node_modules:

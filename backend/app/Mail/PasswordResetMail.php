@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Helpers\BrandingAsset;
 use App\Models\User;
 use App\Models\SystemSettings;
 use Illuminate\Bus\Queueable;
@@ -33,7 +34,7 @@ class PasswordResetMail extends Mailable
                 'user' => $this->user,
                 'code' => $this->code,
                 'intro' => 'You requested to reset your password. Use the code below to continue:',
-                'logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
+                'logoPath' => BrandingAsset::resolve(SystemSettings::get('system_logo', 'launchr_black.svg')),
             ],
         );
     }

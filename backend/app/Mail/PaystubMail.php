@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Helpers\BrandingAsset;
 use App\Models\Payroll;
 use App\Models\SystemSettings;
 use Illuminate\Bus\Queueable;
@@ -44,7 +45,7 @@ class PaystubMail extends Mailable
                 'period' => $period,
                 'gross' => $this->payroll->gross_pay,
                 'net' => $this->payroll->net_pay,
-                'logo' => SystemSettings::get('system_logo', 'launchr_black.svg'),
+                'logoPath' => BrandingAsset::resolve(SystemSettings::get('system_logo', 'launchr_black.svg')),
             ],
         );
     }

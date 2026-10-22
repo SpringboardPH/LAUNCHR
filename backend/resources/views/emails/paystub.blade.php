@@ -9,7 +9,9 @@
 
             <!-- Header -->
             <div style="text-align: center; margin-bottom: 32px;">
-                <img src="{{ $message->embed(public_path($logo)) }}" alt="{{ App\Models\SystemSettings::get('system_name', 'LAUNCHR') }}" style="height: 64px; margin-bottom: 12px;">
+                @if(!empty($logoPath) && is_file($logoPath))
+                <img src="{{ $message->embed($logoPath) }}" alt="{{ App\Models\SystemSettings::get('system_name', 'LAUNCHR') }}" style="height: 64px; margin-bottom: 12px;">
+                @endif
             </div>
 
             <!-- Content -->

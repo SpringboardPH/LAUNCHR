@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\BrandingAsset;
 use App\Helpers\SystemClock;
 use App\Models\SystemSettings;
 use Illuminate\Http\Request;
@@ -256,8 +257,7 @@ class AdminSettingsController extends Controller
         if ($request->hasFile('logo')) {
             $image = $request->file('logo');
             $name = 'system_logo_' . time() . '.' . strtolower($image->getClientOriginalExtension());
-            $destinationPath = public_path('/');
-            $image->move($destinationPath, $name);
+            BrandingAsset::storeUploaded($image, $name);
 
             SystemSettings::set('system_logo', $name, 'The logo used by the system', 'string');
 
@@ -283,8 +283,7 @@ class AdminSettingsController extends Controller
         if ($request->hasFile('template')) {
             $file = $request->file('template');
             $name = 'payroll_template_' . time() . '.' . $file->getClientOriginalExtension();
-            $destinationPath = public_path('/');
-            $file->move($destinationPath, $name);
+            BrandingAsset::storeUploaded($file, $name);
 
             SystemSettings::set('payroll_template', $name, 'The Excel template used for payroll generation', 'string');
 
@@ -303,10 +302,9 @@ class AdminSettingsController extends Controller
 
     public function getLogo(string $filename)
     {
-        // Only allow logo filenames — no path traversal
         $filename = basename($filename);
-        $path = public_path($filename);
-        if (!file_exists($path)) {
+        $path = BrandingAsset::resolve($filename);
+        if (!$path) {
             abort(404, 'Logo not found');
         }
         $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
@@ -323,9 +321,9 @@ class AdminSettingsController extends Controller
 
     public function getTemplate()
     {
-        $filename = SystemSettings::get('payroll_template', 'payrolltemplate.xlsx');
-        $path = public_path($filename);
-        if (!file_exists($path)) {
+        $filename = basename((string) SystemSettings::get('payroll_template', 'payrolltemplate.xlsx'));
+        $path = BrandingAsset::resolve($filename);
+        if (!$path) {
             abort(404, 'Template not found');
         }
 
@@ -344,17 +342,9 @@ class AdminSettingsController extends Controller
 
     public function listLogos()
     {
-        $directory = public_path('/');
-        $files = scandir($directory);
-        
-        $logos = array_filter($files, function($file) {
-            return str_starts_with($file, 'system_logo_') || 
-                   in_array($file, ['launchr_black.svg', 'launchr_logo.svg', 'launchr_white.svg', 'synctalents.png', 'sblogo.svg', 'stlogo.svg', 'springboard-logo.svg']);
-        });
-
         return response()->json([
             'success' => true,
-            'data' => array_values($logos),
+            'data' => BrandingAsset::listLogos(),
             'message' => 'Available logos retrieved',
         ]);
     }
@@ -363,13 +353,11 @@ class AdminSettingsController extends Controller
     {
         $filename = basename($filename);
 
-        $protected = ['launchr_black.svg', 'launchr_logo.svg'];
-        if (in_array($filename, $protected)) {
+        if (BrandingAsset::isProtected($filename)) {
             return response()->json(['success' => false, 'message' => 'Cannot delete default logos'], 403);
         }
 
-        $path = public_path($filename);
-        if (!file_exists($path)) {
+        if (!BrandingAsset::resolve($filename)) {
             return response()->json(['success' => false, 'message' => 'Logo not found'], 404);
         }
 
@@ -377,7 +365,7 @@ class AdminSettingsController extends Controller
             SystemSettings::set('system_logo', 'launchr_black.svg', 'The logo used by the system', 'string');
         }
 
-        unlink($path);
+        BrandingAsset::delete($filename);
 
         return response()->json(['success' => true, 'message' => 'Logo deleted']);
     }

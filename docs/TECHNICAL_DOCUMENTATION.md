@@ -401,6 +401,8 @@ All routes are prefixed with `/api`. Authenticated routes require `Authorization
 
 ## 10. Deploying for a New Company
 
+Docker Compose is in the root [README.md](../README.md). This section is the standalone PHP, Node, and nginx path. Both boots are supported.
+
 `php artisan migrate --seed` loads a blank company (admin user plus reference data). It does not load the Springboard demo roster. For the client presentation, follow [How to set up the Springboard presentation](DEMO_SETUP.md) and run `php artisan db:seed --class=DemoSeeder` after the default seed.
 
 ### Prerequisites
@@ -691,7 +693,27 @@ After deployment, log in as admin and configure:
 
 ---
 
-## 11. Post-Deployment Operations
+## 11. How to update a live standalone host
+
+Use this when the company already runs on host PHP, nginx, cron `schedule:run`, and supervisor `queue:work`, and you are pulling a new release. This is not a new-company install. Keep `APP_KEY`. Do not reseed. For a new company on this path, follow [Deploying for a New Company](#10-deploying-for-a-new-company). To move the same host onto Docker Compose, follow [How to cut over a live host to Docker](../README.md#how-to-cut-over-a-live-host-to-docker).
+
+1. `git pull` the release on the host.
+
+2. From `backend/`, run `composer install --no-dev --optimize-autoloader`.
+
+3. Run `php artisan migrate --force`. Do not pass `--seed`. Do not run `migrate:fresh`.
+
+4. Run `php artisan storage:link --force`. Then run `php artisan config:cache`, `php artisan route:cache`, and `php artisan view:cache`.
+
+5. From `frontend/`, keep the existing `frontend/.env` `VITE_API_BASE_URL`. Run `npm ci` and `npm run build`.
+
+6. Reload php-fpm and nginx. Restart supervisor `queue:work`. Leave the host cron `schedule:run` as it is.
+
+7. Existing logos in `backend/public/` still resolve. New logo and payroll-template uploads go to `storage/app/public`.
+
+---
+
+## 12. Post-Deployment Operations
 
 ### Payroll Workflow (Each Cutoff)
 1. HR → Payroll → Generate Payroll (select cutoff dates)
@@ -712,7 +734,7 @@ Admin can set `system_date` and `system_time` in System Settings to simulate any
 
 ---
 
-## 12. Known Constraints & Roadmap
+## 13. Known Constraints & Roadmap
 
 1. **PH-specific payroll**: Contribution rates (SSS, PhilHealth, Pag-IBIG, TRAIN Law withholding tax) are hardcoded to Philippine labor law. Adapting for other countries requires changes to `PayrollService.php` and the `sss_contribution_table` system setting.
 2. **Frontend testing**: No Jest/Cypress test suite exists. Manual testing is required for UI changes.
