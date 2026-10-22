@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { birKeys, getBirDrafts } from '../../api/queries'
 import { PagePagination, StatusBadge } from '../ui/index.jsx'
 import { describePeriod } from './BirChatPanel'
+import { signingChip } from './BirSigningStatus'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 // The list names a 1601-C's month in words ("October 2026"); a 2316 keeps "Tax year 2026".
@@ -45,6 +46,7 @@ function DraftRow({ d, activeId, onOpen, nested = false }) {
           </p>
         </div>
         {isReturned(d) && <span className="badge-yellow" title={d.rejection_reason}>Returned</span>}
+        {signingChip(d.signing, d.form_type) && <span className={signingChip(d.signing, d.form_type)[1]}>{signingChip(d.signing, d.form_type)[0]}</span>}
         <StatusBadge status={d.status} />
       </button>
     </li>

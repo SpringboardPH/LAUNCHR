@@ -5,6 +5,7 @@ import { Mail, Phone, Calendar, Briefcase, CreditCard, Pencil, Check, X, Key } f
 import { format } from 'date-fns'
 import { useMutation } from '@tanstack/react-query'
 import { updateProfile, updatePassword } from '../../api/queries'
+import BirSignatureCard from '../../components/bir/BirSignatureCard'
 import { useForm } from 'react-hook-form'
 
 export default function EmployeeProfilePage() {
@@ -101,6 +102,8 @@ export default function EmployeeProfilePage() {
         <div className="card p-6 text-center text-gray-500">
           No employee profile information found.
         </div>
+        {/* Every role can sign, with or without an employee record. */}
+        <BirSignatureCard className="card p-5 mt-5 max-w-xl" />
       </div>
     )
   }
@@ -119,6 +122,10 @@ export default function EmployeeProfilePage() {
             'View your bank account number and government ID numbers (SSS, PhilHealth, Pag-IBIG, TIN).',
             'Click the pencil (Edit) icon in the Bank & IDs section to update these details.',
             'These numbers are used by payroll for statutory deduction calculations.',
+          ]},
+          { heading: 'E-signature', items: [
+            'Upload a picture of your signature (PNG or JPG) once, and use it to sign your BIR forms.',
+            'Replace or remove it any time; forms you already signed keep their signature.',
           ]},
           { heading: 'Change Password', items: [
             'Click "Change Password" at the bottom of the page to set a new login password.',
@@ -310,6 +317,8 @@ export default function EmployeeProfilePage() {
               These details are used for payroll and government compliance. Please ensure accuracy.
             </p>
           </div>
+
+          <BirSignatureCard />
 
           {/* Change Password */}
           <div className="card p-5">

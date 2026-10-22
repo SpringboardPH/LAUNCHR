@@ -1,8 +1,8 @@
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
-import { getSystemConfig, systemConfigKeys } from '../../api/queries'
-import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText, HelpCircle, Banknote } from 'lucide-react'
+import { getSystemConfig, systemConfigKeys, myBirFormKeys, getMyBirForms } from '../../api/queries'
+import { LogOut, Menu, X, LayoutDashboard, Clock, User, CalendarRange, ClipboardList, FileText, HelpCircle, Banknote, FileSignature } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 import OnboardingTutorial, { useOnboardingTutorial, EMPLOYEE_STEPS } from '../OnboardingTutorial'
@@ -27,6 +27,11 @@ export default function EmployeeLayout() {
     queryFn: getSystemConfig,
     staleTime: Infinity,
   })
+  // Forms to sign: the employee's own 2316s; hidden while BIR forms are off (the route answers 403).
+  const { data: myForms, error: myFormsError } = useQuery({
+    queryKey: myBirFormKeys.list, queryFn: getMyBirForms, enabled: !!user, retry: false, staleTime: 60_000,
+  })
+  const toSign = myForms?.filter(f => f.needs_my_signature).length ?? 0
 
   const handleLogout = async () => {
     await logout()
@@ -63,7 +68,8 @@ export default function EmployeeLayout() {
           {[
           ...BASE_NAV,
           ...(systemConfig?.dtr_page_enabled ? [{ to: '/employee/dtr', icon: FileText, label: 'DTR Upload' }] : []),
-        ].map(({ to, icon: Icon, label }) => (
+          ...(myFormsError ? [] : [{ to: '/my-bir-forms', icon: FileSignature, label: 'Forms to sign', count: toSign }]),
+        ].map(({ to, icon: Icon, label, count }) => (
             <a
               key={to} href={to} onClick={(e) => {
                 e.preventDefault()
@@ -79,6 +85,7 @@ export default function EmployeeLayout() {
             >
               <Icon size={16} />
               {label}
+              {count > 0 && <span className="ml-auto rounded-full bg-brand-600 px-1.5 text-[10px] font-semibold text-white">{count}</span>}
             </a>
           ))}
         </nav>

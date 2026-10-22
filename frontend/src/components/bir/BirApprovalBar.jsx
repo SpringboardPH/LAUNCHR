@@ -1,13 +1,15 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Ban, Eye } from 'lucide-react'
+import { Send, CheckCircle2, Undo2, Archive, GitBranch, Lock, Clock, PenLine, Download, Ban, Eye, Signature } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  birKeys, getBirConfig, exportBirDraft, voidBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
+  birKeys, myBirFormKeys, getBirConfig, exportBirDraft, voidBirDraft, signBirDraft, wetSignBirDraft, submitBirDraft, approveBirDraft, rejectBirDraft, finalizeBirDraft, reviseBirDraft,
 } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { formatValue, formatWhen } from './BirDraftEditor'
 import BirPdfPreview from './BirPdfPreview'
+import BirSigningStatus from './BirSigningStatus'
 
 const DONE = {
   submit: 'Submitted for review.',
@@ -101,6 +103,29 @@ export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [
     onError: (err) => setNotice({ tone: 'error', text: err?.response?.data?.message || 'Could not void the form. Please try again.' }),
   })
 
+  // Signing a finalized form, accounting only and optional: e-sign as the employer with the saved
+  // signature, or mark it as signed by hand on paper. Either one is final for the form.
+  const [confirmWet, setConfirmWet] = useState(false)
+  const sign = useMutation({
+    mutationFn: (how) => (how === 'paper' ? wetSignBirDraft(draft.id) : signBirDraft(draft.id)),
+    onMutate: () => setNotice(null),
+    onSuccess: (res) => {
+      qc.setQueryData(birKeys.detail(draft.id), res.data)
+      qc.invalidateQueries({ queryKey: birKeys.lists })
+      qc.invalidateQueries({ queryKey: myBirFormKeys.list }) // the signer's own 2316 may now be theirs to sign
+      setConfirmWet(false)
+      setNotice({ tone: 'ok', text: res.message })
+    },
+    onError: (err) => {
+      const body = err?.response?.data
+      setConfirmWet(false)
+      if (err?.response?.status === 409 || err?.response?.status === 400) qc.invalidateQueries({ queryKey: birKeys.detail(draft.id) })
+      // 422: no saved signature yet; the profile is where it is uploaded.
+      setNotice({ tone: 'error', text: body?.message || 'Could not sign the form. Please try again.', toProfile: err?.response?.status === 422 })
+    },
+  })
+  const canSign = draft.status === 'finalized' && canReview && !draft.signing?.method
+
   const download = useMutation({
     mutationFn: () => exportBirDraft(draft.id),
     onMutate: () => setNotice(null),
@@ -131,6 +156,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [
           {people && <span className="block text-[11px] text-gray-400">{people}</span>}
         </span>
       </p>
+      <BirSigningStatus signing={draft.signing} formType={draft.form_type} className="pl-5" />
 
       <div className="flex flex-wrap items-center gap-2">
         {next.includes('pending') && (
@@ -178,6 +204,27 @@ export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [
           title={['approved', 'finalized'].includes(draft.status) ? 'The official BIR form' : 'Marked DRAFT until the form is approved'}>
           <Download size={12} /> {download.isPending ? 'Preparing PDF…' : 'Download PDF'}
         </button>
+        {canSign && !confirmWet && (
+          <>
+            <button onClick={() => sign.mutate('digital')} disabled={sign.isPending} className="btn-primary py-1.5 text-xs"
+              title={draft.form_type === '2316' ? 'Sign with your saved signature; the employee is then emailed to sign too' : 'Sign with your saved signature'}>
+              <Signature size={12} /> {sign.isPending && sign.variables === 'digital' ? 'Signing…' : 'Sign'}
+            </button>
+            <button onClick={() => setConfirmWet(true)} disabled={sign.isPending} className="btn-ghost py-1.5 text-xs"
+              title="The printed form is signed with a pen; nothing is uploaded">
+              <PenLine size={12} /> Sign by hand (wet signature)
+            </button>
+          </>
+        )}
+        {canSign && confirmWet && (
+          <span className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
+            Mark {draft.label ?? `#${draft.id}`} as signed by hand on paper?{draft.form_type === '2316' && ' The employee will not be asked to e-sign.'} It can't be e-signed afterwards.
+            <button onClick={() => sign.mutate('paper')} disabled={sign.isPending} className="btn-primary py-1.5 text-xs">
+              {sign.isPending ? 'Saving…' : 'Yes, signed by hand'}
+            </button>
+            <button onClick={() => setConfirmWet(false)} disabled={sign.isPending} className="btn-ghost py-1.5 text-xs">Cancel</button>
+          </span>
+        )}
         {draft.status === 'draft' && !voiding && (
           <button onClick={() => setVoiding(true)} disabled={busy} className="btn-ghost py-1.5 text-xs text-red-600 hover:text-red-700"
             title="Forms are never deleted. A voided draft stays on the list, marked void, for the record.">
@@ -270,6 +317,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [
         <p role={notice.tone === 'error' ? 'alert' : 'status'}
           className={clsx('text-xs', notice.tone === 'error' ? 'text-red-600' : 'text-green-700')}>
           {notice.text}
+          {notice.toProfile && <>. <Link to="/employee/profile" className="font-medium underline">Go to your profile</Link> to upload it, then sign again.</>}
         </p>
       )}
       <BirPdfPreview draft={draft} open={previewing} onClose={() => setPreviewing(false)} />

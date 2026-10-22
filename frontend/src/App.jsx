@@ -28,6 +28,7 @@ import AttendanceClockPage from './pages/employee/AttendanceClockPage'
 import RequestFormPage from './pages/employee/RequestFormPage'
 import RequestsPage from './pages/requests/RequestsPage'
 import EmployeeProfilePage from './pages/employee/EmployeeProfilePage'
+import MyBirFormsPage from './pages/employee/MyBirFormsPage'
 import CalendarPage from './pages/calendar/CalendarPage'
 
 import UserListPage from './pages/admin/UserListPage'
@@ -110,6 +111,12 @@ function LayoutSelector() {
   return ['hr', 'accounting'].includes(user?.role) ? <AppLayout /> : <EmployeeLayout />
 }
 
+// Pages every logged-in role uses (/my-bir-forms): staff keep their full sidebar, employees theirs.
+function AnyRoleLayout() {
+  const { user } = useAuth()
+  return isEmployee(user) ? <EmployeeLayout /> : <AppLayout />
+}
+
 export default function App() {
   const { data } = useQuery({
     queryKey: systemConfigKeys.all,
@@ -168,6 +175,10 @@ export default function App() {
             <Route path="users/:id/edit" element={<UserFormPage />} />
             <Route path="system-settings" element={<SystemSettingsPage />} />
             <Route path="calendar-event-types" element={<AdminCalendarEventTypesPage />} />
+          </Route>
+          {/* Any logged-in user: their own 2316s to sign. The signing email links to exactly this path. */}
+          <Route path="/my-bir-forms" element={<ProtectedRoute><AnyRoleLayout /></ProtectedRoute>}>
+            <Route index element={<MyBirFormsPage />} />
           </Route>
           <Route path="/employee" element={<ProtectedRoute><LayoutSelector /></ProtectedRoute>}>
             <Route index element={<EmployeeDashboardPage />} />

@@ -1,10 +1,10 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
-import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys, birKeys, getBirConfig } from '../../api/queries'
+import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys, birKeys, getBirConfig, myBirFormKeys, getMyBirForms } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock,
-  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown, HelpCircle,
+  Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown, HelpCircle, FileSignature,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
@@ -59,6 +59,7 @@ const EMPLOYEE_NAV = [
   { to: '/employee/requests/new', icon: ClipboardList, label: 'My Requests' },
   { to: '/employee/calendar', icon: CalendarRange, label: 'Company Calendar' },
   { to: '/employee/profile', icon: User, label: 'My Profile' },
+  { to: '/my-bir-forms', icon: FileSignature, label: 'Forms to sign', mySign: true },
 ]
 
 export default function AppLayout() {
@@ -93,6 +94,11 @@ export default function AppLayout() {
     enabled: !!user && ['admin', 'hr', 'accounting'].includes(user.role),
     staleTime: 5 * 60_000,
   })
+  // Forms to sign: the caller's own 2316s; hidden while BIR forms are off (the route answers 403).
+  const { data: myForms, error: myFormsError } = useQuery({
+    queryKey: myBirFormKeys.list, queryFn: getMyBirForms, enabled: !!user, retry: false, staleTime: 60_000,
+  })
+  const toSign = myForms?.filter(f => f.needs_my_signature).length ?? 0
   const hidden = (c) => (c.dtrGated && !systemConfig?.dtr_page_enabled) || (c.birGated && birConfig?.enabled === false)
 
   const pendingBadgeCount = (dashboardData?.summary?.pending_leaves ?? 0) + (dashboardData?.summary?.pending_requests ?? 0)
@@ -202,7 +208,7 @@ export default function AppLayout() {
               <div className="px-3 py-2">
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Self Service</p>
               </div>
-              {EMPLOYEE_NAV.map(({ to, icon: Icon, label, end }) => (
+              {EMPLOYEE_NAV.filter(i => !(i.mySign && myFormsError)).map(({ to, icon: Icon, label, end, mySign }) => (
                 <NavLink
                   key={to} to={to} end={end}
                   onClick={() => setOpen(false)}
@@ -213,6 +219,7 @@ export default function AppLayout() {
                 >
                   <Icon size={16} />
                   {label}
+                  {mySign && toSign > 0 && <span className="ml-auto rounded-full bg-brand-600 px-1.5 text-[10px] font-semibold text-white">{toSign}</span>}
                 </NavLink>
               ))}
               <div className="pt-5 mt-4 border-t border-gray-100 px-3 pb-2">

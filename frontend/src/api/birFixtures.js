@@ -13,13 +13,9 @@
 import { birMockSchemas } from './birSchemaFixtures'
 import { mockChat } from './birMockChat'
 import { mockHistory } from './birMockHistory'
+import { mockSigning } from './birMockSigning'
 
-const STATUS_FLOW = {
-  draft: ['pending'],
-  pending: ['approved', 'draft'],
-  approved: ['finalized'],
-  finalized: [],
-}
+const STATUS_FLOW = { draft: ['pending'], pending: ['approved', 'draft'], approved: ['finalized'], finalized: [] }
 
 const JANE = { id: 5, name: 'Jane Dela Cruz' }
 const MARK = { id: 2, name: 'Mark Santos' }
@@ -273,7 +269,7 @@ const decorate = (d) => {
   const top = Math.max(...drafts.filter(x => x.form_type === d.form_type && x.period === d.period && x.employee_id === d.employee_id).map(x => x.version))
   return {
     ...d, root_id: root, label: `#${root}${d.version > 1 ? `v${d.version}` : ''}`,
-    amendments: d.form_type === '1601-C' ? { made: top - 1, limit: AMENDMENT_LIMIT } : null,
+    amendments: d.form_type === '1601-C' ? { made: top - 1, limit: AMENDMENT_LIMIT } : null, signing: signing.signingOf(d),
   }
 }
 const AMENDMENT_LIMIT = 5
@@ -489,6 +485,7 @@ const voidDraft = async (id, reason) => {
 }
 // What happened to each form, like GET /bir/drafts/{id}/history.
 const { log, getHistory, MOVES } = mockHistory({ find, fail, delay, ok, by: preparer, seededBy: JANE })
+const signing = mockSigning({ find, fail, delay, ok, caller: () => caller, isAccounting })
 
 const chat = mockChat({
   find, schemas: birMockSchemas, missingFor, errorCount, employees: EMPLOYEES, delay, fail,
@@ -496,5 +493,5 @@ const chat = mockChat({
 
 export const birMockApi = {
   getConfig, getDrafts, getDraft, createDraft, updateDraft, validate, transition, revise, exportDraft, chat, getEmployees, actAs,
-  draftEmployees, setSwitch, setSwitchPassword, voidDraft, getHistory,
+  draftEmployees, setSwitch, setSwitchPassword, voidDraft, getHistory, ...signing, getMyBirForms: () => signing.getMyBirForms(() => drafts),
 }

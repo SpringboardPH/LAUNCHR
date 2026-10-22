@@ -7,11 +7,12 @@ import { Modal } from '../ui/index.jsx'
 /**
  * The filled official BIR form, shown in the browser's PDF viewer. Fetched fresh each time it
  * opens, so it shows the boxes as they are now; "DRAFT — NOT FOR FILING" until approved.
+ * `fetchPdf` and `queryKey` let the Forms to sign page show an employee's own 2316 (/my/bir-forms).
  */
-export default function BirPdfPreview({ draft, open, onClose }) {
+export default function BirPdfPreview({ draft, open, onClose, fetchPdf = getBirDraftPdf, queryKey = birKeys.pdf(draft.id) }) {
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: birKeys.pdf(draft.id),
-    queryFn: () => getBirDraftPdf(draft.id),
+    queryKey,
+    queryFn: () => fetchPdf(draft.id),
     enabled: open,
     staleTime: 0,
     gcTime: 0,

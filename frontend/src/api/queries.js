@@ -666,21 +666,28 @@ export const reviseBirDraft = bir(
 // The official PDF as a file: { blob, name }. Errors arrive as a blob too, so their JSON is read
 // back for the message. Until approved the server stamps it "DRAFT — NOT FOR FILING".
 export const getBirDraftPdf = bir(
-  (id) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(res => {
-    const header = res.headers['content-disposition'] ?? ''
-    const name = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ?? header.match(/filename="?([^";]+)"?/i)?.[1]
-    return { blob: new Blob([res.data], { type: 'application/pdf' }), name: name ? decodeURIComponent(name) : `bir-draft-${id}.pdf` }
-  }, async (err) => {
-    const body = err?.response?.data
-    if (body instanceof Blob) {
-      try { err.response.data = JSON.parse(await body.text()) } catch { /* not JSON: keep the blob */ }
-    }
-    throw err
-  }),
+  (id) => api.get(`/bir/drafts/${id}/export`, { responseType: 'blob' }).then(pdfOf(`bir-draft-${id}.pdf`), readBlobError),
   birMockApi.exportDraft,
 )
 
 // Saves the official PDF under the server's file name.
+// A PDF fetched as a blob: { blob, name }, the name from Content-Disposition when it has one.
+function pdfOf(fallback) {
+  return (res) => {
+    const header = res.headers['content-disposition'] ?? ''
+    const name = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ?? header.match(/filename="?([^";]+)"?/i)?.[1]
+    return { blob: new Blob([res.data], { type: 'application/pdf' }), name: name ? decodeURIComponent(name) : fallback }
+  }
+}
+// A blob request's error body is a Blob too: read it back as JSON so `message` shows.
+async function readBlobError(err) {
+  const body = err?.response?.data
+  if (body instanceof Blob) {
+    try { err.response.data = JSON.parse(await body.text()) } catch { /* not JSON: keep the blob */ }
+  }
+  throw err
+}
+
 export const saveBirPdf = ({ blob, name }) => {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -691,6 +698,64 @@ export const saveBirPdf = ({ blob, name }) => {
 }
 
 export const exportBirDraft = (id) => getBirDraftPdf(id).then(saveBirPdf)
+
+// ─── E-signatures (contract §6, "E-signatures") ───────────────
+// The caller's own saved signature, any role. The image needs the auth header, so it is
+// fetched as a blob, never as <img src>. A 422 on upload has the reason in errors.signature.
+export const signatureKeys = {
+  me:    ['signature', 'me'],
+  image: ['signature', 'me', 'image'],
+}
+export const getMySignature = bir(
+  () => api.get('/me/signature').then(r => r.data.data),
+  birMockApi.getMySignature,
+)
+export const getMySignatureImage = bir(
+  () => api.get('/me/signature/image', { responseType: 'blob' }).then(r => r.data, readBlobError),
+  birMockApi.getMySignatureImage,
+)
+export const uploadMySignature = bir(
+  (file) => {
+    const form = new FormData()
+    form.append('signature', file)
+    return api.post('/me/signature', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+  },
+  birMockApi.uploadMySignature,
+)
+export const removeMySignature = bir(
+  () => api.delete('/me/signature').then(r => r.data),
+  birMockApi.removeMySignature,
+)
+
+// A finalized form, accounting only: sign as the employer (422 "Upload your signature first"
+// without a saved one), or mark it as signed by hand on paper. Returns { data: draft, message }.
+export const signBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/sign`).then(r => r.data),
+  birMockApi.signDraft,
+)
+export const wetSignBirDraft = bir(
+  (id) => api.post(`/bir/drafts/${id}/wet-signature`).then(r => r.data),
+  birMockApi.wetSignDraft,
+)
+
+// The caller's own 2316s to sign (/my-bir-forms, any role; 403 while BIR is turned off):
+// [{ id, label, tax_year, signing, needs_my_signature }].
+export const myBirFormKeys = {
+  list: ['my-bir-forms'],
+  pdf:  (id) => ['my-bir-forms', id, 'pdf'],
+}
+export const getMyBirForms = bir(
+  () => api.get('/my/bir-forms').then(r => r.data.data),
+  birMockApi.getMyBirForms,
+)
+export const getMyBirFormPdf = bir(
+  (id) => api.get(`/my/bir-forms/${id}/pdf`, { responseType: 'blob' }).then(pdfOf(`BIR-2316-${id}.pdf`), readBlobError),
+  birMockApi.getMyBirFormPdf,
+)
+export const signMyBirForm = bir(
+  (id) => api.post(`/my/bir-forms/${id}/sign`).then(r => r.data),
+  birMockApi.signMyBirForm,
+)
 
 // A 1601-C's employee rows as frozen when it was made: { employees, totals, differences } (§6).
 export const getBirDraftEmployees = bir(
