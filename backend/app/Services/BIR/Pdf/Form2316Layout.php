@@ -16,6 +16,16 @@ final class Form2316Layout
 {
     public const TEMPLATE = '2316.pdf';
 
+    /**
+     * Where an e-signature goes (BirFormSignature role => box above the signature line, and
+     * the anchor of its Date Signed cells). Item 53's line runs from x 62 to 297 at y 769.5,
+     * item 54's at y 801; 54's box starts right of "CONFORME:".
+     */
+    public const SIGNATURES = [
+        'employer' => ['page' => 1, 'box' => [80, 749, 200, 20], 'date' => '2316.53.date'],
+        'employee' => ['page' => 1, 'box' => [80, 783, 200, 17], 'date' => '2316.54.date'],
+    ];
+
     public const BOXES = [
         '2316.1' => ['page' => 1, 'kind' => 'cells', 'format' => 'digits', 'cells' => [[126, 95, 16, 14], [143, 95, 17, 14], [161, 95, 17, 14], [179, 95, 16, 14]]],
         '2316.2.from' => ['page' => 1, 'kind' => 'cells', 'format' => 'mmdd', 'cells' => [[388, 95, 16, 14], [405, 95, 16, 14], [422, 95, 18, 14], [441, 95, 15, 14]]],

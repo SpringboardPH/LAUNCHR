@@ -3,10 +3,12 @@
 namespace App\Services\BIR;
 
 use App\Models\BirFormDraft;
+use App\Models\BirFormSignature;
 use App\Services\BIR\Pdf\Form1601CLayout;
 use App\Services\BIR\Pdf\Form2316Layout;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use setasign\Fpdi\Fpdi;
 
@@ -23,6 +25,12 @@ use setasign\Fpdi\Fpdi;
  * A 2316 whose earlier version was already filed, exported before this version is filed
  * itself, also says so in red on every page (supervisor's request), so a correction is never
  * sent out as if it were the first certificate.
+ *
+ * E-signatures (BirFormSignature, frozen copies) are printed where each form is signed: the
+ * 2316's items 53 (employer) and 54 (employee) with their Date Signed, the 1601-C's signature
+ * box (employer only). The signed date is the signature's own. A form marked for a wet
+ * signature, or a role not signed yet, leaves its line empty for a pen. Nothing about the
+ * signature but its image and date is printed.
  *
  * Text never runs out of its box: a long address in a box goes onto two lines, and in
  * character cells it breaks between words from one row to the next; when it is longer than
@@ -47,6 +55,13 @@ class BirPdfService
         };
 
         $values = $this->valuesByAnchor($schema, $draft->fields ?? []);
+        $signatures = $this->signatures($draft, $layout);
+        // The date beside an e-signature is the day it was signed, whatever the box was given.
+        foreach ($signatures as [$spec, $signature]) {
+            if (isset($spec['date'])) {
+                $values[$spec['date']] = $signature->signed_at->toDateString();
+            }
+        }
         $filedBefore = $this->filedBefore($draft);
 
         $pdf = new Fpdi('P', 'pt');
@@ -65,6 +80,12 @@ class BirPdfService
             foreach ($layout::BOXES as $anchor => $spec) {
                 if ($spec['page'] === $page) {
                     $this->draw($pdf, $spec, $spec['kind'] === 'name' ? $values : ($values[$spec['same'] ?? $anchor] ?? null));
+                }
+            }
+
+            foreach ($signatures as [$spec, $signature]) {
+                if ($spec['page'] === $page) {
+                    $this->sign($pdf, $spec, $signature);
                 }
             }
 
@@ -302,6 +323,44 @@ class BirPdfService
         [$pesos, $centavos] = explode('.', number_format(abs($amount), 2, '.', ''));
         $this->inCells($pdf, $spec['int'], ($amount < 0 ? '-' : '') . $pesos, 'R');
         $this->inCells($pdf, $spec['dec'], $centavos, 'L');
+    }
+
+    /**
+     * Each e-signature to print, with where it goes: none for a form signed on paper, and none
+     * for a role that hasn't signed. The 2316 has an employer and an employee, the 1601-C only
+     * an employer.
+     *
+     * @return list<array{0: array<string, mixed>, 1: BirFormSignature}>
+     */
+    private function signatures(BirFormDraft $draft, string $layout): array
+    {
+        if ($draft->signing_method === BirFormDraft::SIGN_PAPER) {
+            return [];
+        }
+        $out = [];
+        foreach ($layout::SIGNATURES as $role => $spec) {
+            if (($signature = $draft->signatureBy($role)) !== null) {
+                $out[] = [$spec, $signature];
+            }
+        }
+
+        return $out;
+    }
+
+    /** The signature image, as large as fits its box and centred in it, and on a 1601-C the date beside it. */
+    private function sign(Fpdi $pdf, array $spec, BirFormSignature $signature): void
+    {
+        $file = Storage::disk('local')->path($signature->image_path);
+        $info = is_file($file) ? @getimagesize($file) : false;
+        if ($info !== false && in_array($info[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG], true) && $info[0] > 0 && $info[1] > 0) {
+            [$x, $y, $w, $h] = $spec['box'];
+            $scale = min($w / $info[0], $h / $info[1]);
+            [$iw, $ih] = [$info[0] * $scale, $info[1] * $scale];
+            $pdf->Image($file, $x + ($w - $iw) / 2, $y + ($h - $ih) / 2, $iw, $ih, $info[2] === IMAGETYPE_PNG ? 'PNG' : 'JPG');
+        }
+        if (isset($spec['date_box'])) {
+            $this->inBox($pdf, $spec['date_box'], $signature->signed_at->format('m/d/Y'), 'C', 7);
+        }
     }
 
     /**

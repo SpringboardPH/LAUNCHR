@@ -3,11 +3,13 @@
 namespace Tests\Feature\Bir;
 
 use App\Models\BirFormDraft;
+use App\Models\BirFormSignature;
 use App\Models\Employee;
 use App\Models\Payroll;
 use App\Models\User;
 use App\Services\BIR\BirPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use setasign\Fpdi\Fpdi;
 use setasign\Fpdi\PdfParser\StreamReader;
 use Tests\Concerns\EnablesBirForms;
@@ -140,6 +142,72 @@ class BirPdfExportTest extends TestCase
         $id = $this->draft('2316');
         $employee = User::factory()->create(['role' => 'employee']);
         $this->actingAs($employee)->getJson("/api/bir/drafts/{$id}/export")->assertForbidden();
+    }
+
+    public function test_e_signatures_are_printed_where_each_form_is_signed(): void
+    {
+        Storage::fake('local');
+        // A 2316: the employer at item 53, the employee at item 54, each with the day they signed,
+        // whatever date the box was given before.
+        $id = $this->draft('2316');
+        $this->setFields($id, ['employer_signature_date' => '2026-01-05']);
+        $fives = substr_count($this->text($id), '(5) Tj');
+        $this->signed($id, ['employer' => '2026-10-21 09:00:00', 'employee' => '2026-10-22 15:30:00']);
+        $pdf = $this->text($id);
+        $this->assertSame(2, $this->images($pdf), 'Both signatures are drawn.');
+        $this->assertSame($fives - 1, substr_count($pdf, '(5) Tj'), 'The typed 01/05/2026 gave way to the signed 10/21/2026.');
+        // Nothing else about the signature is printed.
+        foreach (['bir-signatures/', '203.0.113.9', 'TestAgent', str_repeat('f', 64)] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $pdf);
+        }
+
+        // A 1601-C: the employer only, and the date in the signature box.
+        $form = $this->draft('1601-C', 'EMP-PDF2');
+        $this->signed($form, ['employer' => '2026-10-21 09:00:00']);
+        $pdf = $this->text($form);
+        $this->assertSame(1, $this->images($pdf));
+        $this->assertStringContainsString('(10/21/2026) Tj', $pdf);
+    }
+
+    public function test_a_line_with_no_e_signature_is_left_empty_for_a_pen(): void
+    {
+        Storage::fake('local');
+        // Only the employer has signed: one signature, the employee's line stays empty.
+        $id = $this->draft('2316');
+        $this->signed($id, ['employer' => '2026-10-21 09:00:00']);
+        $this->assertSame(1, $this->images($this->text($id)));
+
+        // Marked for a wet signature: nothing printed, even if a signature row were there.
+        BirFormDraft::whereKey($id)->update(['signing_method' => BirFormDraft::SIGN_PAPER]);
+        $this->assertSame(0, $this->images($this->text($id)));
+
+        // Not signed at all.
+        $this->assertSame(0, $this->images($this->text($this->draft('1601-C', 'EMP-PDF3'))));
+    }
+
+    /** Signature rows for these roles, each with a small image on the private disk, as BirFormSigner leaves them. */
+    private function signed(int $id, array $roles): void
+    {
+        BirFormDraft::whereKey($id)->update(['status' => 'finalized', 'signing_method' => BirFormDraft::SIGN_DIGITAL]);
+        foreach ($roles as $role => $at) {
+            $image = imagecreatetruecolor(300, 100);
+            imagefill($image, 0, 0, imagecolorallocate($image, 255, 255, 255));
+            imageline($image, 10, 50, 290, 60, imagecolorallocate($image, 0, 0, 0));
+            ob_start();
+            $role === BirFormSignature::EMPLOYER ? imagepng($image) : imagejpeg($image);
+            $path = "bir-signatures/{$id}-{$role}." . ($role === BirFormSignature::EMPLOYER ? 'png' : 'jpg');
+            Storage::disk('local')->put($path, ob_get_clean());
+            BirFormSignature::create([
+                'bir_form_draft_id' => $id, 'role' => $role, 'user_id' => $this->accounting->id, 'image_path' => $path,
+                'signed_at' => $at, 'ip' => '203.0.113.9', 'user_agent' => 'TestAgent', 'fields_hash' => str_repeat('f', 64),
+            ]);
+        }
+    }
+
+    /** How many images the pages draw. */
+    private function images(string $pdf): int
+    {
+        return array_sum(array_map(fn (string $page) => preg_match_all('/\/I\d+ Do/', $page), $this->pageStreams($pdf)));
     }
 
     /** The PDF's drawing commands, uncompressed, so printed text can be searched. */
