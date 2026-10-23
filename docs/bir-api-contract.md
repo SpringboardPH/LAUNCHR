@@ -595,7 +595,8 @@ employees get 403, and so does everyone while the switch is off (§1). `DELETE
 
 ### GET /bir/drafts/{id}/history
 
-The form's history, newest first, read from `audit_logs`. Any status, void included.
+The form's history, newest first, read from `audit_logs` and the form's e-signatures
+(`bir_form_signatures`). Any status, void included.
 
 ```json
 {
@@ -613,8 +614,17 @@ The form's history, newest first, read from `audit_logs`. Any status, void inclu
 
 `event` is one of `created`, `edited`, `submitted`, `returned` (with the reason), `approved`,
 `reopened` (an approved form changed, back to draft, with its `changes`), `filed`, `voided`
-(with the reason), or `deleted` (forms deleted before voiding existed). Saves that only
-re-ran the checks are left out.
+(with the reason), `signed`, `wet_signature`, or `deleted` (forms deleted before voiding
+existed). Saves that only re-ran the checks are left out.
+
+- `signed`: one per e-signature, `text` "Signed by the employer" or "Signed by the employee",
+  `at` when it was signed, `by` the signer. Never the image, its path, the IP, the user agent
+  or the hash.
+- `wet_signature`: "Marked to be signed by hand (wet signature)", `by` who marked it.
+
+The form becoming `digital` when the employer signs has no entry of its own: the `signed`
+entry covers it. Entries are ordered by when they really happened, even when the system date
+has been moved.
 
 ### POST /bir/drafts/{id}/validate
 

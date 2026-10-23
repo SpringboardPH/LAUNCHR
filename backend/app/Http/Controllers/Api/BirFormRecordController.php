@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\BirFormDraftResource;
 use App\Models\AuditLog;
 use App\Models\BirFormDraft;
+use App\Models\BirFormSignature;
 use App\Services\BIR\Schemas\Form1601CSchema;
 use App\Services\BIR\Schemas\Form2316Schema;
 use Illuminate\Http\Request;
@@ -67,8 +68,10 @@ class BirFormRecordController extends Controller
 
     /**
      * Everything that happened to a form, newest first: created, submitted, returned, approved,
-     * filed, voided, and each change to its boxes (old and new value). Saves that only re-ran
-     * the checks (validation_errors) are left out.
+     * filed, voided, each change to its boxes (old and new value), each e-signature and the mark
+     * for a wet signature. Saves that only re-ran the checks (validation_errors) are left out.
+     * Sorted by when each thing really happened, [real time, audit row id]: signed_at is virtual
+     * time (SystemClock), so it can't be compared with the audit rows' times.
      */
     public function history(int $id)
     {
@@ -81,10 +84,12 @@ class BirFormRecordController extends Controller
         $entries = AuditLog::with('user')
             ->where('auditable_type', BirFormDraft::class)
             ->where('auditable_id', $draft->id)
-            ->orderByDesc('id')
             ->get()
-            ->map(fn (AuditLog $log) => $this->entry($log, $boxes))
-            ->filter()
+            ->map(fn (AuditLog $log) => [$this->entry($log, $boxes), [$log->created_at?->getTimestamp() ?? 0, $log->id]])
+            ->filter(fn (array $pair) => $pair[0] !== null)
+            ->concat($this->signatureEntries($draft))
+            ->sort(fn (array $a, array $b) => $b[1] <=> $a[1])
+            ->map(fn (array $pair) => $pair[0])
             ->values();
 
         return response()->json(['success' => true, 'data' => $entries, 'message' => "History of form {$draft->label()}"]);
@@ -113,6 +118,9 @@ class BirFormRecordController extends Controller
                 [$event, $text] = self::MOVES["{$from}>{$to}"] ?? ['status', "Status changed from {$from} to {$to}"];
                 $reason = $event === 'returned' ? ($new['rejection_reason'] ?? null) : null;
             }
+        } elseif (($new['signing_method'] ?? null) === BirFormDraft::SIGN_PAPER) {
+            // Becoming 'digital' falls through to null: the signature saved with it is the entry.
+            [$event, $text] = ['wet_signature', 'Marked to be signed by hand (wet signature)'];
         } elseif ($changes !== []) {
             $n = count($changes);
             [$event, $text] = ['edited', $n === 1 ? 'Changed 1 box' : "Changed {$n} boxes"];
@@ -129,6 +137,36 @@ class BirFormRecordController extends Controller
             'reason' => $reason,
             'changes' => $changes,
         ];
+    }
+
+    /**
+     * Each e-signature as an entry, paired with its sort key. Its id is the signature's own audit
+     * row (BirFormSignature is Auditable), so it sorts among the form's rows in the order things
+     * happened. Only the signer and the time go out: never the image path, IP, user agent or hash.
+     *
+     * @return list<array{0: array, 1: array{int, int}}>
+     */
+    private function signatureEntries(BirFormDraft $draft): array
+    {
+        $signatures = $draft->signatures()->with('user')->get();
+        $auditIds = AuditLog::where('auditable_type', BirFormSignature::class)
+            ->whereIn('auditable_id', $signatures->modelKeys())
+            ->where('event', 'like', 'created%')
+            ->pluck('id', 'auditable_id');
+
+        return $signatures->map(function (BirFormSignature $signature) use ($auditIds) {
+            $id = $auditIds[$signature->id] ?? null;
+
+            return [[
+                'id' => $id,
+                'at' => $signature->signed_at?->toIso8601String(),
+                'by' => $signature->user ? ['id' => $signature->user->id, 'name' => $signature->user->name] : null,
+                'event' => 'signed',
+                'text' => $signature->role === BirFormSignature::EMPLOYER ? 'Signed by the employer' : 'Signed by the employee',
+                'reason' => null,
+                'changes' => [],
+            ], [$signature->created_at?->getTimestamp() ?? 0, $id ?? 0]];
+        })->all();
     }
 
     /** Boxes whose value differs between two versions of fields, in the form's printed order. */

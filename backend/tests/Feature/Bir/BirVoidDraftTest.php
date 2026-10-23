@@ -4,9 +4,14 @@ namespace Tests\Feature\Bir;
 
 use App\Models\AuditLog;
 use App\Models\BirFormDraft;
+use App\Models\BirFormSignature;
+use App\Models\Employee;
 use App\Models\SystemSettings;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\EnablesBirForms;
 use Tests\TestCase;
@@ -15,7 +20,8 @@ use Tests\TestCase;
  * POST /bir/drafts/{id}/void: a form in draft status (a returned one too) is voided with a reason
  * and kept, never deleted; any other status is 400. A voided form stays on the list and opens
  * read-only, no longer blocks creating its period again, and a voided correction still counts
- * toward the amendments. GET /bir/drafts/{id}/history reads the form's audit log back.
+ * toward the amendments. GET /bir/drafts/{id}/history reads the form's audit log back, with its
+ * e-signatures and the mark for a wet signature.
  */
 class BirVoidDraftTest extends TestCase
 {
@@ -204,6 +210,98 @@ class BirVoidDraftTest extends TestCase
         $this->assertSame('Changed 1 box', $history[2]['text']);
         $this->assertSame(['key' => 'sheets_attached', 'item' => '4', 'label' => 'Number of Sheet/s Attached', 'type' => 'integer', 'from' => null, 'to' => 2], $history[2]['changes'][0]);
         $this->assertSame('Form created from payroll data', $history[3]['text']);
+    }
+
+    public function test_a_signed_2316_shows_both_signatures_newest_first(): void
+    {
+        $accounting = $this->accounting();
+        [$employee, $id] = $this->signedByBoth();
+
+        $history = $this->actingAs($accounting)->getJson("/api/bir/drafts/{$id}/history")->assertOk()->json('data');
+
+        // No entry of its own for signing_method becoming 'digital' with the employer's signature.
+        $this->assertSame(['signed', 'signed', 'created'], array_column($history, 'event'));
+        $this->assertSame('Signed by the employee', $history[0]['text']);
+        $this->assertSame(['id' => $employee->id, 'name' => $employee->name], $history[0]['by']);
+        $this->assertSame('Signed by the employer', $history[1]['text']);
+        $this->assertSame(['id' => $accounting->id, 'name' => $accounting->name], $history[1]['by']);
+
+        $signed = BirFormSignature::where('bir_form_draft_id', $id)->firstWhere('role', 'employer');
+        $this->assertSame($signed->signed_at->toIso8601String(), $history[1]['at']);
+    }
+
+    public function test_a_form_marked_for_a_wet_signature_shows_that(): void
+    {
+        $accounting = $this->accounting();
+        [, $id] = $this->finalized2316();
+
+        $this->actingAs($accounting)->postJson("/api/bir/drafts/{$id}/wet-signature")->assertOk();
+        $history = $this->actingAs($accounting)->getJson("/api/bir/drafts/{$id}/history")->assertOk()->json('data');
+
+        $this->assertSame(['wet_signature', 'created'], array_column($history, 'event'));
+        $this->assertSame('Marked to be signed by hand (wet signature)', $history[0]['text']);
+        $this->assertSame($accounting->id, $history[0]['by']['id']);
+    }
+
+    public function test_the_history_never_shows_a_signatures_image_ip_user_agent_or_hash(): void
+    {
+        [, $id] = $this->signedByBoth();
+
+        $json = $this->actingAs($this->accounting())->getJson("/api/bir/drafts/{$id}/history")->assertOk()->getContent();
+
+        foreach (BirFormSignature::where('bir_form_draft_id', $id)->get() as $signature) {
+            foreach (['image_path', 'ip', 'user_agent', 'fields_hash'] as $private) {
+                $this->assertStringNotContainsString("\"{$private}\"", $json);
+                $this->assertNotEmpty($signature->{$private});
+                $this->assertStringNotContainsString(trim(json_encode($signature->{$private}), '"'), $json);
+            }
+        }
+    }
+
+    /**
+     * A finalized 2316 signed by the employer (accounting), then by its employee, each with a
+     * generated blank image and a user agent of their own.
+     *
+     * @return array{0: User, 1: int} the employee's login and the form's id
+     */
+    private function signedByBoth(): array
+    {
+        Storage::fake('local');
+        Mail::fake();
+        [$employee, $id] = $this->finalized2316();
+        $this->saveSignature($this->accounting());
+        $this->saveSignature($employee);
+
+        $this->actingAs($this->accounting())->withHeaders(['User-Agent' => 'EmployerBrowser/1.0'])
+            ->postJson("/api/bir/drafts/{$id}/sign")->assertOk();
+        $this->actingAs($employee)->withHeaders(['User-Agent' => 'EmployeeBrowser/2.0'])
+            ->postJson("/api/my/bir-forms/{$id}/sign")->assertOk();
+
+        return [$employee, $id];
+    }
+
+    /** @return array{0: User, 1: int} the employee's login and their finalized 2316 */
+    private function finalized2316(): array
+    {
+        $user = User::factory()->create(['role' => 'employee']);
+        $employee = Employee::create([
+            'user_id' => $user->id, 'employee_id' => 'EMP-HIST-1', 'first_name' => 'Sign', 'last_name' => 'Tester',
+            'email' => 'hist-1@example.com', 'position' => 'Staff', 'hire_date' => '2024-01-15',
+            'salary' => 30000, 'status' => 'active', 'rate_type' => 'monthly',
+        ]);
+        $id = BirFormDraft::create([
+            'form_type' => '2316', 'period' => '2026', 'employee_id' => $employee->id, 'status' => 'finalized',
+            'version' => 1, 'fields' => [], 'validation_errors' => [], 'prepared_by' => $this->accounting()->id,
+        ])->id;
+
+        return [$user, $id];
+    }
+
+    private function saveSignature(User $user): void
+    {
+        $this->actingAs($user)
+            ->post('/api/me/signature', ['signature' => UploadedFile::fake()->image('sig.png', 600, 200)], ['Accept' => 'application/json'])
+            ->assertSuccessful();
     }
 
     /** A real 1601-C made through POST /bir/drafts, then moved straight to a status for the test. */
