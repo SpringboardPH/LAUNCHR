@@ -181,6 +181,21 @@ class BirChatDataQuestionMoreTest extends TestCase
         $this->assertStringStartsWith("On Teresa Taxable's 2316 for 2025", $this->next('2025')->json('data.reply'));
     }
 
+    public function test_whose_tin_names_the_employee_not_a_box(): void
+    {
+        // Teresa has a 2316, whose TIN boxes (items 3, 12, 16) once made "whose TIN" ask which box.
+        $teresa = Employee::where('employee_id', 'EMP001')->value('id');
+        $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2025', 'employee_id' => $teresa])->assertCreated();
+        $this->send('who has TIN 301-111-222-00000')->assertJsonPath('data.reply', 'TIN 301-111-222-00000 belongs to Teresa Taxable (EMP001).');
+        $this->send('whose TIN is 301111222')->assertJsonPath('data.reply', 'TIN 301111222 belongs to Teresa Taxable (EMP001).');
+        $this->send('which employee has the tin 302-222-333-00000?')->assertJsonPath('data.reply', 'TIN 302-222-333-00000 belongs to Noel Nontaxable (EMP002).');
+        $this->send('kanino ang TIN na 302 222 333')->assertJsonPath('data.reply', 'TIN 302 222 333 belongs to Noel Nontaxable (EMP002).');
+        $this->send('who has TIN 555-555-555-000')->assertJsonPath('data.reply', 'No employee has the TIN 555-555-555-000. Please check the number.');
+        $this->assertSame([], $this->model->calls(), 'answered without the model');
+        // Asking for her TIN's box is still a box of her 2316.
+        $this->assertStringContainsString('"Item 3, TIN" is 301-111-222-00000', $this->send("what's item 3 on Teresa's 2316")->json('data.reply'));
+    }
+
     // ---- helpers
 
     /** A message the model labels a data_question with these parts. */

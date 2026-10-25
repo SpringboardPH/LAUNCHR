@@ -30,6 +30,9 @@ class BirChatLookup
 
     private const SOURCE_WORDS = '/\b(where|saan|galing|come from|came from|why|bakit|source|who (?:changed|edited|typed|entered|put)|sino (?:ang )?(?:nagpalit|nagbago|nag-?edit|naglagay))\b/i';
 
+    /** Asking whose a TIN is: "who has", "whose", "which employee", "belongs to", "kanino", "sino". */
+    private const WHO_OWNS = '/\b(?:who|whose|whom|which\s+(?:employee|person|staff|one)|belongs?\s+to|owner|kanino|kay\s+sino|sino)\b/i';
+
     /** A question about what a box means, or a request for a new form: never read as a lookup by name. */
     private const NOT_A_LOOKUP = '/\b(mean|means|meaning|ibig sabihin|explain|paliwanag|make|generate|prepare|create|gawa|gumawa|needs?|needed|kailangan|employee\s*(?:id|number|no\.?|code)|emp\.?\s*id|(?:don\'?t|doesn\'?t|do not|does not)\s+have|without|missing|wala\s+pa|kulang|not\s+yet|hindi\s+pa|(?:which|what|alin)\s+(?:months|forms|employees|ones)|tax\s+group|group|category|kategorya|classification|average|avg|mean|median|combined|monthly|per\s+month|how\s+many|ilan|count|number\s+of)\b/i';
 
@@ -108,6 +111,9 @@ class BirChatLookup
      */
     public function lookup(string $message, ?string $item, ?BirFormDraft $current, BirConversationState $state): ?array
     {
+        if (($owner = $this->tinOwner($message, $item)) !== null) {
+            return $owner;
+        }
         $ref = $this->finder->reference($message);
         $wantsValue = preg_match(self::VALUE_WORDS, $message) === 1;
         // "Hazel's and Gino's TIN" names two people, not one form: a question about the records (BirDataCompare).
@@ -236,6 +242,28 @@ class BirChatLookup
         }
 
         return BirChatCommands::result($reply, null, null, stay: true);
+    }
+
+    /**
+     * "who has TIN 301-111-222-00000?", "whose TIN is 301111222?", "kanino ang TIN na …": the
+     * employee whose record holds that TIN, by name and ID only. Null when the message gives no
+     * TIN, doesn't ask who, or asks about a form's box ("who changed the TIN on form #1").
+     */
+    private function tinOwner(string $message, ?string $item): ?array
+    {
+        // Nine digits alone count as a TIN only right after the word ("whose TIN is 301111222").
+        if ($item !== null || !(preg_match(BirEmployeeResolver::TIN_PATTERN, $message, $tin) || preg_match('/\btin\b\D{0,12}?(?<![\d-])\K\d{9}(?![\d-])/i', $message, $tin))
+            || !preg_match(self::WHO_OWNS, $message) || preg_match(self::SOURCE_WORDS, $message) || preg_match('/#\s*\d|\bform\s*\d/i', $message)) {
+            return null;
+        }
+        $found = $this->employees->byTin($tin[0]);
+
+        return BirChatCommands::result(match ($found['status']) {
+            BirEmployeeResolver::MATCHED => "TIN {$tin[0]} belongs to " . BirDataAnswers::name($found['employee']) . '.',
+            BirEmployeeResolver::AMBIGUOUS => "More than one employee has TIN {$tin[0]}:\n"
+                . collect($found['candidates'])->map(fn (array $c) => "- {$c['name']} ({$c['employee_id']})")->implode("\n"),
+            default => "No employee has the TIN {$tin[0]}. Please check the number.",
+        }, stay: true);
     }
 
     /** True when the message asks to open a form, by its number or its details. */
