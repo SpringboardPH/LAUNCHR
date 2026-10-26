@@ -82,7 +82,7 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
   return (
     <div className="grid gap-5 mb-5 lg:grid-cols-5" aria-label="To do">
       {/* Pending: same width as the form preview below */}
-      <section className="card lg:col-span-3 self-start">
+      <section className="card lg:col-span-3 self-start" data-guide="pending">
         <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
           <CalendarClock size={15} className="text-brand-600" /> Pending
         </h2>
@@ -115,7 +115,7 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
       </section>
 
       {/* Needs your attention: same width as the saved forms below */}
-      <section className="card lg:col-span-2 self-start">
+      <section className="card lg:col-span-2 self-start" data-guide="attention">
         <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
           <ClipboardCheck size={15} className="text-brand-600" /> Needs your attention
         </h2>

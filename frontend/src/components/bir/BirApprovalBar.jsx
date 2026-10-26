@@ -144,7 +144,7 @@ export default function BirApprovalBar({ draft, onOpenDraft, onVoided, edits = [
   ].filter(Boolean).join(' · ')
 
   return (
-    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 space-y-2">
+    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 space-y-2" data-guide="actions">
       <p className="flex gap-2 text-xs text-gray-600">
         {['finalized', 'void'].includes(draft.status)
           ? <Lock size={13} className="mt-0.5 shrink-0 text-gray-400" />

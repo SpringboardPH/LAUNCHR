@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle, X } from 'lucide-react'
+import { Send, Bot, User, AlertTriangle, FileCheck2, RotateCcw, HelpCircle, X, Maximize2, Minimize2 } from 'lucide-react'
 import clsx from 'clsx'
 import {
   birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees, reviseBirDraft, submitBirDraft,
@@ -233,7 +233,7 @@ function TypingIndicator() {
  * here through the same endpoints as the buttons, and the chat's reply is shown once it
  * has gone through.
  */
-export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId = null, openKey = 0, onClose, className, voidedDraftId = null }) {
+export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId = null, openKey = 0, onClose, className, voidedDraftId = null, fullscreen = false, onToggleFullscreen }) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const { data: employees } = useQuery({ queryKey: birKeys.employees, queryFn: getBirEmployees, staleTime: 5 * 60_000 })
@@ -465,6 +465,12 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
           <button onClick={reset} disabled={busy || messages.length === 1} className="btn-ghost text-xs py-1">
             <RotateCcw size={12} /> New conversation
           </button>
+          {onToggleFullscreen && (
+            <button onClick={onToggleFullscreen} className="btn-ghost p-1" data-guide="chat-fullscreen"
+              aria-label={fullscreen ? 'Exit full screen' : 'Full screen'} title={fullscreen ? 'Exit full screen (Esc)' : 'Full screen'}>
+              {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          )}
           {onClose && (
             <button onClick={onClose} className="btn-ghost p-1" aria-label="Close the form assistant" title="Close">
               <X size={16} />

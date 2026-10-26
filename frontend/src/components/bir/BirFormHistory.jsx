@@ -43,7 +43,7 @@ export default function BirFormHistory({ draft }) {
   useEffect(() => { if (open) refetch() }, [draft.status, draft.fields]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="border-b border-gray-100">
+    <div className="border-b border-gray-100" data-guide="history">
       <button
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}

@@ -307,7 +307,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter boxes by source">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" data-guide="sources" aria-label="Filter boxes by source">
           <span className="text-[11px] text-gray-400 mr-0.5">Source:</span>
           {[['all', 'All', rows.length], ...Object.entries(KINDS).filter(([k]) => counts[k]).map(([k, v]) => [k, v.label, counts[k]])].map(([key, label, n]) => (
             <button
@@ -357,7 +357,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
 
       {/* Legend: one color per part of the printed form; click a part to jump to it. */}
       {parts.length > 0 && (
-        <div className="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-1.5" role="group" aria-label="Parts of the form">
+        <div className="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-1.5" role="group" data-guide="parts" aria-label="Parts of the form">
           <span className="text-[11px] text-gray-400 mr-0.5">Form parts:</span>
           {parts.map(part => (
             <button key={part.key} onClick={() => goToPart(part.key)} title={`Go to ${part.name}`}
@@ -369,7 +369,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
         </div>
       )}
 
-      <ul className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
+      <ul data-guide="boxes" className="divide-y divide-gray-100 max-h-[calc(100vh-220px)] min-h-[520px] overflow-y-auto">
         {visible.map(({ field, entry }, i) => {
           const part = partOfKey[field.key]
           const starts = part && part.key !== partOfKey[visible[i - 1]?.field.key]?.key

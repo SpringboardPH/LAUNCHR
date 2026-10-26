@@ -105,6 +105,14 @@ export default function BirFormsPage() {
   const [tab, setTab] = useState('forms')
   // The assistant opens like a Messenger chat; it stays mounted while closed so the conversation is kept.
   const [chatOpen, setChatOpen] = useState(false)
+  // The assistant can fill the screen (the accountant's request); Esc brings it back.
+  const [chatFull, setChatFull] = useState(false)
+  useEffect(() => {
+    if (!chatFull) return
+    const onKey = (e) => { if (e.key === 'Escape') setChatFull(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [chatFull])
   const [unread, setUnread] = useState(false)
   const [turnedOff, setTurnedOff] = useState(false)
   const { user } = useAuth()
@@ -191,7 +199,7 @@ export default function BirFormsPage() {
         title="Compliance"
         action={(
           <div className="flex items-center gap-2">
-            <button onClick={() => setGuideOpen(true)} className="btn-secondary text-xs" title="How to prepare, check, file and sign BIR forms">
+            <button onClick={() => setGuideOpen(true)} data-guide="guide" className="btn-secondary text-xs" title="How to prepare, check, file and sign BIR forms">
               <BookOpen size={13} /> Guide
             </button>
             {BIR_USE_MOCKS && (
@@ -206,7 +214,7 @@ export default function BirFormsPage() {
       <BirTodoPanel onOpen={onDraft} onShowEmployees={() => setTab('employees')} />
 
       <div className="grid gap-5 lg:grid-cols-5">
-        <section className="card overflow-hidden lg:col-span-3 self-start">
+        <section className="card overflow-hidden lg:col-span-3 self-start" data-guide="preview">
           <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
             <FileText size={15} className="text-brand-600" /> Form preview
             {draftId && (
@@ -220,7 +228,7 @@ export default function BirFormsPage() {
         </section>
 
         <div className="lg:col-span-2 space-y-5">
-          <section className="card overflow-hidden">
+          <section className="card overflow-hidden" data-guide="saved">
             <div className="flex border-b border-gray-100" role="tablist">
               {[['forms', FolderOpen, 'Saved forms'], ['employees', Users, 'Employees']].map(([key, Icon, label]) => (
                 <button
@@ -240,7 +248,7 @@ export default function BirFormsPage() {
               : <BirEmployeesView activeId={draftId} onOpen={onDraft} />}
           </section>
 
-          <section className="card">
+          <section className="card" data-guide="picker">
             <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
               <ListChecks size={15} className="text-brand-600" /> Pick a form manually
             </h2>
@@ -253,8 +261,10 @@ export default function BirFormsPage() {
       <div className="fixed bottom-24 right-5 z-40 flex flex-col items-end gap-3">
         <div className={chatOpen ? 'block' : 'hidden'}>
           <BirChatPanel
-            className="w-[min(400px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-12rem))] shadow-2xl"
-            onClose={toggleChat}
+            className={chatFull ? 'fixed inset-4 z-50 shadow-2xl' : 'w-[min(400px,calc(100vw-2.5rem))] h-[min(600px,calc(100vh-12rem))] shadow-2xl'}
+            fullscreen={chatFull}
+            onToggleFullscreen={() => setChatFull(f => !f)}
+            onClose={() => { setChatFull(false); toggleChat() }}
             onDraftCreated={onDraft}
             onQuestion={onQuestion}
             openDraftId={draftId}
@@ -263,7 +273,8 @@ export default function BirFormsPage() {
           />
         </div>
         <button
-          onClick={toggleChat}
+          onClick={() => { setChatFull(false); toggleChat() }}
+          data-guide="chat"
           className="relative w-12 h-12 rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700 flex items-center justify-center transition-colors"
           aria-label={chatOpen ? 'Close the form assistant' : 'Open the form assistant'}
           aria-expanded={chatOpen}
