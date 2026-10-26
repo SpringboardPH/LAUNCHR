@@ -1,6 +1,6 @@
 import {
   FileText, CalendarClock, ClipboardCheck, MessageCircle, ListChecks, FolderOpen, LayoutList, Palette, PencilLine,
-  CheckCircle2, Signature, History, BookOpen,
+  CheckCircle2, Signature, History, BookOpen, ListTodo,
 } from 'lucide-react'
 import { fmt } from '../OnboardingTutorial'
 import BirGuideTour from './BirGuideTour'
@@ -34,6 +34,11 @@ export const BIR_GUIDE_STEPS = [
     icon: ClipboardCheck, target: 'attention',
     title: 'Needs your attention',
     body: 'Forms waiting for you: to review, returned to you, approved but not marked as filed, or not signed yet. Each shows its deadline; click one to open it.',
+  },
+  {
+    icon: ListTodo, target: 'checklist',
+    title: 'Checklist',
+    body: 'The steps left to file the open form. Most tick themselves as the form moves along; tick the PDF check (and, on a 2316, the copy given to the employee) yourself.',
   },
   {
     icon: MessageCircle, target: 'chat',

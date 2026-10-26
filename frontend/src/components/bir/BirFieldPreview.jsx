@@ -5,8 +5,8 @@ import clsx from 'clsx'
 import { birKeys, getBirConfig, getBirDraft, updateBirDraft, validateBirDraft } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
 import { EmptyState, StatusBadge } from '../ui/index.jsx'
-import { describePeriod, formName } from './BirChatPanel'
-import { formLabel, versionLabel } from './BirDraftList'
+import { formName } from './BirChatPanel'
+import { formLabel, versionLabel, periodName } from './BirDraftList'
 import FieldRow, { KINDS, kindOf, partsOf, partsByKey, isNumeric, isCompared, TOLERANCE } from './BirDraftEditor'
 import BirApprovalBar, { REVIEWED } from './BirApprovalBar'
 import BirFormEmployees from './BirFormEmployees'
@@ -254,7 +254,7 @@ export default function BirFieldPreview({ draftId, askingField = null, onOpenDra
             <p className="text-sm font-semibold text-brand-600">{draft.form_type}</p>
             <p className="text-base font-semibold text-gray-900 leading-snug">{formName(draft.form_type)}</p>
             <p className="text-sm text-gray-600">
-              {draft.form_type === '2316' ? `Taxable year ${draft.period}` : describePeriod(draft.form_type, draft.period)}
+              {draft.form_type === '2316' ? `Taxable year ${draft.period}` : periodName(draft.form_type, draft.period)}
             </p>
           </div>
           <StatusBadge status={draft.status} />

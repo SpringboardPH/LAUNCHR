@@ -211,7 +211,7 @@ export default function BirFormsPage() {
         )}
       />
       <BirAccountantGuide open={guideOpen} onDismiss={closeGuide} />
-      <BirTodoPanel onOpen={onDraft} onShowEmployees={() => setTab('employees')} />
+      <BirTodoPanel onOpen={onDraft} onShowEmployees={() => setTab('employees')} draftId={draftId} />
 
       <div className="grid gap-5 lg:grid-cols-5">
         <section className="card overflow-hidden lg:col-span-3 self-start" data-guide="preview">

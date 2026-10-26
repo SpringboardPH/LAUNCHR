@@ -7,6 +7,7 @@ import { birKeys, getAllBirDrafts, getBirEmployees, createBirDraft, systemClockK
 import { useAuth } from '../../store/AuthContext'
 import { periodName } from './BirDraftList'
 import { dueItems, attentionGroups, whenDue, stateOf, windowOf } from './birTodo'
+import BirFormChecklist from './BirFormChecklist'
 
 const SHOWN = 4
 const TONE = {
@@ -21,12 +22,12 @@ const TONE = {
  * returned to them, not filed, not signed). Worked out from the forms list, on the system's
  * date (the virtual clock), so it follows a moved date.
  */
-// A form's deadline on its row: red when overdue, amber in its filing window; grey once filed.
+// A form's deadline on its row, in red (the accountant's request); grey once the form is filed.
 function Deadline({ form, today }) {
   const window = windowOf(form)
   if (!window) return <span className="ml-auto" />
   const filed = form.status === 'finalized'
-  const tone = filed ? 'text-gray-400' : TONE[stateOf(window, today)].text
+  const tone = filed ? 'text-gray-400' : 'text-red-600'
   return (
     <span className={clsx('ml-auto shrink-0 text-[11px] font-medium', tone)} title={filed ? 'Deadline (already filed)' : whenDue(window, today)}>
       Due {format(window.due, 'MMM d, yyyy')}
@@ -34,7 +35,7 @@ function Deadline({ form, today }) {
   )
 }
 
-export default function BirTodoPanel({ onOpen, onShowEmployees }) {
+export default function BirTodoPanel({ onOpen, onShowEmployees, draftId }) {
   const qc = useQueryClient()
   const { user } = useAuth()
   const [showAll, setShowAll] = useState({})
@@ -82,7 +83,7 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
   return (
     <div className="grid gap-5 mb-5 lg:grid-cols-5" aria-label="To do">
       {/* Pending: same width as the form preview below */}
-      <section className="card lg:col-span-3 self-start" data-guide="pending">
+      <section className="card lg:col-span-3" data-guide="pending">
         <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
           <CalendarClock size={15} className="text-brand-600" /> Pending
         </h2>
@@ -115,11 +116,15 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
       </section>
 
       {/* Needs your attention: same width as the saved forms below */}
-      <section className="card lg:col-span-2 self-start" data-guide="attention">
-        <h2 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
+      {/* On wide screens the Pending card sets the row's height and this column fits into it
+          (the checklist scrolls); stacked on small screens, it takes its own height. */}
+      <div className="lg:col-span-2 lg:relative lg:min-h-[22rem]">
+      <div className="flex flex-col gap-5 lg:absolute lg:inset-0">
+      <section className="card flex shrink-0 flex-col lg:max-h-[55%]" data-guide="attention">
+        <h2 className="shrink-0 px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-900 flex items-center gap-2">
           <ClipboardCheck size={15} className="text-brand-600" /> Needs your attention
         </h2>
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3 min-h-0 overflow-y-auto">
           {groups.length === 0 && (
             <p className="flex items-center gap-1.5 text-xs text-green-700"><CheckCircle2 size={13} /> You're all caught up.</p>
           )}
@@ -146,6 +151,9 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
           ))}
         </div>
       </section>
+      <BirFormChecklist draftId={draftId} />
+      </div>
+      </div>
     </div>
   )
 }
