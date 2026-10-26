@@ -156,9 +156,13 @@ class BirEmployeeResolver
         $words = preg_split('/[^\p{L}]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
         $lower = array_map('mb_strtolower', $words);
 
-        return Employee::query()->get(['id', 'employee_id', 'first_name', 'last_name'])
-            ->filter(fn (Employee $e) => in_array(mb_strtolower(trim((string) $e->first_name)), $lower, true) || in_array(trim((string) $e->last_name), $words, true))
-            ->values();
+        $first = fn (Employee $e) => in_array(mb_strtolower(trim((string) $e->first_name)), $lower, true);
+        $last = fn (Employee $e) => in_array(trim((string) $e->last_name), $words, true);
+        $hits = Employee::query()->get(['id', 'employee_id', 'first_name', 'last_name'])->filter(fn (Employee $e) => $first($e) || $last($e));
+        // "Noel Tan": the "Tan" is Noel's, so Gabriel Tan isn't named too.
+        $claimed = $hits->filter(fn (Employee $e) => $first($e) && $last($e))->map(fn (Employee $e) => trim((string) $e->last_name))->all();
+
+        return $hits->reject(fn (Employee $e) => !$first($e) && in_array(trim((string) $e->last_name), $claimed, true))->values();
     }
 
     /**
@@ -236,7 +240,8 @@ class BirEmployeeResolver
     public function capitalisedName(string $text): array
     {
         preg_match_all('/\b\p{Lu}[\p{L}.-]+/u', preg_replace("/['’]s\b/u", '', $text), $m);
-        $words = array_diff(array_map(fn (string $w) => $this->normalize($w), $m[0]), self::NOT_NAMES);
+        // A month is never a name here: "March" is not a slip of "Marco".
+        $words = array_diff(array_map(fn (string $w) => $this->normalize($w), $m[0]), self::NOT_NAMES, array_keys(BirFormFinder::MONTHS));
         $is = fn (string $name) => count($parts = explode(' ', $this->normalize($name))) === 1 && in_array($parts[0], $words, true);
 
         // Last, a capitalised word one slip from a name: "how much was Teressa paid".

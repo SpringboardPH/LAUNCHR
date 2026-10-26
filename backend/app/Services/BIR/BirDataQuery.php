@@ -175,7 +175,8 @@ final class BirDataQuery
             $picked = $picked->filter(fn (array $r) => $key($r) === $key($picked[0]))->values();
         }
         $fixed = array_column(array_filter($filters, fn (array $f) => $f['op'] === 'eq' && !in_array($f['field'], BirDataIntent::NUMBERS, true) && !in_array($f['field'], [...$q['show'], $sortBy], true)), 'field');
-        $columns = array_values(array_unique(array_diff([...$q['show'], ...array_column($filters, 'field'), ...array_filter([$sortBy])], ['name', ...$fixed])));
+        // Details named ("everyone in Finance with their email"): those, and the sort; else what the conditions are about.
+        $columns = array_values(array_unique(array_diff($q['show'] !== [] ? [...$q['show'], ...array_filter([$sortBy])] : [...array_column($filters, 'field'), ...array_filter([$sortBy])], ['name', ...$fixed])));
         // Nothing to show beyond who they are ("employees in Finance"): their names alone.
         $columns = $columns !== [] ? $columns : ($pay ? ['compensation', 'tax_withheld'] : []);
         $desc = ($q['order'] ?? (in_array($sortBy, BirDataIntent::NUMBERS, true) ? 'desc' : 'asc')) === 'desc';
@@ -315,7 +316,7 @@ final class BirDataQuery
             'person' => $e, 'id' => $e->id, 'name' => trim("{$e->first_name} {$e->last_name}"),
             'salary' => $e->salary !== null ? (float) $e->salary : null, 'rate_type' => $blank($e->rate_type),
             'hire_date' => $e->hire_date, 'position' => $blank($e->position), 'department' => $blank($e->department),
-            'status' => $blank($e->status), 'tin' => $blank($e->tin_number),
+            'status' => $blank($e->status), 'tin' => $blank($e->tin_number), 'email' => $blank($e->email), 'phone' => $blank($e->phone),
             'category' => $row['category'] ?? null, 'group' => $row['category'] ?? null,
             'compensation' => $row['compensation'] ?? null, 'tax_withheld' => $row['tax_withheld'] ?? null,
             'taxable_compensation' => $row['taxable'] ?? null,

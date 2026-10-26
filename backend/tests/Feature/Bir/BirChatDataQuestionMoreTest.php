@@ -229,6 +229,45 @@ class BirChatDataQuestionMoreTest extends TestCase
         $this->assertContains('- Extra20 Person (EMP020): TIN 400-000-020-00000, salary on file ₱20,000.00 a month', $lines($pay));
     }
 
+    public function test_amounts_contacts_and_groups_for_everyone_and_full_names(): void
+    {
+        $lines = fn (TestResponse $r) => array_values(preg_grep('/^- /', explode("\n", $r->json('data.reply'))));
+        // Each one's amount, unless a total is asked for.
+        $paid = ['topic' => 'amounts', 'amount' => 'compensation', 'measure' => 'total', 'tax_year' => 2025];
+        $each = $this->asks('compensation of all employees in 2025', $paid);
+        $this->assertCount(3, $lines($each));
+        $this->assertContains('- Teresa Taxable (EMP001): compensation ₱120,000.00', $lines($each));
+        $this->assertStringStartsWith('Total compensation in 2025', $this->asks('total compensation of all employees in 2025', $paid)->json('data.reply'));
+        $this->assertCount(3, $lines($this->asks('how much tax was withheld from each employee in 2025', ['amount' => 'tax_withheld'] + $paid)));
+
+        // Several details at once, "show" with no form to open, and "13 months".
+        foreach (["show everyone's 13th month pay, TIN and salary for 2025", 'list the employees with their 13 months, TIN and salary in 2025'] as $message) {
+            $three = $lines($this->asks($message, ['topic' => 'employees', 'measure' => 'list', 'tax_year' => 2025]));
+            $this->assertCount(3, $three);
+            $this->assertMatchesRegularExpression('/^- Teresa Taxable \(EMP001\): 13th month and other benefits ₱[\d,.]+, TIN 301-111-222-00000, salary on file ₱60,000\.00 a month$/u', $three[array_key_first(preg_grep('/Teresa/', $three))]);
+        }
+
+        // The tax group as a detail; and "taxable compensation" is an amount, never the group.
+        $this->assertContains('- Teresa Taxable (EMP001): TIN 301-111-222-00000, group taxable', $lines($this->asks('TIN and tax group of each employee in september 2025', ['topic' => 'employees', 'measure' => 'list', 'tax_year' => 2025, 'tax_month' => 9])));
+        $pay = $lines($this->asks('compensation, taxable compensation and non-taxable compensation of each employee in september 2025', ['topic' => 'unsupported', 'measure' => 'list', 'tax_year' => 2025, 'tax_month' => 9]));
+        $this->assertCount(3, $pay);
+        $this->assertMatchesRegularExpression('/^- Teresa Taxable \(EMP001\): compensation ₱[\d,.]+, taxable compensation ₱[\d,.]+, non-taxable compensation ₱[\d,.]+$/u', $pay[array_key_first(preg_grep('/Teresa/', $pay))]);
+
+        // Contacts; and a group with a detail asked: the detail, not the group's pay.
+        $this->assertContains('- Teresa Taxable (EMP001): email teresa.taxable@example.com', $lines($this->asks('email of all employees', ['topic' => 'employees', 'measure' => 'list'])));
+        $tins = $this->asks('tin of all the taxable employees in september 2025', ['topic' => 'employees', 'group' => 'taxable', 'measure' => 'list', 'tax_year' => 2025, 'tax_month' => 9]);
+        $this->assertSame(['- Teresa Taxable (EMP001): TIN 301-111-222-00000'], $lines($tins));
+        // A detail the model adds that the message has no word for is left out.
+        $top = $this->asks('top 2 earners in 2025', ['topic' => 'employees', 'sort_by' => 'compensation', 'order' => 'desc', 'limit' => 2, 'show' => ['salary'], 'tax_year' => 2025]);
+        $this->assertStringNotContainsString('salary', $top->json('data.reply'));
+
+        // A full name is one person: "Noel Nontaxable" isn't Gina Nontaxable too.
+        Employee::create(['employee_id' => 'EMP009', 'first_name' => 'Gina', 'last_name' => 'Nontaxable', 'email' => 'gina@example.com', 'position' => 'Staff',
+            'hire_date' => '2020-01-01', 'salary' => 10000, 'status' => 'active', 'rate_type' => 'monthly']);
+        $this->asks('how much did Noel Nontaxable earn in 2025', ['topic' => 'amounts', 'amount' => 'compensation', 'employee' => 'Noel Nontaxable', 'tax_year' => 2025])
+            ->assertJsonPath('data.reply', 'Compensation for Noel Nontaxable (EMP002) in 2025: ₱32,000.00.');
+    }
+
     // ---- helpers
 
     /** A message the model labels a data_question with these parts. */

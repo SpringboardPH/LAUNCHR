@@ -61,6 +61,7 @@ final class BirDataWords
     /** A word for a group of employees, or one typed with a slip ("taxbale", "minimun", "exmept"). */
     public static function namesAGroup(string $message): bool
     {
+        $message = preg_replace(self::GROUPLESS, ' ', $message);
         if (preg_match(self::GROUP_WORDS, $message)) {
             return true;
         }
@@ -161,10 +162,36 @@ final class BirDataWords
 
     /** Details a message asks to be shown: "everyone's position and hire date", "lahat ng TIN". */
     public const SHOWN = ['position' => '/position|job|title|trabaho/i', 'hire_date' => '/hire|hired|joined|start date/i', 'department' => '/department|dept/i',
-        'tin' => '/\btins?\b/i', 'salary' => '/salar|sahod|sweldo/i', 'status' => '/\bstatus\b|active/i', 'rate_type' => '/daily|monthly|pay basis/i'];
+        'tin' => '/\btins?\b/i', 'salary' => '/salar|sahod|sweldo/i', 'status' => '/\bstatus\b|active/i', 'rate_type' => '/daily|monthly|pay basis/i',
+        'group' => '/\btax\s+(?:groups?|status|categor(?:y|ies))\b|\bgroups?\b|\bcategor(?:y|ies)\b|\bclassification\b|\bkategorya\b/i', 'email' => '/e-?mails?\b/i', 'phone' => '/\bphones?\b|mobile|contact\s+numbers?|cellphone|cp\s+numbers?/i'];
+
+    /** What payroll paid, as details to list for everyone ("everyone's TIN and compensation in 2025"). */
+    public const PAID_SHOWN = ['compensation' => '/(?<!taxable )(?<!taxable-)\bcompensat|\bgross\s+pay|\bkinita\b/i', 'tax_withheld' => '/\btax(?:es)?\b(?!\s+(?:group|status|code|advice))|withholding|\bwithheld\b|\bbuwis\b/i',
+        'thirteenth_month' => '/13th|thirteenth|\b13\s*-?\s*months?\b|\bbonus/i', 'contributions' => '/contribut|\bsss\b|philhealth|pag-?ibig/i',
+        'taxable_compensation' => '/(?<!non-)(?<!non )\btaxable\s+(?:compensation|pay|income)/i', 'non_taxable_compensation' => '/\bnon-?\s?taxable\s+(?:compensation|pay|income)/i'];
+
+    /** "taxable compensation", "non-taxable pay": amounts, never the group. */
+    private const GROUPLESS = '/\b(?:non-?\s?)?taxable\s+(?:compensation|pay|income)\b/i';
+
+    /** A total asked for, not each one's: "total compensation of all employees", "how much did everyone earn". */
+    public const TOTAL = '/\b(?:total|sum|altogether|combined|together|kabuuan|how\s+much|magkano)\b/i';
+
+    /**
+     * The details a message names (SHOWN, and PAID_SHOWN for what payroll paid), in the order
+     * named: "TIN and hire date" is the TIN, then the hire date.
+     *
+     * @return list<string>
+     */
+    public static function detailsNamed(string $message): array
+    {
+        $at = array_filter(array_map(fn (string $words) => preg_match($words, $message, $m, PREG_OFFSET_CAPTURE) ? $m[0][1] : null, self::SHOWN + self::PAID_SHOWN), fn ($o) => $o !== null);
+        asort($at);
+
+        return array_keys($at);
+    }
 
     /** Asking about everyone: "show everyone's …", "list all …", "lahat ng …". */
-    public const EVERYONE = '/everyone|everybody|\ball\b|lahat|each|every\b|employees|staff|list\b|show\b/i';
+    public const EVERYONE = '/everyone|everybody|\ball\b|lahat|each|every\b|employees|staff|list\b|show\b|\b(?:tins|salaries|positions|departments|hire\s+dates|e-?mails|phone\s+numbers)\b/i';
 
     /** Counting by a detail: "which department has the most employees?", "how many per position". */
     public const PER_FIELD = ['department' => '/\b(?:which|what|anong|aling?)\s+(?:department|dept)|\b(?:per|by|each|every|bawat|kada)\s+(?:department|dept)/i',
@@ -318,7 +345,7 @@ final class BirDataWords
      */
     public static function groupsSaid(string $message): array
     {
-        $m = mb_strtolower($message);
+        $m = preg_replace(self::GROUPLESS, ' ', mb_strtolower($message)); // "taxable compensation" is an amount
 
         return array_values(array_filter([
             preg_match('/minimum|mwe|min\.?\s*wage/', $m) ? 'minimum_wage' : null,

@@ -80,6 +80,27 @@ class BirChatDueDateTest extends TestCase
         $this->assertSame([], $this->model->calls(), 'answered without the model');
     }
 
+    public function test_shifts_overdue_and_the_list_of_forms_by_due_date(): void
+    {
+        $form = "Form #{$this->id} (the September 2026 1601-C)";
+        // Moved from the date it has now, in days or weeks, said in figures or words.
+        $this->send("extend form #{$this->id} by 5 days")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 15, 2026"));
+        $this->send("give form #{$this->id} two more weeks")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 29, 2026"));
+        $this->send("move the deadline of form #{$this->id} to the 20th")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 20, 2026"));
+        $this->send("change the due date of form #{$this->id} to February 30, 2027")->assertJsonPath('data.reply', '"February 30, 2027" isn\'t a real date. Please check it.');
+        $this->send("is form #{$this->id} overdue?")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "No, not yet. {$form} is due on October 20, 2026"));
+
+        \Carbon\Carbon::setTestNow('2026-10-25 09:00:00');
+        $this->send("is form #{$this->id} late?")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "Yes. {$form} is due on October 20, 2026. That was 5 days ago"));
+        $this->send('which forms are overdue?')->assertJsonPath('data.reply', "1 form is overdue:\n- form #{$this->id}: the September 2026 1601-C, due October 20, 2026 (5 days ago), a draft");
+        $this->send("what's due this week?")->assertJsonPath('data.reply', "No form that isn't filed yet is due this week.");
+        $this->assertStringStartsWith('A 1601-C is due on the 10th', $this->send('when are the 2316s due?')->json('data.reply'));
+        $this->assertStringStartsWith('I change one form', $this->send('set the due date of all 1601-Cs to the 15th')->json('data.reply'));
+        $this->send("when should form #{$this->id} have been filed?")->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is due on October 20, 2026"));
+        $this->send('list of upcoming deadlines')->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, '1 form is not filed yet:'));
+        $this->assertSame([], $this->model->calls(), 'answered without the model');
+    }
+
     public function test_a_filed_form_keeps_its_due_date_and_the_rule_is_given_without_a_form(): void
     {
         BirFormDraft::find($this->id)->update(['status' => 'finalized']);

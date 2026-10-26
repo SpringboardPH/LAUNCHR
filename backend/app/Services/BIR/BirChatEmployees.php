@@ -27,7 +27,7 @@ class BirChatEmployees
     public const LIST = '/\b(employee list|list of (?:the )?employees|(?:list|show)(?: me)?(?: all)?(?: the)? employees|employees? (?:on|in|of|for|covered)\b|(?:which|what) employees|who(?: is|\'s| are)? (?:on|in|covered)|per employee|each employee|by employee|every employee|(?:everyone|everybody|all of them)\s+(?:on|in)\b|sino(?: ang)?(?: mga)? (?:empleyado|kasama)|(?:sino|sinu-sino|sino-sino)(?: ang| yung)?(?: mga)? nasa|mga empleyado)/i';
 
     /** Pointing at a form: "this", "on it". "list all employees" points at none and is a question about the records. */
-    private const THIS_FORM = '/\\b(?:this|that|ito|iyan|yan|nito|niyan)\\b|\\b(?:on|in|sa)\\s+(?:it|the form|the 2316|the certificate)\\b/i';
+    private const THIS_FORM = '/\\b(?:this|that|ito|iyan|yan|nito|niyan)\\b(?!\\s+(?:year|month|week|quarter|taon|buwan))|\\b(?:on|in|sa)\\s+(?:it|the form|the 2316|the certificate)\\b/i';
 
     /** A question about an amount, with or without a question mark. */
     private const HOW_MUCH = '/\\b(?:how much|magkano|ilan)\\b/i';

@@ -121,7 +121,7 @@ class BirChatCommands
         $result = match (true) {
             (bool) preg_match(self::UNDO, $message) && !BirChatDueDate::asks($message) => $this->undo->undo($item, $current, $state, $user),
             // "change the due date of form #4 to November 15, 2026": the form's deadline, never a box.
-            BirChatDueDate::asks($message) && ($due = $this->dueDate->handle($message, $current, $state)) !== null => $due,
+            BirChatDueDate::asks($message) => $this->dueDate->handle($message, $current, $state),
             BirAnswerParser::looksLikeChange($message) => $this->change($message, $current, $state, $user, $canAct),
             BirExplanationService::asksForTaxAdvice($message) => self::result(BirExplanationService::DECLINE, stay: true),
             BirChatSubmit::asksForWorkflow($message) => $this->submit->workflow($message, $current, $state),

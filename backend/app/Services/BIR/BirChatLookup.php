@@ -43,7 +43,7 @@ class BirChatLookup
     private const OPEN = '/^\s*(?:(?:please|pls|kindly|can you|could you)\s+)?(?:paki-?)?(?:open|show(?:\s+me)?|go\s+to|switch\s+to|bring\s+up|pull\s+up|buksan|ipakita|pakita|i-?open)\b/i';
 
     /** Showing something about a form rather than the form: its employees, versions, PDF. */
-    private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value|forms|drafts|list)\b/i';
+    private const NOT_OPEN = '/\b(employees?|empleyado|people|staff|who|sino|versions?|history|pdf|download|print|explain|mean|status|how|much|magkano|paid|sahod|tax|withheld|total|value|forms|drafts|list|everyone|everybody|each|all|lahat|tins?|salar\w*|13th|thirteenth|bonus|compensation|contributions?|e-?mails?|phones?|hire[ds]?|departments?|positions?)\b/i';
 
     public function __construct(
         private readonly BirFormFinder $finder,

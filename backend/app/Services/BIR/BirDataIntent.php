@@ -38,7 +38,7 @@ final class BirDataIntent
 
     /** What a condition, a sort or a shown detail can be about. salary is the rate on file; the rest of AMOUNTS are paid in the period. */
     public const FIELDS = ['salary', 'compensation', 'tax_withheld', 'taxable_compensation', 'non_taxable_compensation', 'contributions', 'thirteenth_month',
-        'hire_date', 'position', 'department', 'status', 'rate_type', 'group', 'tin', 'name'];
+        'hire_date', 'position', 'department', 'status', 'rate_type', 'group', 'tin', 'name', 'email', 'phone'];
 
     public const NUMBERS = ['salary', 'compensation', 'tax_withheld', 'taxable_compensation', 'non_taxable_compensation', 'contributions', 'thirteenth_month'];
 
@@ -193,6 +193,10 @@ final class BirDataIntent
         $rawFilters = array_filter(is_array($raw['filters'] ?? null) ? $raw['filters'] : [], fn ($f) => $question['groups'] === [] || ($f['field'] ?? null) !== 'group');
         if ($question['groups'] !== []) {
             [$question['group'], $question['dropped_group']] = [null, null];
+            // Two groups and no one named: a question about the employees, whatever the model called it.
+            if ($question['employee'] === null && in_array($question['topic'], ['unsupported', 'employee'], true)) {
+                [$question['topic'], $question['measure']] = ['employees', preg_match('/\bhow\s+many|\bilan\b|\bcount\b/i', $message) ? 'count' : $question['measure']];
+            }
         }
         // "is Gino taxable in 2026?": the group the message names, so the answer is a yes or a no.
         if ($question['topic'] === 'employee' && $question['group'] === null && $question['dropped_group'] === null && in_array($question['detail'], [null, 'group'], true)
@@ -215,7 +219,8 @@ final class BirDataIntent
         $question['order'] = $pick('order', ['asc', 'desc']);
         $limit = self::int($raw['limit'] ?? null);
         $question['limit'] = $limit !== null && $limit > 0 && $limit <= 50 && in_array((float) $limit, BirDataWords::numbersSaid($message), true) ? $limit : null;
-        $question['show'] = array_values(array_intersect(is_array($raw['show'] ?? null) ? $raw['show'] : [], self::FIELDS));
+        // Only details the message has words for: "top 2 earners" never lists the salary on file too.
+        $question['show'] = array_values(array_intersect(is_array($raw['show'] ?? null) ? $raw['show'] : [], self::FIELDS, BirDataWords::detailsNamed($message)));
         $question['nth'] = BirDataWords::nth($message);
         $question['per'] = $pick('per', ['month', 'department', 'position']) ?? (preg_match(BirDataWords::PER_MONTH, $message) ? 'month' : null)
             ?? collect(BirDataWords::PER_FIELD)->keys()->first(fn (string $f) => preg_match(BirDataWords::PER_FIELD[$f], $message) === 1);
@@ -275,15 +280,16 @@ final class BirDataIntent
         }
         // "TIN of all employees", "show everyone's position and hire date", "list all employees": for
         // everyone, only the details the message names (none: their names alone), whatever the model added.
-        $everyone = $question['employee'] === null && !$question['pronoun'] && preg_match(BirDataWords::EVERYONE, $message) === 1
-            && $question['filters'] === [] && $question['filter'] === null && $question['group'] === null && $question['groups'] === []
+        // "the employees with their TIN": "their" is everyone's, not one person's.
+        $everyone = $question['employee'] === null && (!$question['pronoun'] || !preg_match('/\b(?:she|he|her|him|his|siya|sya|niya|nya|kanya)\b/i', $message)) && preg_match(BirDataWords::EVERYONE, $message) === 1
+            && $question['filters'] === [] && $question['filter'] === null && $question['groups'] === []
             && $question['sort_by'] === null && $question['per'] === null && $question['limit'] === null && $question['nth'] === null;
-        $at = array_filter(array_map(fn (string $words) => preg_match($words, $message, $m, PREG_OFFSET_CAPTURE) ? $m[0][1] : null, BirDataWords::SHOWN), fn ($o) => $o !== null);
-        asort($at); // in the order asked: "TIN and hire date" is the TIN, then the hire date
-        $asked = array_keys($at);
-        if ($everyone && (in_array($question['topic'], ['unsupported', 'employee'], true) || ($question['topic'] === 'employees' && $question['measure'] === 'list')) && ($asked !== [] || $question['topic'] === 'employees')) {
-            [$question['topic'], $question['show'], $question['measure']] = ['employees', $asked, 'list'];
-            $question['amount'] = $question['amount'] === 'salary' && !in_array('salary', $asked, true) ? null : $question['amount'];
+        $asked = BirDataWords::detailsNamed($message);
+        // "compensation of all employees in 2025": each one's, unless a total is asked for.
+        $each = $asked !== [] && in_array($question['measure'], ['total', 'list'], true) && in_array($question['topic'], ['amounts', 'employees'], true) && (!preg_match(BirDataWords::TOTAL, $message) || preg_match('/\b(?:each|every|per\s+(?:employee|person)|bawat|kada)\b/i', $message));
+        if ($everyone && (in_array($question['topic'], ['unsupported', 'employee'], true) || ($question['topic'] === 'employees' && $question['measure'] === 'list') || $each)
+            && ($asked !== [] || ($question['topic'] === 'employees' && $question['group'] === null))) {
+            [$question['topic'], $question['show'], $question['measure'], $question['amount']] = ['employees', $asked, 'list', null];
         }
         $question['top'] = $question['sort_by'] !== null && $question['limit'] === null && $question['nth'] === null && preg_match(BirDataWords::ONE, $message) === 1
             && !preg_match(BirDataWords::SORTING, $message);
@@ -437,7 +443,8 @@ final class BirDataIntent
                 in_array($field, self::NUMBERS, true) && !is_numeric($value) => is_string($value) && trim($value) !== '' && BirMessageFacts::inMessage($value, $message), // "more than Noel"
                 in_array($field, self::NUMBERS, true) => in_array((float) $value, BirDataWords::numbersSaid($message), true),
                 $field === 'hire_date' && is_string($value) && !preg_match('/^\d/', $value) => BirMessageFacts::inMessage($value, $message), // "hired before Bea"
-                $field === 'hire_date' => is_string($value) && preg_match('/^((?:19|20)\d{2})(?:-\d{2}(?:-\d{2})?)?$/', $value, $y) === 1 && in_array((int) $y[1], BirMessageFacts::yearsSaid($message), true),
+                $field === 'hire_date' => is_string($value) && preg_match('/^((?:19|20)\d{2})(?:-\d{2}(?:-\d{2})?)?$/', $value, $y) === 1 && in_array((int) $y[1], [...BirMessageFacts::yearsSaid($message),
+                    ...(preg_match('/\bthis\s+year|ngayong\s+taon/i', $message) ? [SystemClock::now()->year] : []), ...(preg_match('/\blast\s+year|nakaraang\s+taon/i', $message) ? [SystemClock::now()->year - 1] : [])], true),
                 $field === 'group' => in_array($value, self::GROUPS, true) && BirDataWords::namesAGroup($message),
                 $field === 'status' => in_array($value, ['active', 'inactive'], true),
                 $field === 'rate_type' => in_array($value, ['monthly', 'daily'], true) && preg_match('/month|daily|day|araw|buwan/i', $message) === 1,

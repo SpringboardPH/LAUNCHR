@@ -16,7 +16,7 @@ final class BirDataConditions
         'taxable_compensation' => 'taxable compensation', 'non_taxable_compensation' => 'non-taxable compensation',
         'contributions' => 'SSS, PhilHealth and Pag-IBIG (employee share)', 'thirteenth_month' => '13th month and other benefits',
         'hire_date' => 'hire date', 'position' => 'position', 'department' => 'department', 'status' => 'status',
-        'rate_type' => 'pay basis', 'group' => 'group', 'tin' => 'TIN', 'name' => 'name',
+        'rate_type' => 'pay basis', 'group' => 'group', 'tin' => 'TIN', 'name' => 'name', 'email' => 'email', 'phone' => 'phone',
     ];
 
     private const COMPARE = ['gt' => 'over', 'gte' => 'of at least', 'lt' => 'under', 'lte' => 'of at most', 'eq' => 'of exactly', 'neq' => 'other than'];
