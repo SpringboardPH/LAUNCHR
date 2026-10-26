@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, FlaskConical, ListChecks, FolderOpen, Maximize2, MessageCircle, X, Power, Users } from 'lucide-react'
+import { FileText, FlaskConical, ListChecks, FolderOpen, Maximize2, MessageCircle, X, Power, Users, BookOpen } from 'lucide-react'
 import clsx from 'clsx'
 import {
   birKeys, getBirConfig, getBirEmployees, createBirDraft, setBirMockUser, BIR_USE_MOCKS, BIR_DISABLED_EVENT, BIR_DISABLED_MESSAGE,
@@ -13,6 +13,7 @@ import BirFieldPreview from '../../components/bir/BirFieldPreview'
 import BirDraftList from '../../components/bir/BirDraftList'
 import BirEmployeesView from '../../components/bir/BirEmployeesView'
 import BirCreateError from '../../components/bir/BirExistingForm'
+import BirAccountantGuide from '../../components/bir/BirAccountantGuide'
 
 const CY = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -106,6 +107,16 @@ export default function BirFormsPage() {
   const [unread, setUnread] = useState(false)
   const [turnedOff, setTurnedOff] = useState(false)
   const { user } = useAuth()
+  // The BIR Forms guide opens by itself the first time each accountant comes here (after the
+  // app's own first-login tour, so the two never stack); the Guide button reopens it for anyone.
+  const guideKey = `bir_guide_v1_${user?.id}`
+  const [guideOpen, setGuideOpen] = useState(() => {
+    try { return user?.role === 'accounting' && !!localStorage.getItem('hr_onboarding_v1') && !localStorage.getItem(guideKey) } catch { return false }
+  })
+  const closeGuide = () => {
+    try { localStorage.setItem(guideKey, '1') } catch { /* private window: it just opens again next time */ }
+    setGuideOpen(false)
+  }
   const navigate = useNavigate()
   const qc = useQueryClient()
 
@@ -177,12 +188,20 @@ export default function BirFormsPage() {
     <div className="pb-36">{/* room for the chat bubble */}
       <PageHeader
         title="Compliance"
-        action={BIR_USE_MOCKS && (
-          <span className="badge-purple gap-1" title="Set VITE_BIR_MOCK=false to use the real API">
-            <FlaskConical size={12} /> Mock data
-          </span>
+        action={(
+          <div className="flex items-center gap-2">
+            <button onClick={() => setGuideOpen(true)} className="btn-secondary text-xs" title="How to prepare, check, file and sign BIR forms">
+              <BookOpen size={13} /> Guide
+            </button>
+            {BIR_USE_MOCKS && (
+              <span className="badge-purple gap-1" title="Set VITE_BIR_MOCK=false to use the real API">
+                <FlaskConical size={12} /> Mock data
+              </span>
+            )}
+          </div>
         )}
       />
+      <BirAccountantGuide open={guideOpen} onDismiss={closeGuide} />
 
       <div className="grid gap-5 lg:grid-cols-5">
         <section className="card overflow-hidden lg:col-span-3 self-start">

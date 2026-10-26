@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 
 // Inline text formatter: **bold**, *italic*, __underline__
-function fmt(str) {
+export function fmt(str) {
   const parts = str.split(/(\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__)/g)
   if (parts.length === 1) return str
   return parts.map((p, i) => {
