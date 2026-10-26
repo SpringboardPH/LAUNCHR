@@ -14,6 +14,7 @@ import BirDraftList from '../../components/bir/BirDraftList'
 import BirEmployeesView from '../../components/bir/BirEmployeesView'
 import BirCreateError from '../../components/bir/BirExistingForm'
 import BirAccountantGuide from '../../components/bir/BirAccountantGuide'
+import BirTodoPanel from '../../components/bir/BirTodoPanel'
 
 const CY = new Date().getFullYear()
 const YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => CY - i)
@@ -202,6 +203,7 @@ export default function BirFormsPage() {
         )}
       />
       <BirAccountantGuide open={guideOpen} onDismiss={closeGuide} />
+      <BirTodoPanel onOpen={onDraft} onShowEmployees={() => setTab('employees')} />
 
       <div className="grid gap-5 lg:grid-cols-5">
         <section className="card overflow-hidden lg:col-span-3 self-start">

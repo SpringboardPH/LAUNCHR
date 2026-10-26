@@ -9,7 +9,7 @@ import { signingChip } from './BirSigningStatus'
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 // The list names a 1601-C's month in words ("October 2026"); a 2316 keeps "Tax year 2026".
-const periodName = (formType, period) => (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)
+export const periodName = (formType, period) => (formType === '1601-C' && /^\d{4}-\d{2}$/.test(period)
   ? `${MONTH_NAMES[Number(period.slice(5, 7)) - 1]} ${period.slice(0, 4)}` : describePeriod(formType, period))
 
 const STATUSES = [['', 'All statuses'], ['draft', 'Draft'], ['pending', 'Waiting for review'], ['approved', 'Approved'], ['finalized', 'Finalized (filed)'], ['void', 'Void']]

@@ -1,13 +1,14 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../store/AuthContext'
 import { useQuery } from '@tanstack/react-query'
-import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys, birKeys, getBirConfig, myBirFormKeys, getMyBirForms } from '../../api/queries'
+import { getDashboard, dashboardKeys, getSystemConfig, systemConfigKeys, birKeys, getBirConfig, myBirFormKeys, getMyBirForms, getAllBirDrafts } from '../../api/queries'
 import {
   LayoutDashboard, Users, Clock,
   Banknote, LogOut, Menu, X, Settings, Building2, CalendarRange, UserCog, User, Sliders, History, FileText, ClipboardList, ChevronDown, HelpCircle, FileSignature,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
+import { attentionCount } from '../bir/birTodo'
 import OnboardingTutorial, { useOnboardingTutorial, HR_STEPS, ADMIN_STEPS } from '../OnboardingTutorial'
 
 const COMMON_NAV = [
@@ -99,6 +100,13 @@ export default function AppLayout() {
     queryKey: myBirFormKeys.list, queryFn: getMyBirForms, enabled: !!user, retry: false, staleTime: 60_000,
   })
   const toSign = myForms?.filter(f => f.needs_my_signature).length ?? 0
+  // BIR Forms shows how many forms need the user now (review, returned, not filed), as Requests does.
+  const { data: birForms } = useQuery({
+    queryKey: birKeys.allDrafts, queryFn: getAllBirDrafts, retry: false, staleTime: 60_000,
+    enabled: !!user && ['admin', 'hr', 'accounting'].includes(user.role) && birConfig?.enabled === true,
+  })
+  const birCount = birForms ? attentionCount(birForms, user) : 0
+  const countOf = (c) => (c.birGated ? birCount : 0)
   const hidden = (c) => (c.dtrGated && !systemConfig?.dtr_page_enabled) || (c.birGated && birConfig?.enabled === false)
 
   const pendingBadgeCount = (dashboardData?.summary?.pending_leaves ?? 0) + (dashboardData?.summary?.pending_requests ?? 0)
@@ -140,6 +148,11 @@ export default function AppLayout() {
           >
             <Icon size={16} />
             <span className="flex-1 text-left">{item.label}</span>
+            {!isOpen && visibleChildren.reduce((n, c) => n + countOf(c), 0) > 0 && (
+              <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                {visibleChildren.reduce((n, c) => n + countOf(c), 0)}
+              </span>
+            )}
             <ChevronDown size={13} className={clsx('transition-transform duration-150', isOpen ? '' : '-rotate-90')} />
           </button>
           {isOpen && (
@@ -154,7 +167,11 @@ export default function AppLayout() {
                     isActive ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                   )}
                 >
-                  {child.label}
+                  <span className="flex-1">{child.label}</span>
+                  {countOf(child) > 0 && (
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full"
+                      title="BIR forms that need you">{countOf(child)}</span>
+                  )}
                 </NavLink>
               ))}
             </div>

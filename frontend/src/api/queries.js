@@ -585,6 +585,7 @@ export const birKeys = {
   detail: (id) => ['bir', 'drafts', id],
   employees: ['bir', 'employees'],
   all2316: ['bir', 'drafts', 'all-2316'],
+  allDrafts: ['bir', 'drafts', 'all'],
   formEmployees: (id) => ['bir', 'drafts', id, 'employees'],
   pdf: (id) => ['bir', 'drafts', id, 'pdf'],
   history: (id) => ['bir', 'drafts', id, 'history'],
@@ -768,6 +769,17 @@ export const getAllBir2316 = async () => {
   const all = []
   for (let page = 1, last = 1; page <= last; page++) {
     const res = await getBirDrafts({ form_type: '2316', per_page: 100, page })
+    all.push(...res.data)
+    last = res.pagination?.last_page ?? 1
+  }
+  return all
+}
+
+// Every form, all pages and types: the to-do panel works out deadlines and what needs the user.
+export const getAllBirDrafts = async () => {
+  const all = []
+  for (let page = 1, last = 1; page <= last; page++) {
+    const res = await getBirDrafts({ per_page: 100, page })
     all.push(...res.data)
     last = res.pagination?.last_page ?? 1
   }
