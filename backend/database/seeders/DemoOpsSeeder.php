@@ -317,8 +317,12 @@ class DemoOpsSeeder extends Seeder
             $sss = PayrollService::calculateSSS($basis, 2);
             $philhealth = PayrollService::calculatePhilHealth($basis, 2);
             $pagibig = PayrollService::calculatePagIBIG($basis, 2);
-            $taxable = max(0, $gross - $sss - $philhealth - $pagibig);
-            $tax = PayrollService::calculateWithholdingTax($taxable, 'semi_monthly');
+            if ($isDaily) {
+                $taxable = max(0, $gross - $sss - $philhealth - $pagibig);
+                $tax = PayrollService::calculateWithholdingTax($taxable, 'semi_monthly');
+            } else {
+                $tax = PayrollService::calculateMonthlyBasicWithholdingTax((float) $employee->salary, 2);
+            }
             $deductions = array_filter([
                 'SSS EE Contribution' => round($sss, 2),
                 'PhilHealth EE Contribution' => round($philhealth, 2),

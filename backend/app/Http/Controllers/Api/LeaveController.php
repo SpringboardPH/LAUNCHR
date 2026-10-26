@@ -150,13 +150,26 @@ class LeaveController extends Controller
             ], 404);
         }
 
+        $filingOnBehalf = $user->isAdminOrHr() && $request->filled('employee_id');
+        $start = Carbon::parse($request->start_date)->startOfDay();
         $systemToday = SystemClock::today()->startOfDay();
-        if (Carbon::parse($request->start_date)->startOfDay()->lt($systemToday)) {
+
+        if (!$filingOnBehalf && $start->lt($systemToday)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Start date must be today or a future date based on system time.',
                 'errors' => [
                     'start_date' => ['Start date must be today or a future date.'],
+                ],
+            ], 422);
+        }
+
+        if ($employee->hire_date && $start->toDateString() < $employee->hire_date->toDateString()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Start date cannot be before the employee hire date.',
+                'errors' => [
+                    'start_date' => ['Start date cannot be before the employee hire date.'],
                 ],
             ], 422);
         }
@@ -176,7 +189,7 @@ class LeaveController extends Controller
         $selectedType = $balances[$leaveType] ?? null;
         $availableBalance = $selectedType['remaining'] ?? null;
 
-        if ($selectedType && $selectedType['requires_balance'] && $availableBalance !== null && $daysRequested > $availableBalance) {
+        if (!$filingOnBehalf && $selectedType && $selectedType['requires_balance'] && $availableBalance !== null && $daysRequested > $availableBalance) {
             return response()->json([
                 'success' => false,
                 'message' => 'Leave request exceeds your available balance.',
@@ -321,7 +334,7 @@ class LeaveController extends Controller
                 ->where('leave_type', $leave->leave_type)
                 ->where('status', 'approved')
                 ->sum('days_requested');
-            if ($alreadyApproved + $leave->days_requested > $total) {
+            if (!$request->boolean('confirm_exceed_balance') && $alreadyApproved + $leave->days_requested > $total) {
                 return response()->json([
                     'success' => false,
                     'message' => "Approving this leave would exceed the employee's remaining balance.",

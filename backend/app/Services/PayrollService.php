@@ -135,15 +135,38 @@ class PayrollService
     /**
      * Calculate Withholding Tax (PH TRAIN Law RA 10963, RR 8-2018, effective Jan 1 2023)
      * taxableIncome is after SSS + PhilHealth + Pag-IBIG deductions.
-     * frequency: 'monthly' | 'semi_monthly' (default)
+     * frequency: 'monthly' | 'semi_monthly' (default). Daily-rate payroll uses this on period income.
      * Brackets are loaded from system_settings key 'withholding_tax_table'; hardcoded values are the fallback.
      */
     public static function calculateWithholdingTax(float $taxableIncome, string $frequency = 'semi_monthly'): float
     {
         if ($taxableIncome <= 0) return 0.0;
 
-        $brackets = self::withholdingBrackets($frequency);
+        $bracket = self::matchingWithholdingBracket($taxableIncome, self::withholdingBrackets($frequency));
+        if (!$bracket) return 0.0;
 
+        return round($bracket['fixed'] + ($taxableIncome - $bracket['floor']) * $bracket['rate'], 2);
+    }
+
+    /**
+     * Monthly-employee withholding on declared salary: annual TRAIN tax split across cutoffs.
+     */
+    public static function calculateMonthlyBasicWithholdingTax(float $monthlySalary, int $periods): float
+    {
+        if ($monthlySalary <= 0 || $periods < 1) return 0.0;
+
+        $annualCompensation = $monthlySalary * 12;
+        $bracket = self::matchingWithholdingBracket($annualCompensation, self::withholdingBrackets('annual'));
+        if (!$bracket) return 0.0;
+
+        // Leave the annual tax unrounded; only the per-cutoff share rounds to centavos.
+        $annualTax = $bracket['fixed'] + ($annualCompensation - $bracket['floor']) * $bracket['rate'];
+
+        return round($annualTax / 12 / $periods, 2);
+    }
+
+    private static function matchingWithholdingBracket(float $income, array $brackets): ?array
+    {
         // Match on 'from' only (brackets are ordered ascending, ignore 'to' entirely) — the
         // seeded/default table's 'to'/'from' pair between brackets doesn't always line up to
         // the cent (e.g. to: 16666, next from: 16667), which silently taxed anything landing
@@ -151,16 +174,14 @@ class PayrollService
         // immune to that regardless of how the table's boundaries are entered.
         $bracket = null;
         foreach ($brackets as $candidate) {
-            if ($taxableIncome >= $candidate['from']) {
+            if ($income >= $candidate['from']) {
                 $bracket = $candidate;
             } else {
                 break;
             }
         }
 
-        if (!$bracket) return 0.0;
-
-        return round($bracket['fixed'] + ($taxableIncome - $bracket['floor']) * $bracket['rate'], 2);
+        return $bracket;
     }
 
     private static function withholdingBrackets(string $frequency): array
@@ -173,7 +194,8 @@ class PayrollService
             }
         }
 
-        // ponytail: fallback — keeps working before the seeder runs or if the setting is missing
+        // ponytail: fallback — keeps working before the seeder runs or if the setting is missing.
+        // A missing annual key must use the annual table, not semi_monthly.
         $fallback = [
             'semi_monthly' => [
                 ['from' => 0,          'to' => 10417,    'fixed' => 0,        'rate' => 0,    'floor' => 0],
@@ -191,7 +213,20 @@ class PayrollService
                 ['from' => 166666.01,  'to' => 666666,   'fixed' => 33541.80,  'rate' => 0.30, 'floor' => 166666.01],
                 ['from' => 666666.01,  'to' => null,     'fixed' => 183541.80, 'rate' => 0.35, 'floor' => 666666.01],
             ],
+            'annual' => [
+                ['from' => 0,          'to' => 250000,   'fixed' => 0,       'rate' => 0,    'floor' => 0],
+                ['from' => 250000.01,  'to' => 400000,   'fixed' => 0,       'rate' => 0.15, 'floor' => 250000],
+                ['from' => 400000.01,  'to' => 800000,   'fixed' => 22500,   'rate' => 0.20, 'floor' => 400000],
+                ['from' => 800000.01,  'to' => 2000000,  'fixed' => 102500,  'rate' => 0.25, 'floor' => 800000],
+                ['from' => 2000000.01, 'to' => 8000000,  'fixed' => 402500,  'rate' => 0.30, 'floor' => 2000000],
+                ['from' => 8000000.01, 'to' => null,     'fixed' => 2202500, 'rate' => 0.35, 'floor' => 8000000],
+            ],
         ];
+
+        if ($frequency === 'annual') {
+            return $fallback['annual'];
+        }
+
         return $fallback[$frequency] ?? $fallback['semi_monthly'];
     }
 

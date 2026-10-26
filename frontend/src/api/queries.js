@@ -118,8 +118,8 @@ export const getLeaveBalance = (employeeId = null) =>
 export const createLeave = (data) =>
   api.post('/leaves', data).then(r => r.data)
 
-export const approveLeave = (id) =>
-  api.patch(`/leaves/${id}/approve`).then(r => r.data)
+export const approveLeave = (id, body = {}) =>
+  api.patch(`/leaves/${id}/approve`, body).then(r => r.data)
 
 export const rejectLeave = (id, reason) =>
   api.patch(`/leaves/${id}/reject`, { rejection_reason: reason }).then(r => r.data)
@@ -216,9 +216,6 @@ export const getThirteenthMonthPeriods = (year) =>
 
 export const pushThirteenthMonthToPayroll = (data) =>
   api.post('/thirteenth-month/push-to-payroll', data).then(r => r.data)
-
-export const setThirteenthMonthMode = (data) =>
-  api.post('/thirteenth-month/set-mode', data).then(r => r.data)
 
 export const setThirteenthMonthExcludedMonths = (data) =>
   api.post('/thirteenth-month/set-excluded-months', data).then(r => r.data)

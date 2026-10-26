@@ -413,44 +413,60 @@ export default function PayrollPage() {
         }
 
         // Withholding Tax — TRAIN Law RA 10963, RR 8-2018 (effective Jan 1 2023)
-        const calculateWTax = (income) => {
-          if (payPeriods === 1) {
-            // Monthly brackets
-            if (income <= 20833) return 0
-            if (income <= 33332) return (income - 20833) * 0.15
-            if (income <= 66666) return 1875.00 + (income - 33333) * 0.20
-            if (income <= 166666) return 8541.80 + (income - 66667) * 0.25
-            if (income <= 666666) return 33541.80 + (income - 166667) * 0.30
-            return 183541.80 + (income - 666667) * 0.35
-          }
-          // Semi-monthly brackets (default)
-          if (income <= 10417) return 0
-          if (income <= 16666) return (income - 10417) * 0.15
-          if (income <= 33332) return 937.50 + (income - 16667) * 0.20
-          if (income <= 83332) return 4270.70 + (income - 33333) * 0.25
-          if (income <= 333332) return 16770.70 + (income - 83333) * 0.30
-          return 91770.70 + (income - 333333) * 0.35
-        }
-
-        const getDeduction = (label) => {
-          const item = next.deductions.find(d => d.label === label)
-          return item ? Number(item.amount) : 0
-        }
-
         const isDaily = next.employee?.rate_type === 'daily'
-        const baseGross = isDaily
-          ? (Number(next.base_salary) * Number(next.days_worked || 0))
-          : (Number(next.base_salary) / payPeriods)
-        // Exclude "Allowance" (undeclared) — off-the-books, not subject to BIR withholding
-        const taxableAllowances = next.allowances
-          .filter(a => a.label !== 'Allowance')
-          .reduce((s, a) => s + Number(a.amount || 0), 0)
-        const taxableGross = baseGross + taxableAllowances
+        let wTaxAmount
+        if (!isDaily) {
+          const monthlySalary = Number(next.base_salary)
+          if (monthlySalary <= 0 || payPeriods < 1) {
+            wTaxAmount = 0
+          } else {
+            const annualCompensation = monthlySalary * 12
+            let annualTax = 0
+            if (annualCompensation >= 8000000.01) {
+              annualTax = 2202500 + (annualCompensation - 8000000) * 0.35
+            } else if (annualCompensation >= 2000000.01) {
+              annualTax = 402500 + (annualCompensation - 2000000) * 0.30
+            } else if (annualCompensation >= 800000.01) {
+              annualTax = 102500 + (annualCompensation - 800000) * 0.25
+            } else if (annualCompensation >= 400000.01) {
+              annualTax = 22500 + (annualCompensation - 400000) * 0.20
+            } else if (annualCompensation >= 250000.01) {
+              annualTax = (annualCompensation - 250000) * 0.15
+            }
+            wTaxAmount = Math.round((annualTax / 12 / payPeriods) * 100) / 100
+          }
+        } else {
+          const calculateWTax = (income) => {
+            if (payPeriods === 1) {
+              if (income <= 20833) return 0
+              if (income <= 33332) return (income - 20833) * 0.15
+              if (income <= 66666) return 1875.00 + (income - 33333) * 0.20
+              if (income <= 166666) return 8541.80 + (income - 66667) * 0.25
+              if (income <= 666666) return 33541.80 + (income - 166667) * 0.30
+              return 183541.80 + (income - 666667) * 0.35
+            }
+            if (income <= 10417) return 0
+            if (income <= 16666) return (income - 10417) * 0.15
+            if (income <= 33332) return 937.50 + (income - 16667) * 0.20
+            if (income <= 83332) return 4270.70 + (income - 33333) * 0.25
+            if (income <= 333332) return 16770.70 + (income - 83333) * 0.30
+            return 91770.70 + (income - 333333) * 0.35
+          }
 
-        const earnedGross = taxableGross - (getDeduction('Late') + getDeduction('Undertime') + getDeduction('Absent') + getDeduction('Half Day'))
-        const taxableIncome = earnedGross - (getDeduction('SSS EE Contribution') + getDeduction('PhilHealth EE Contribution') + getDeduction('Pag-IBIG EE Contribution'))
-        
-        const wTaxAmount = Math.round(calculateWTax(taxableIncome) * 100) / 100
+          const getDeduction = (label) => {
+            const item = next.deductions.find(d => d.label === label)
+            return item ? Number(item.amount) : 0
+          }
+
+          const baseGross = Number(next.base_salary) * Number(next.days_worked || 0)
+          const taxableAllowances = next.allowances
+            .filter(a => a.label !== 'Allowance')
+            .reduce((s, a) => s + Number(a.amount || 0), 0)
+          const taxableGross = baseGross + taxableAllowances
+          const earnedGross = taxableGross - (getDeduction('Late') + getDeduction('Undertime') + getDeduction('Absent') + getDeduction('Half Day'))
+          const taxableIncome = earnedGross - (getDeduction('SSS EE Contribution') + getDeduction('PhilHealth EE Contribution') + getDeduction('Pag-IBIG EE Contribution'))
+          wTaxAmount = Math.round(calculateWTax(taxableIncome) * 100) / 100
+        }
         let wTaxItem = next.deductions.find(d => d.label === 'Withholding Tax')
         
         // Only update if we aren't manually editing the tax itself

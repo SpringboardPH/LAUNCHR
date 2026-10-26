@@ -28,7 +28,7 @@ class ThirteenthMonthController extends Controller
         $payrolls = Payroll::whereIn('employee_id', $employeeIds)
             ->whereYear('cutoff_end', $year)
             ->whereDate('cutoff_end', '<=', SystemClock::today())
-            ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'deductions', 'allowances']);
+            ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'allowances', 'deductions']);
         // Note: removeContainedPeriods is applied per-employee inside buildEmployeeRow
 
         $saved = ThirteenthMonth::where('year', $year)
@@ -200,41 +200,50 @@ class ThirteenthMonthController extends Controller
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    /**
-     * Sum all deductions except statutory contributions (SSS, PhilHealth, Pag-IBIG).
-     * Late, Absent, Half Day, Undertime, Withholding Tax, etc. all reduce the base.
-     */
-    private function nonContribDeductions(Payroll $p): float
+    private function periodParts(Payroll $p): array
     {
-        $total = 0;
-        foreach ($p->deductions ?? [] as $label => $amount) {
-            if (!str_contains(strtolower((string) $label), 'contribution')) {
-                $total += (float) $amount;
+        $allowanceLabels = ['Bonus', 'Travel Allowance', 'Allowance'];
+        $allowance = 0.0;
+        $allAllowances = 0.0;
+        foreach ($p->allowances ?? [] as $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            $amount = (float) ($row['amount'] ?? 0);
+            $allAllowances += $amount;
+            if (in_array($label, $allowanceLabels, true)) {
+                $allowance += $amount;
             }
         }
-        return $total;
-    }
 
-    /**
-     * Declared  = gross − all allowances − non-contribution deductions.
-     * Undeclared = gross − overtime allowances only − non-contribution deductions.
-     */
-    private function periodBase(Payroll $p, string $mode): float
-    {
-        $deductions = $this->nonContribDeductions($p);
-        $allowances = collect($p->allowances ?? []);
-
-        if ($mode === 'declared') {
-            return max(0, (float) $p->gross_pay - $allowances->sum('amount') - $deductions);
+        $docks = ['late' => 0.0, 'absent' => 0.0, 'half_day' => 0.0, 'undertime' => 0.0];
+        foreach ($p->deductions ?? [] as $label => $amount) {
+            $key = strtolower(trim((string) $label));
+            if ($key === 'late') {
+                $docks['late'] += (float) $amount;
+            } elseif ($key === 'absent') {
+                $docks['absent'] += (float) $amount;
+            } elseif ($key === 'half day') {
+                $docks['half_day'] += (float) $amount;
+            } elseif ($key === 'undertime') {
+                $docks['undertime'] += (float) $amount;
+            }
         }
 
-        // Strip OT and any previously pushed 13th Month Pay (not part of basic salary).
-        $otPay = $allowances
-            ->filter(fn($a) => str_contains(strtolower($a['label'] ?? ''), 'overtime')
-                             || ($a['label'] ?? '') === '13th Month Pay')
-            ->sum('amount');
+        $base = round((float) $p->gross_pay - $allAllowances, 2);
+        $allowance = round($allowance, 2);
+        foreach ($docks as $name => $amount) {
+            $docks[$name] = round($amount, 2);
+        }
+        $total = round(max(0, $base + $allowance - $docks['late'] - $docks['absent'] - $docks['half_day'] - $docks['undertime']), 2);
 
-        return max(0, (float) $p->gross_pay - $otPay - $deductions);
+        return [
+            'base' => $base,
+            'allowance' => $allowance,
+            'late' => $docks['late'],
+            'absent' => $docks['absent'],
+            'half_day' => $docks['half_day'],
+            'undertime' => $docks['undertime'],
+            'total' => $total,
+        ];
     }
 
     /**
@@ -284,21 +293,23 @@ class ThirteenthMonthController extends Controller
                 continue;
             }
 
-            $basicPay  = $periodPayrolls->sum(fn($p) => $this->periodBase($p, $mode));
-            $breakdown = $periodPayrolls->map(fn($p) => [
-                'cutoff_start' => $p->cutoff_start->toDateString(),
-                'cutoff_end'   => $p->cutoff_end->toDateString(),
-                'gross_pay'    => round((float) $p->gross_pay, 2),
-                'deductions'   => collect($p->deductions ?? [])
-                    ->filter(fn($amt, $label) => !str_contains(strtolower((string) $label), 'contribution'))
-                    ->map(fn($amt, $label) => ['label' => $label, 'amount' => round((float) $amt, 2)])
-                    ->values()->all(),
-                'allowances'   => collect($p->allowances ?? [])
-                    ->filter(fn($a) => ($a['label'] ?? '') !== '13th Month Pay')
-                    ->map(fn($a) => ['label' => $a['label'], 'amount' => round((float) $a['amount'], 2)])
-                    ->values()->all(),
-                'base'         => round($this->periodBase($p, $mode), 2),
-            ])->values()->all();
+            $basicPay = 0;
+            $breakdown = [];
+            foreach ($periodPayrolls as $p) {
+                $part = $this->periodParts($p);
+                $basicPay += $part['total'];
+                $breakdown[] = [
+                    'cutoff_start' => $p->cutoff_start->toDateString(),
+                    'cutoff_end'   => $p->cutoff_end->toDateString(),
+                    'base'         => $part['base'],
+                    'allowance'    => $part['allowance'],
+                    'late'         => $part['late'],
+                    'absent'       => $part['absent'],
+                    'half_day'     => $part['half_day'],
+                    'undertime'    => $part['undertime'],
+                    'total'        => $part['total'],
+                ];
+            }
 
             $months[$m] = ['amount' => round($basicPay, 2), 'is_override' => false, 'has_payroll' => true, 'breakdown' => $breakdown];
         }
@@ -319,14 +330,13 @@ class ThirteenthMonthController extends Controller
         $setting = ThirteenthMonthSetting::where('employee_id', $employeeId)
             ->where('year', $year)
             ->first();
-        $mode = $setting->mode ?? 'declared';
         $excluded = array_map('intval', $setting->excluded_months ?? []);
 
         $payrolls = $this->removeContainedPeriods(
             Payroll::where('employee_id', $employeeId)
                 ->whereYear('cutoff_end', $year)
                 ->whereDate('cutoff_end', '<=', SystemClock::today())
-                ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'deductions', 'allowances'])
+                ->get(['id', 'employee_id', 'cutoff_start', 'cutoff_end', 'gross_pay', 'allowances', 'deductions'])
         );
 
         $saved = ThirteenthMonth::where('year', $year)
@@ -342,7 +352,7 @@ class ThirteenthMonthController extends Controller
                 continue;
             }
             foreach ($payrolls->filter(fn($p) => $p->cutoff_end->month === $m) as $p) {
-                $total += $this->periodBase($p, $mode);
+                $total += $this->periodParts($p)['total'];
             }
         }
         return $total / 12;
