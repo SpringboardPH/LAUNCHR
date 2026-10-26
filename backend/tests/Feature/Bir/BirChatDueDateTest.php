@@ -71,6 +71,7 @@ class BirChatDueDateTest extends TestCase
         // Described, not numbered: "September 2026" is the form, the date after "to" its new due date.
         $this->send('move the deadline of the September 2026 1601-C to 10/15/2026')->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 15, 2026"));
         // With the form open, no number and no year: the year of the date it replaces.
+        $this->chat('extend this by a week')->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 22, 2026"));
         $this->chat('set the due date to Oct 25')->assertJsonPath('data.reply', fn (string $r) => str_starts_with($r, "{$form} is now due on October 25, 2026"));
 
         $this->send("change the due date of form #{$this->id} to September 15, 2026")

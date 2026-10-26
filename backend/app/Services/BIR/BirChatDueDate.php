@@ -37,7 +37,7 @@ final class BirChatDueDate
         'isa' => 1, 'dalawa' => 2, 'tatlo' => 3, 'apat' => 4, 'lima' => 5];
 
     /** A form named in so many words: "late" is then its deadline, not late deductions. */
-    private const FORM_WORDS = '/#\s*\d|\bform\b|1601|2316/i';
+    private const FORM_WORDS = '/#\s*\d|\bform\b|1601|2316|\bthis\b|\bit\b/i';
 
     /** The words of a due date, taken out before the form is looked for ("Noel due" is no name). */
     private const DUE_WORDS = '/\b(?:due\s*dates?|deadlines?|palugit|overdue|past\s+due|due)\b/i';
