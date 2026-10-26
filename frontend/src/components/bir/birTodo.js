@@ -1,44 +1,41 @@
 // BIR Forms to-do: what is due (deadlines) and what needs the user, worked out from the forms
 // list. No backend of its own: every form already carries its type, period, status, preparer,
 // return note and signing.
-import { addDays, addMonths, differenceInCalendarDays, format, isSaturday, isSunday, startOfMonth } from 'date-fns'
+import { addMonths, differenceInCalendarDays, format, startOfMonth } from 'date-fns'
 
-// The 1601-C is due on this day of the following month: the 10th when filed manually, or
-// the eFPS group's day (RR 26-2002). Kept per browser; the accountant picks it once.
-export const FILING_DAYS = [
-  [10, 'Manual / eBIRForms (10th)'],
-  [15, 'eFPS Group A (15th)'],
-  [14, 'eFPS Group B (14th)'],
-  [13, 'eFPS Group C (13th)'],
-  [12, 'eFPS Group D (12th)'],
-  [11, 'eFPS Group E (11th)'],
-]
+// Filing windows (the accountant's rules): a month's 1601-C is filed from the 1st to the 10th
+// of the next month; a year's 2316s from January 1 to January 31 of the next year.
+const MONTHLY = { opens: 1, due: 10 }
 const SOON_DAYS = 30
-// A 2316 is given to the employee by January 31 of the next year.
-const CERTIFICATE_DUE = { month: 0, day: 31 }
 
 const live = (forms) => forms.filter(f => f.status !== 'void')
-// A deadline on a weekend moves to the Monday (holidays are not known here).
-const workday = (d) => (isSaturday(d) ? addDays(d, 2) : isSunday(d) ? addDays(d, 1) : d)
 const STAGE = { draft: 1, pending: 2, approved: 3, finalized: 4 }
 const furthest = (forms) => forms.reduce((a, b) => ((STAGE[b.status] ?? 0) > (STAGE[a.status] ?? 0) ? b : a), forms[0])
 export const STAGE_WORD = { draft: 'Draft', pending: 'Waiting for review', approved: 'Approved, not filed yet' }
 
-// "Due in 3 days", "Due today", "Overdue by 5 days".
-export const whenDue = (due, today) => {
-  const days = differenceInCalendarDays(due, today)
+// Where an item stands today: before its window ('upcoming'), in it ('open'), or past it ('overdue').
+export const stateOf = (item, today) => (differenceInCalendarDays(item.due, today) < 0 ? 'overdue'
+  : differenceInCalendarDays(item.opens, today) > 0 ? 'upcoming' : 'open')
+
+// "Opens in 6 days", "Due in 3 days", "Due today", "Overdue by 5 days".
+export const whenDue = (item, today) => {
+  const toOpen = differenceInCalendarDays(item.opens, today)
+  const days = differenceInCalendarDays(item.due, today)
   if (days < 0) return `Overdue by ${-days} day${days === -1 ? '' : 's'}`
+  if (toOpen > 0) return `Opens in ${toOpen} day${toOpen === 1 ? '' : 's'}`
   if (days === 0) return 'Due today'
   return `Due in ${days} day${days === 1 ? '' : 's'}`
 }
+// "Nov 1–10, 2026"
+const windowText = (opens, due) => `${format(opens, 'MMM d')}–${format(due, opens.getMonth() === due.getMonth() ? 'd, yyyy' : 'MMM d, yyyy')}`
 
 /**
- * Deadlines not met yet, most urgent first: { key, title, detail, due, overdue, form?, create? }.
- * A 1601-C for each month from the first one in the system (at most a year back), shown once
- * it is due within 30 days or overdue; the year's 2316s from December, or overdue once any
- * exists for that year. Filed forms are done.
+ * Filing not done yet, most urgent first: { key, title, detail, opens, due, form?, create? }.
+ * A 1601-C for each month from the first one in the system (at most a year back), shown from
+ * 30 days before its deadline, and while overdue; the year's 2316s from December, or overdue
+ * once any exists for that year. Filed forms are done.
  */
-export function dueItems(forms, employees, today, filingDay = 10) {
+export function dueItems(forms, employees, today) {
   const items = []
   const monthly = live(forms).filter(f => f.form_type === '1601-C')
   const earliest = monthly.map(f => f.period).sort()[0]
@@ -48,21 +45,22 @@ export function dueItems(forms, employees, today, filingDay = 10) {
 
   for (; month <= startOfMonth(today); month = addMonths(month, 1)) {
     const period = format(month, 'yyyy-MM')
-    const due = workday(new Date(month.getFullYear(), month.getMonth() + 1, filingDay))
+    const opens = new Date(month.getFullYear(), month.getMonth() + 1, MONTHLY.opens)
+    const due = new Date(month.getFullYear(), month.getMonth() + 1, MONTHLY.due)
     const these = monthly.filter(f => f.period === period)
     const form = these.length ? furthest(these) : null
     if (form?.status === 'finalized' || differenceInCalendarDays(due, today) > SOON_DAYS) continue
     items.push({
       key: `1601C-${period}`, title: `1601-C · ${format(month, 'MMMM yyyy')}`,
-      detail: form ? STAGE_WORD[form.status] ?? form.status : 'Not started',
-      due, overdue: differenceInCalendarDays(due, today) < 0,
-      form, create: form ? null : { form_type: '1601-C', period },
+      detail: `${form ? STAGE_WORD[form.status] ?? form.status : 'Not started'} · file ${windowText(opens, due)}`,
+      opens, due, form, create: form ? null : { form_type: '1601-C', period },
     })
   }
 
   const year = today.getMonth() === 11 ? today.getFullYear() : today.getFullYear() - 1
   const certificates = live(forms).filter(f => f.form_type === '2316' && f.period === String(year))
-  const due = workday(new Date(year + 1, CERTIFICATE_DUE.month, CERTIFICATE_DUE.day))
+  const opens = new Date(year + 1, 0, 1)
+  const due = new Date(year + 1, 0, 31)
   const filed = new Set(certificates.filter(f => f.status === 'finalized').map(f => f.employee_id))
   // Hired after the year had no pay in it, so needs no 2316 for it.
   const without = employees.filter(e => !(e.hire_date && Number(e.hire_date.slice(0, 4)) > year)
@@ -72,8 +70,8 @@ export function dueItems(forms, employees, today, filingDay = 10) {
   if (open > 0 && (upcoming || certificates.length > 0)) {
     items.push({
       key: `2316-${year}`, title: `2316 · Taxable year ${year}`,
-      detail: `${filed.size} filed${without ? ` · ${without} employee${without === 1 ? '' : 's'} without one yet` : ''} · give copies to employees`,
-      due, overdue: differenceInCalendarDays(due, today) < 0, employees: true,
+      detail: `${filed.size} filed${without ? ` · ${without} without one yet` : ''} · file ${windowText(opens, due)}`,
+      opens, due, employees: true,
     })
   }
 
