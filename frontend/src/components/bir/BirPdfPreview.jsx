@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Download, AlertTriangle, ExternalLink } from 'lucide-react'
 import { birKeys, getBirDraftPdf, saveBirPdf } from '../../api/queries'
@@ -17,8 +17,14 @@ export default function BirPdfPreview({ draft, open, onClose, fetchPdf = getBirD
     staleTime: 0,
     gcTime: 0,
   })
-  const url = useMemo(() => (data ? URL.createObjectURL(data.blob) : null), [data])
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  // Made and revoked in one effect, so StrictMode's double run in development doesn't leave it revoked.
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    if (!data) return
+    const u = URL.createObjectURL(data.blob)
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [data])
 
   return (
     <Modal

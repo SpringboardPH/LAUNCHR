@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PenLine, Upload, Trash2 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -22,8 +22,14 @@ export default function BirSignatureCard({ className = 'card p-5' }) {
     enabled: !!me?.has_signature,
     staleTime: Infinity,
   })
-  const url = useMemo(() => (image ? URL.createObjectURL(image) : null), [image])
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  // Made and revoked in one effect (as in BirPdfPreview), so a cached image still shows under StrictMode.
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    if (!image) { setUrl(null); return }
+    const u = URL.createObjectURL(image)
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [image])
 
   const refresh = (res) => {
     qc.setQueryData(signatureKeys.me, res.data)

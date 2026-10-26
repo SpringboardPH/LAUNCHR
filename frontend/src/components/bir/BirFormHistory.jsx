@@ -17,7 +17,7 @@ const EVENTS = {
   filed:     ['Filed', 'bg-indigo-500'],
   voided:    ['Voided', 'bg-red-500'],
   signed:    ['Signed', 'bg-teal-500'],
-  wet_signature: ['Signed by hand', 'bg-purple-500'],
+  wet_signature: ['Wet signature', 'bg-purple-500'],
   deleted:   ['Deleted', 'bg-red-500'],
 }
 const LEGEND = ['created', 'edited', 'submitted', 'returned', 'approved', 'filed', 'signed', 'wet_signature', 'voided']

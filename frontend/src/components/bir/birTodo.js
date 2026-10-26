@@ -64,7 +64,9 @@ export function dueItems(forms, employees, today, filingDay = 10) {
   const certificates = live(forms).filter(f => f.form_type === '2316' && f.period === String(year))
   const due = workday(new Date(year + 1, CERTIFICATE_DUE.month, CERTIFICATE_DUE.day))
   const filed = new Set(certificates.filter(f => f.status === 'finalized').map(f => f.employee_id))
-  const without = employees.filter(e => !certificates.some(f => f.employee_id === e.id)).length
+  // Hired after the year had no pay in it, so needs no 2316 for it.
+  const without = employees.filter(e => !(e.hire_date && Number(e.hire_date.slice(0, 4)) > year)
+    && !certificates.some(f => f.employee_id === e.id)).length
   const open = new Set(certificates.map(f => f.employee_id).filter(id => !filed.has(id))).size + without
   const upcoming = differenceInCalendarDays(due, today) <= 62 // from December
   if (open > 0 && (upcoming || certificates.length > 0)) {
