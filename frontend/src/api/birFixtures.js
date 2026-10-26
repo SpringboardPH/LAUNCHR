@@ -485,7 +485,7 @@ const voidDraft = async (id, reason) => {
 }
 // What happened to each form, like GET /bir/drafts/{id}/history.
 const { log, getHistory, MOVES } = mockHistory({ find, fail, delay, ok, by: preparer, seededBy: JANE })
-const signing = mockSigning({ find, fail, delay, ok, caller: () => caller, isAccounting })
+const signing = mockSigning({ find, fail, delay, ok, caller: () => caller, isAccounting, log })
 
 const chat = mockChat({
   find, schemas: birMockSchemas, missingFor, errorCount, employees: EMPLOYEES, delay, fail,

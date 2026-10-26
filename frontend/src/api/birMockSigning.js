@@ -5,7 +5,7 @@
 
 const MAX_BYTES = 1024 * 1024, MAX_W = 2000, MAX_H = 1000
 
-export function mockSigning({ find, fail, delay, ok, caller, isAccounting }) {
+export function mockSigning({ find, fail, delay, ok, caller, isAccounting, log }) {
   let saved = null // { blob, uploaded_at }
   const signings = {}
 
@@ -44,6 +44,7 @@ export function mockSigning({ find, fail, delay, ok, caller, isAccounting }) {
     if (s.employer) return fail(409, 'The employer has already signed this form')
     if (!saved) return fail(422, 'Upload your signature first')
     signings[d.id] = { ...s, method: 'digital', employer: signer() }
+    log(d, 'signed', 'Signed by the employer')
     return ok(d, 'Form signed by the employer')
   }
   const wetSignDraft = async (id) => {
@@ -53,6 +54,7 @@ export function mockSigning({ find, fail, delay, ok, caller, isAccounting }) {
     if (d.status !== 'finalized') return fail(400, 'Only a finalized form can be signed')
     if (signingOf(d).method === 'digital') return fail(409, 'This form has already been signed digitally')
     signings[d.id] = { method: 'paper', employer: null, employee: null }
+    log(d, 'wet_signature', 'Marked to be signed by hand (wet signature)')
     return ok(d, 'Form marked for a wet signature')
   }
 
@@ -65,6 +67,7 @@ export function mockSigning({ find, fail, delay, ok, caller, isAccounting }) {
     if (signingOf(d).employee) return fail(409, 'You have already signed this form')
     if (!saved) return fail(422, 'Upload your signature first')
     signings[d.id] = { ...signings[d.id], employee: signer() }
+    log(d, 'signed', 'Signed by the employee')
     return ok(summary(d), 'Form signed')
   }
 

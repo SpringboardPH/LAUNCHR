@@ -16,16 +16,18 @@ const EVENTS = {
   approved:  ['Approved', 'bg-green-500'],
   filed:     ['Filed', 'bg-indigo-500'],
   voided:    ['Voided', 'bg-red-500'],
+  signed:    ['Signed', 'bg-teal-500'],
+  wet_signature: ['Signed by hand', 'bg-purple-500'],
   deleted:   ['Deleted', 'bg-red-500'],
 }
-const LEGEND = ['created', 'edited', 'submitted', 'returned', 'approved', 'filed', 'voided']
+const LEGEND = ['created', 'edited', 'submitted', 'returned', 'approved', 'filed', 'signed', 'wet_signature', 'voided']
 
 const when = (at) => (at ? format(parseISO(at), 'MMM d, yyyy · h:mm a') : 'When it was first made')
 const shown = (value, type) => formatValue(value, type) ?? 'blank'
 
 /**
  * Everything that happened to the form (GET /bir/drafts/{id}/history, from the audit log):
- * who created, changed, submitted, returned, approved, filed or voided it, and when, with the
+ * who created, changed, submitted, returned, approved, filed, signed or voided it, and when, with the
  * old and new value of every box changed. Loaded when opened; refreshed when the form changes.
  */
 export default function BirFormHistory({ draft }) {
