@@ -30,7 +30,7 @@ final class BirDataWords
     public const AMOUNT_WORDS = '/salar|\bpay|paid|compensat|tax|withh|earn|sahod|sweldo|kita|binayad|contribut|\bsss\b|philhealth|pag-?ibig|13th|thirteenth|bonus|benefit|\brate|wage|income|deduct|kaltas|buwis|\bmake\b|\bmade\b|\bmakes\b|kinita|\bg[ia]ve|\bgiven\b|\bget\b|\bgot\b|receiv|bigay|natanggap|nakuha/i';
 
     /** The words a company detail needs: "who is our CEO?" is not the company's name. */
-    public const COMPANY_WORDS = ['name' => '/\bname|pangalan|called\b/i', 'tin' => '/\btin\b/i', 'rdo_code' => '/\brdo\b/i', 'address' => '/address|tirahan|located|location/i', 'zip' => '/\bzip|postal/i',
+    public const COMPANY_WORDS = ['name' => '/\bname|pangalan|called\b/i', 'tin' => '/\btins?\b/i', 'rdo_code' => '/\brdo\b/i', 'address' => '/address|tirahan|located|location/i', 'zip' => '/\bzip|postal/i',
         'email' => '/e-?mail/i', 'phone' => '/phone|contact|telephone|\btel\b|landline|mobile|numero/i'];
 
     /** The same words typed with a slip ("adress", "pangaln"). */
@@ -161,7 +161,7 @@ final class BirDataWords
 
     /** Details a message asks to be shown: "everyone's position and hire date", "lahat ng TIN". */
     public const SHOWN = ['position' => '/position|job|title|trabaho/i', 'hire_date' => '/hire|hired|joined|start date/i', 'department' => '/department|dept/i',
-        'tin' => '/\btin\b/i', 'salary' => '/salar|sahod|sweldo/i', 'status' => '/\bstatus\b|active/i', 'rate_type' => '/daily|monthly|pay basis/i'];
+        'tin' => '/\btins?\b/i', 'salary' => '/salar|sahod|sweldo/i', 'status' => '/\bstatus\b|active/i', 'rate_type' => '/daily|monthly|pay basis/i'];
 
     /** Asking about everyone: "show everyone's …", "list all …", "lahat ng …". */
     public const EVERYONE = '/everyone|everybody|\ball\b|lahat|each|every\b|employees|staff|list\b|show\b/i';

@@ -273,10 +273,17 @@ final class BirDataIntent
                 }
             }
         }
-        // "show everyone's position and hire date": those details for everyone.
-        if (($question['topic'] === 'unsupported' || ($question['topic'] === 'employee' && $question['employee'] === null && !$question['pronoun'])) && $question['show'] === [] && preg_match(BirDataWords::EVERYONE, $message)) {
-            $asked = array_keys(array_filter(BirDataWords::SHOWN, fn (string $words) => preg_match($words, $message) === 1));
-            [$question['topic'], $question['show']] = $asked !== [] ? ['employees', $asked] : [$question['topic'], []];
+        // "TIN of all employees", "show everyone's position and hire date", "list all employees": for
+        // everyone, only the details the message names (none: their names alone), whatever the model added.
+        $everyone = $question['employee'] === null && !$question['pronoun'] && preg_match(BirDataWords::EVERYONE, $message) === 1
+            && $question['filters'] === [] && $question['filter'] === null && $question['group'] === null && $question['groups'] === []
+            && $question['sort_by'] === null && $question['per'] === null && $question['limit'] === null && $question['nth'] === null;
+        $at = array_filter(array_map(fn (string $words) => preg_match($words, $message, $m, PREG_OFFSET_CAPTURE) ? $m[0][1] : null, BirDataWords::SHOWN), fn ($o) => $o !== null);
+        asort($at); // in the order asked: "TIN and hire date" is the TIN, then the hire date
+        $asked = array_keys($at);
+        if ($everyone && (in_array($question['topic'], ['unsupported', 'employee'], true) || ($question['topic'] === 'employees' && $question['measure'] === 'list')) && ($asked !== [] || $question['topic'] === 'employees')) {
+            [$question['topic'], $question['show'], $question['measure']] = ['employees', $asked, 'list'];
+            $question['amount'] = $question['amount'] === 'salary' && !in_array('salary', $asked, true) ? null : $question['amount'];
         }
         $question['top'] = $question['sort_by'] !== null && $question['limit'] === null && $question['nth'] === null && preg_match(BirDataWords::ONE, $message) === 1
             && !preg_match(BirDataWords::SORTING, $message);
@@ -380,7 +387,8 @@ final class BirDataIntent
             && $question['filter'] === null && $question['employee'] === null && $question['sort_by'] === null && !in_array($question['measure'], ['highest', 'lowest'], true);
         // "who got 13th month?" with no condition on an amount read is not a list of everyone either.
         $fields = [...array_column($question['filters'], 'field'), ...$question['show'], $question['sort_by'], $question['amount']];
-        $amountOnly = $question['topic'] === 'employees' && in_array($question['measure'], ['list', 'count'], true) && $question['group'] === null && $question['groups'] === []
+        // A detail to show ("give me everyone's TIN") is what is asked: then "give" is no amount.
+        $amountOnly = $question['topic'] === 'employees' && in_array($question['measure'], ['list', 'count'], true) && $question['group'] === null && $question['groups'] === [] && $question['show'] === []
             && !in_array('rate_type', array_column($question['filters'], 'field'), true)
             && $question['filter'] === null && $question['per'] === null && array_intersect($fields, self::NUMBERS) === []
             && preg_match(BirDataWords::AMOUNT_WORDS, $message) === 1 && !BirDataWords::namesAGroup($message);

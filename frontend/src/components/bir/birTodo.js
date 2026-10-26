@@ -29,17 +29,23 @@ export const whenDue = (item, today) => {
 // "Nov 1–10, 2026"
 const windowText = (opens, due) => `${format(opens, 'MMM d')}–${format(due, opens.getMonth() === due.getMonth() ? 'd, yyyy' : 'MMM d, yyyy')}`
 
+// A due date set in the chat ("2026-11-15"), as a local date; null when the form keeps the usual one.
+const setDue = (form) => {
+  const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(form?.due_date ?? '')
+  return d ? new Date(Number(d[1]), Number(d[2]) - 1, Number(d[3])) : null
+}
+
 // One form's filing window: a 1601-C's month from the 1st to the 10th of the next month, a 2316's
-// year January 1-31 of the next. Null for a period it can't read.
+// year January 1-31 of the next, or up to the due date set in the chat. Null for a period it can't read.
 export function windowOf(form) {
   const m = /^(\d{4})(?:-(\d{2}))?$/.exec(form.period ?? '')
   if (!m) return null
   const year = Number(m[1])
   if (form.form_type === '1601-C' && m[2]) {
     const month = Number(m[2]) - 1
-    return { opens: new Date(year, month + 1, MONTHLY.opens), due: new Date(year, month + 1, MONTHLY.due) }
+    return { opens: new Date(year, month + 1, MONTHLY.opens), due: setDue(form) ?? new Date(year, month + 1, MONTHLY.due) }
   }
-  return form.form_type === '2316' ? { opens: new Date(year + 1, 0, 1), due: new Date(year + 1, 0, 31) } : null
+  return form.form_type === '2316' ? { opens: new Date(year + 1, 0, 1), due: setDue(form) ?? new Date(year + 1, 0, 31) } : null
 }
 
 /**
@@ -59,9 +65,9 @@ export function dueItems(forms, employees, today) {
   for (; month <= startOfMonth(today); month = addMonths(month, 1)) {
     const period = format(month, 'yyyy-MM')
     const opens = new Date(month.getFullYear(), month.getMonth() + 1, MONTHLY.opens)
-    const due = new Date(month.getFullYear(), month.getMonth() + 1, MONTHLY.due)
     const these = monthly.filter(f => f.period === period)
     const form = these.length ? furthest(these) : null
+    const due = setDue(form) ?? new Date(month.getFullYear(), month.getMonth() + 1, MONTHLY.due)
     if (form?.status === 'finalized' || differenceInCalendarDays(due, today) > SOON_DAYS) continue
     items.push({
       key: `1601C-${period}`, title: `1601-C · ${format(month, 'MMMM yyyy')}`,

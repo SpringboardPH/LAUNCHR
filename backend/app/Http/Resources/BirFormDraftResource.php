@@ -36,6 +36,8 @@ class BirFormDraftResource extends JsonResource
             'prepared_by' => $this->whenLoaded('preparer', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'approved_by' => $this->whenLoaded('approver', fn ($user) => ['id' => $user->id, 'name' => $user->name]),
             'rejection_reason' => $this->rejection_reason,
+            // A due date set in the chat (YYYY-MM-DD), or null for the usual one (birTodo.js windowOf()).
+            'due_date' => $this->due_date?->toDateString(),
             // Set on a voided form only: why, by whom and when (the form is kept, never deleted).
             'void' => $this->status === BirFormDraft::VOID ? [
                 'reason' => $this->void_reason,

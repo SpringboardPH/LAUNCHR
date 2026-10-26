@@ -74,7 +74,7 @@ class BirChatDataQuestionTest extends TestCase
 
         $this->asks("what is Teresa's TIN", ['topic' => 'employee', 'detail' => 'tin', 'employee' => 'Teresa'])->assertJsonPath('data.reply', 'The TIN on file for Teresa Taxable (EMP001) is 301-111-222-00000.');
         $this->asks('when was Noel hired', ['topic' => 'employee', 'detail' => 'hire_date', 'employee' => 'Noel'])->assertJsonPath('data.reply', 'Noel Nontaxable (EMP002) was hired on January 1, 2020.');
-        $this->asks('which employees have no TIN?', ['topic' => 'employees', 'filter' => 'no_tin'])->assertJsonPath('data.reply', "1 of 3 employees has no TIN on file:\n- Mina Minwage (EMP003), Staff");
+        $this->asks('which employees have no TIN?', ['topic' => 'employees', 'filter' => 'no_tin'])->assertJsonPath('data.reply', "1 of 3 employees has no TIN on file:\n- Mina Minwage (EMP003)");
         $this->asks('what is our company TIN?', ['topic' => 'company', 'detail' => 'tin'])->assertJsonPath('data.reply', "The company's TIN is 987-654-321-00000.");
         // A detail the message has no word for is not the answer: "who is our CEO?" isn't the company's name.
         $this->asks('who is our CEO?', ['topic' => 'company', 'detail' => 'name'])->assertJsonPath('data.reply', BirDataAnswers::CANT);
@@ -159,7 +159,7 @@ class BirChatDataQuestionTest extends TestCase
             ->assertJsonPath('data.reply', "Salary on file side by side:\n- Noel Nontaxable (EMP002): ₱16,000.00 a month\n- Teresa Taxable (EMP001): ₱60,000.00 a month\nTeresa Taxable's is higher, by ₱44,000.00.");
         $this->assertStringStartsWith('3 of 3 employees whose department is "Finance" or "Administration":', $this->asks('who is in Finance or Administration?', ['topic' => 'employees', 'filters' => [['field' => 'department', 'op' => 'eq', 'value' => 'Finance'], ['field' => 'department', 'op' => 'eq', 'value' => 'Administration']]])->json('data.reply'));
         $this->asks('whose name starts with T?', ['topic' => 'employees', 'filters' => [['field' => 'name', 'op' => 'starts', 'value' => 'T']]])
-            ->assertJsonPath('data.reply', "1 of 3 employees whose name starts with \"T\":\n- Teresa Taxable (EMP001): Staff");
+            ->assertJsonPath('data.reply', "1 of 3 employees whose name starts with \"T\":\n- Teresa Taxable (EMP001)");
         $this->asks('whose name starts with T?', ['topic' => 'employees', 'filters' => [['field' => 'name', 'op' => 'contains', 'value' => 'T']]])->assertJsonPath('data.reply', BirDataAnswers::UNREAD);
 
         // "who got 13th month?": more than nothing; with no condition read, not everyone.
@@ -287,7 +287,7 @@ class BirChatDataQuestionTest extends TestCase
         // In every month, not in total.
         $this->assertStringStartsWith('Going by the 2025 payroll, 1 of 3 employees who had tax withheld in every month of 2025 with payroll:', $this->asks('who had tax withheld every month of 2025?', ['topic' => 'employees', 'filter' => 'tax_withheld', 'tax_year' => 2025])->json('data.reply'));
         // Details for everyone when the model read one employee with no one named.
-        $this->assertStringStartsWith("3 of 3 employees:\n- Mina Minwage (EMP003): Administration, no TIN on file", $this->asks('show TIN and department of everyone', ['topic' => 'employee', 'detail' => 'tin'])->json('data.reply'));
+        $this->assertStringStartsWith("3 of 3 employees:\n- Mina Minwage (EMP003): no TIN on file, Administration", $this->asks('show TIN and department of everyone', ['topic' => 'employee', 'detail' => 'tin'])->json('data.reply'));
 
         // On her 2316: a month of her pay, and "who else" leaves her out.
         $id = $this->actingAs($this->accounting)->postJson('/api/bir/drafts', ['form_type' => '2316', 'period' => '2025', 'employee_id' => Employee::where('employee_id', 'EMP001')->value('id')])->assertCreated()->json('data.id');

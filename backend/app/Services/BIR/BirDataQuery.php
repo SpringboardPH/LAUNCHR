@@ -19,8 +19,6 @@ use Illuminate\Support\Collection;
  */
 final class BirDataQuery
 {
-    private const LISTED = 15;
-
     /** Amounts paid in the period, and the group: these need payroll. */
     private const PAY = ['compensation', 'tax_withheld', 'taxable_compensation', 'non_taxable_compensation', 'contributions', 'thirteenth_month', 'group'];
 
@@ -178,7 +176,8 @@ final class BirDataQuery
         }
         $fixed = array_column(array_filter($filters, fn (array $f) => $f['op'] === 'eq' && !in_array($f['field'], BirDataIntent::NUMBERS, true) && !in_array($f['field'], [...$q['show'], $sortBy], true)), 'field');
         $columns = array_values(array_unique(array_diff([...$q['show'], ...array_column($filters, 'field'), ...array_filter([$sortBy])], ['name', ...$fixed])));
-        $columns = $columns !== [] ? $columns : ($pay ? ['compensation', 'tax_withheld'] : ['position']);
+        // Nothing to show beyond who they are ("employees in Finance"): their names alone.
+        $columns = $columns !== [] ? $columns : ($pay ? ['compensation', 'tax_withheld'] : []);
         $desc = ($q['order'] ?? (in_array($sortBy, BirDataIntent::NUMBERS, true) ? 'desc' : 'asc')) === 'desc';
         $head = match (true) {
             $top => 'the ' . match (true) {
@@ -191,7 +190,7 @@ final class BirDataQuery
         };
 
         return BirDataAnswers::names($picked, ucfirst($lead . $head), $q['measure'] === 'count',
-            fn (array $r) => BirDataAnswers::name($r['person']) . ': ' . implode(', ', array_map(fn (string $c) => self::shown($r, $c), $columns)));
+            fn (array $r) => BirDataAnswers::name($r['person']) . ($columns !== [] ? ': ' . implode(', ', array_map(fn (string $c) => self::shown($r, $c), $columns)) : ''));
     }
 
     /**

@@ -284,6 +284,9 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
         return
       }
       follow(res.draft_id)
+      // The chat can change a form itself (a due date, a box): the lists and the to-do catch up.
+      qc.invalidateQueries({ queryKey: birKeys.allDrafts })
+      qc.invalidateQueries({ queryKey: [...birKeys.lists, 'list'] })
       // An answer the chat read is saved first; "Got it" is only shown once it is.
       if (res.answer) {
         save.mutate({ draftId: res.draft_id, ...res.answer, reply: res.reply })

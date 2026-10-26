@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -72,6 +73,7 @@ class BirFormDraft extends Model
         'voided_by',
         'voided_at',
         'signing_method',
+        'due_date',
     ];
 
     /** signing_method values: e-signatures, or a wet signature on the printout. Null = not chosen. */
@@ -90,6 +92,7 @@ class BirFormDraft extends Model
         'validation_errors' => 'array',
         'version' => 'integer',
         'voided_at' => 'datetime',
+        'due_date' => 'date',
     ];
 
     protected static function booted(): void
@@ -123,6 +126,26 @@ class BirFormDraft extends Model
         }
 
         return $form->id;
+    }
+
+    /**
+     * When this form is due: the date set in the chat, or the usual one, the 10th of the next
+     * month for a 1601-C and January 31 of the next year for a 2316 (as the BIR Forms to-do shows).
+     */
+    public function dueDate(): ?Carbon
+    {
+        if ($this->due_date !== null) {
+            return $this->due_date->copy();
+        }
+        if (!preg_match('/^(\d{4})(?:-(\d{2}))?$/', (string) $this->period, $m)) {
+            return null;
+        }
+
+        return match (true) {
+            $this->form_type === '1601-C' && isset($m[2]) => Carbon::create((int) $m[1], (int) $m[2], 1)->addMonthNoOverflow()->day(10),
+            $this->form_type === '2316' => Carbon::create((int) $m[1] + 1, 1, 31),
+            default => null,
+        };
     }
 
     /** "#64" for an original, "#64v2" for its second version: every version shares the original's number. */

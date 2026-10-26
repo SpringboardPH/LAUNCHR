@@ -246,7 +246,7 @@ class BirDataAnswers
                 default => count($people) . " of {$all} " . ($all === 1 ? 'employee' : 'employees') . ' ' . $what[count($people) === 1 ? 0 : 1],
             };
 
-            return self::names($people->values(), $lead, $q['measure'] === 'count', fn (Employee $e) => self::name($e) . ($e->position ? ", {$e->position}" : ''));
+            return self::names($people->values(), $lead, $q['measure'] === 'count', fn (Employee $e) => self::name($e));
         }
 
         $basis = BirDataPeriod::basis($q, $draft);
@@ -438,16 +438,14 @@ class BirDataAnswers
         return [$people, ["was hired in {$when}", "were hired in {$when}", "No employee was hired in {$when}"]];
     }
 
-    /** The lead, then up to LISTED lines (a count lists them too when there are few). */
+    /** The lead, then a line for every one of them (a count lists them too when there are no more than LISTED). */
     public static function names(Collection $items, string $lead, bool $count, callable $line): string
     {
         if ($items->isEmpty() || ($count && $items->count() > self::LISTED)) {
             return "{$lead}.";
         }
-        $lines = $items->take(self::LISTED)->map(fn ($i) => '- ' . $line($i))->implode("\n");
-        $more = $items->count() > self::LISTED ? "\n…and " . ($items->count() - self::LISTED) . ' more.' : '';
 
-        return "{$lead}:\n{$lines}{$more}";
+        return "{$lead}:\n" . $items->map(fn ($i) => '- ' . $line($i))->implode("\n");
     }
 
     /** "Teresa Taxable (TST-001)". */

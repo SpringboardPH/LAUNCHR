@@ -32,9 +32,6 @@ class BirChatEmployees
     /** A question about an amount, with or without a question mark. */
     private const HOW_MUCH = '/\\b(?:how much|magkano|ilan)\\b/i';
 
-    /** At most this many employees are listed in one reply. */
-    private const LISTED = 15;
-
     /** Each money column, as the reply names it (the item it adds up to is in BirEmployeeList::ITEMS). */
     private const COLUMNS = [
         'compensation' => 'Compensation',
@@ -226,7 +223,7 @@ class BirChatEmployees
         if ($asked !== []) {
             return $this->details($list, $on, $people, $asked, $group !== null ? ($all ?? $count) : null, $words ?? null);
         }
-        $lines = collect($list['employees'])->take(self::LISTED)->map(function (array $row) use ($people) {
+        $lines = collect($list['employees'])->map(function (array $row) use ($people) {
             $person = $people[$row['employee_id']] ?? null;
             $name = $row['name'] ?? ($person !== null ? mb_strtoupper("{$person->last_name}, {$person->first_name}") : "Employee #{$row['employee_id']}");
             $tin = $row['tin'] !== null ? " ({$row['tin']})" : '';
@@ -234,15 +231,14 @@ class BirChatEmployees
 
             return "- {$name}{$tin}: {$payrolls}, compensation " . self::money($row['compensation']) . ', tax withheld ' . self::money($row['tax_withheld']);
         })->implode("\n");
-        $more = $count > self::LISTED ? "\n…and " . ($count - self::LISTED) . ' more. Ask about one by name, for example "how much tax was withheld from Maria Santos?".' : '';
         $total = 'Total: compensation ' . self::money($list['totals']['compensation']) . ', tax withheld ' . self::money($list['totals']['tax_withheld']) . '.';
 
         $who = $count === 1 ? '1 employee' : "{$count} employees";
         if ($group !== null) {
-            return BirChatCommands::result(ucfirst($on) . " covers {$all} employees; {$count} " . ($count === 1 ? 'is' : 'are') . " {$words}:\n{$lines}{$more}\n{$total}", stay: true);
+            return BirChatCommands::result(ucfirst($on) . " covers {$all} employees; {$count} " . ($count === 1 ? 'is' : 'are') . " {$words}:\n{$lines}\n{$total}", stay: true);
         }
 
-        return BirChatCommands::result(ucfirst($on) . " covers {$who}:\n{$lines}{$more}\n{$total}\n" . self::addsUp($list['differences']), stay: true);
+        return BirChatCommands::result(ucfirst($on) . " covers {$who}:\n{$lines}\n{$total}\n" . self::addsUp($list['differences']), stay: true);
     }
 
     /** The details a message asks for, in the order of ASKED; compensation only when no other amount is. */
@@ -282,7 +278,7 @@ class BirChatEmployees
             };
         };
         $count = count($list['employees']);
-        $lines = collect($list['employees'])->take(self::LISTED)->map(function (array $row) use ($people, $asked, $cell, $name) {
+        $lines = collect($list['employees'])->map(function (array $row) use ($people, $asked, $cell, $name) {
             $person = $people[$row['employee_id']] ?? null;
             $who = $row['name'] ?? ($person !== null ? mb_strtoupper("{$person->last_name}, {$person->first_name}") : "Employee #{$row['employee_id']}");
             // One detail: the value alone; several: each named ("TIN 201-…, 13th month … ₱30,000.00").
@@ -290,14 +286,13 @@ class BirChatEmployees
 
             return "- {$who}: " . implode(', ', $cells);
         })->implode("\n");
-        $more = $count > self::LISTED ? "\n…and " . ($count - self::LISTED) . ' more.' : '';
         $money = array_values(array_filter($asked, fn (string $c) => isset(self::COLUMNS[$c])));
         $totals = array_map(fn (string $c) => 'Total ' . $name($c) . ': ' . self::money((string) round(array_sum(array_column($list['employees'], $c)), 2)) . '.', $money);
         $who = $count === 1 ? '1 employee' : "{$count} employees";
         $lead = $all !== null ? ucfirst($on) . " covers {$all} employees; {$count} " . ($count === 1 ? 'is' : 'are') . " {$words}" : ucfirst($on) . " covers {$who}";
         $their = BirDataForms::andList(array_map($label, $asked));
 
-        return BirChatCommands::result("{$lead}. Their {$their}:\n{$lines}{$more}" . ($totals !== [] ? "\n" . implode(' ', $totals) : ''), stay: true);
+        return BirChatCommands::result("{$lead}. Their {$their}:\n{$lines}" . ($totals !== [] ? "\n" . implode(' ', $totals) : ''), stay: true);
     }
 
     /** "Compensation" → "compensation", but "SSS, PhilHealth…" stays as it is. */

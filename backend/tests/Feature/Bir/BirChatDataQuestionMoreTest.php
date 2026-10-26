@@ -196,6 +196,39 @@ class BirChatDataQuestionMoreTest extends TestCase
         $this->assertStringContainsString('"Item 3, TIN" is 301-111-222-00000', $this->send("what's item 3 on Teresa's 2316")->json('data.reply'));
     }
 
+    public function test_everyone_is_listed_with_only_the_details_asked(): void
+    {
+        foreach (range(4, 20) as $n) {
+            Employee::create(['employee_id' => sprintf('EMP%03d', $n), 'first_name' => "Extra{$n}", 'last_name' => 'Person', 'email' => "extra{$n}@example.com",
+                'position' => 'Clerk', 'hire_date' => '2021-03-01', 'salary' => 20000, 'status' => 'active', 'rate_type' => 'monthly', 'tin_number' => sprintf('400-000-%03d-00000', $n)]);
+        }
+        $lines = fn (TestResponse $r) => preg_grep('/^- /', explode("\n", $r->json('data.reply')));
+
+        // No detail asked: every name, nothing else, though the model added the position.
+        $all = $this->asks('list all employees', ['topic' => 'employees', 'measure' => 'list', 'show' => ['position']]);
+        $this->assertCount(20, $lines($all));
+        $this->assertStringNotContainsString('Clerk', $all->json('data.reply'));
+        $this->assertStringNotContainsString('more', $all->json('data.reply'));
+
+        // One detail, however the model labels it: that detail alone, for all 20.
+        foreach ([['topic' => 'employee', 'detail' => 'tin', 'show' => ['tin']], ['topic' => 'employees', 'detail' => 'tin', 'show' => []]] as $label) {
+            $tins = $this->asks('TIN of all employees', ['measure' => 'list'] + $label);
+            $this->assertCount(20, $lines($tins));
+            $this->assertContains('- Extra20 Person (EMP020): TIN 400-000-020-00000', $lines($tins));
+            $this->assertStringNotContainsString('Clerk', $tins->json('data.reply'));
+            $this->assertStringNotContainsString('salary', $tins->json('data.reply'));
+        }
+        // "TINs", and "give" that is no amount here.
+        $this->assertCount(20, $lines($this->asks('what are the TINs of all employees', ['topic' => 'unsupported'])));
+        $this->assertCount(20, $lines($this->asks("give me everyone's TIN", ['topic' => 'employees', 'measure' => 'list', 'detail' => 'tin', 'show' => ['tin']])));
+        // Two details asked: both, and nothing more.
+        $both = $this->asks('show the TIN and hire date of each employee', ['topic' => 'employee', 'measure' => 'list', 'show' => ['tin', 'hire_date']]);
+        $this->assertCount(20, $lines($both));
+        $this->assertContains('- Extra20 Person (EMP020): TIN 400-000-020-00000, hired March 1, 2021', $lines($both));
+        $pay = $this->asks('what are the TIN and salary of all employees', ['topic' => 'employees', 'measure' => 'list', 'amount' => 'salary', 'show' => ['tin', 'position']]);
+        $this->assertContains('- Extra20 Person (EMP020): TIN 400-000-020-00000, salary on file ₱20,000.00 a month', $lines($pay));
+    }
+
     // ---- helpers
 
     /** A message the model labels a data_question with these parts. */
