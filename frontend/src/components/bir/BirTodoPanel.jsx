@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, ClipboardCheck, ChevronRight, Plus, CheckCircle2, Users } from 'lucide-react'
+import { format } from 'date-fns'
 import clsx from 'clsx'
 import { birKeys, getAllBirDrafts, getBirEmployees, createBirDraft, systemClockKeys, getSystemClock } from '../../api/queries'
 import { useAuth } from '../../store/AuthContext'
-import { periodName, formLabel } from './BirDraftList'
-import { dueItems, attentionGroups, whenDue, stateOf } from './birTodo'
+import { periodName } from './BirDraftList'
+import { dueItems, attentionGroups, whenDue, stateOf, windowOf } from './birTodo'
 
 const SHOWN = 4
 const TONE = {
@@ -20,6 +21,19 @@ const TONE = {
  * returned to them, not filed, not signed). Worked out from the forms list, on the system's
  * date (the virtual clock), so it follows a moved date.
  */
+// A form's deadline on its row: red when overdue, amber in its filing window; grey once filed.
+function Deadline({ form, today }) {
+  const window = windowOf(form)
+  if (!window) return <span className="ml-auto" />
+  const filed = form.status === 'finalized'
+  const tone = filed ? 'text-gray-400' : TONE[stateOf(window, today)].text
+  return (
+    <span className={clsx('ml-auto shrink-0 text-[11px] font-medium', tone)} title={filed ? 'Deadline (already filed)' : whenDue(window, today)}>
+      Due {format(window.due, 'MMM d, yyyy')}
+    </span>
+  )
+}
+
 export default function BirTodoPanel({ onOpen, onShowEmployees }) {
   const qc = useQueryClient()
   const { user } = useAuth()
@@ -120,7 +134,7 @@ export default function BirTodoPanel({ onOpen, onShowEmployees }) {
                     <button onClick={() => onOpen(f)} className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-gray-50">
                       <span className="font-medium text-gray-900">{f.form_type} · {periodName(f.form_type, f.period)}</span>
                       {f.employee_name && <span className="text-gray-500 truncate">{f.employee_name}</span>}
-                      <span className="ml-auto shrink-0 text-[11px] text-gray-400">{formLabel(f)}</span>
+                      <Deadline form={f} today={today} />
                       <ChevronRight size={12} className="shrink-0 text-gray-300" />
                     </button>
                     {group.key === 'returned' && <p className="px-2 text-[11px] text-amber-700 truncate" title={f.rejection_reason}>“{f.rejection_reason}”</p>}

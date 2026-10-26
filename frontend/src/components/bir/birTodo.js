@@ -29,6 +29,19 @@ export const whenDue = (item, today) => {
 // "Nov 1–10, 2026"
 const windowText = (opens, due) => `${format(opens, 'MMM d')}–${format(due, opens.getMonth() === due.getMonth() ? 'd, yyyy' : 'MMM d, yyyy')}`
 
+// One form's filing window: a 1601-C's month from the 1st to the 10th of the next month, a 2316's
+// year January 1-31 of the next. Null for a period it can't read.
+export function windowOf(form) {
+  const m = /^(\d{4})(?:-(\d{2}))?$/.exec(form.period ?? '')
+  if (!m) return null
+  const year = Number(m[1])
+  if (form.form_type === '1601-C' && m[2]) {
+    const month = Number(m[2]) - 1
+    return { opens: new Date(year, month + 1, MONTHLY.opens), due: new Date(year, month + 1, MONTHLY.due) }
+  }
+  return form.form_type === '2316' ? { opens: new Date(year + 1, 0, 1), due: new Date(year + 1, 0, 31) } : null
+}
+
 /**
  * Filing not done yet, most urgent first: { key, title, detail, opens, due, form?, create? }.
  * A 1601-C for each month from the first one in the system (at most a year back), shown from
