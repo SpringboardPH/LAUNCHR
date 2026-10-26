@@ -156,6 +156,8 @@ class BirPdfExportTest extends TestCase
         $pdf = $this->text($id);
         $this->assertSame(2, $this->images($pdf), 'Both signatures are drawn.');
         $this->assertSame($fives - 1, substr_count($pdf, '(5) Tj'), 'The typed 01/05/2026 gave way to the signed 10/21/2026.');
+        // Under each signature, the signer's profile name.
+        $this->assertSame(2, substr_count($pdf, "({$this->accounting->name}) Tj"));
         // Nothing else about the signature is printed.
         foreach (['bir-signatures/', '203.0.113.9', 'TestAgent', str_repeat('f', 64)] as $hidden) {
             $this->assertStringNotContainsString($hidden, $pdf);
@@ -167,6 +169,7 @@ class BirPdfExportTest extends TestCase
         $pdf = $this->text($form);
         $this->assertSame(1, $this->images($pdf));
         $this->assertStringContainsString('(10/21/2026) Tj', $pdf);
+        $this->assertStringContainsString("({$this->accounting->name}) Tj", $pdf);
     }
 
     public function test_a_line_with_no_e_signature_is_left_empty_for_a_pen(): void
