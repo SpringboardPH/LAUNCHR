@@ -30,7 +30,7 @@ use setasign\Fpdi\Fpdi;
  * 2316's items 53 (employer) and 54 (employee) with their Date Signed, the 1601-C's signature
  * box (employer only). The signed date is the signature's own. A form marked for a wet
  * signature, or a role not signed yet, leaves its line empty for a pen. Nothing about the
- * signature but its image and date is printed.
+ * signature but its image, the signer's printed name (their profile name) and date is printed.
  *
  * Text never runs out of its box: a long address in a box goes onto two lines, and in
  * character cells it breaks between words from one row to the next; when it is longer than
@@ -347,13 +347,23 @@ class BirPdfService
         return $out;
     }
 
-    /** The signature image, as large as fits its box and centred in it, and on a 1601-C the date beside it. */
+    /**
+     * The signer's printed name (their profile name, even if the account was deleted since) along
+     * the bottom of the box, the signature image above it as large as fits and centred, and on a
+     * 1601-C the date beside it.
+     */
     private function sign(Fpdi $pdf, array $spec, BirFormSignature $signature): void
     {
+        [$x, $y, $w, $h] = $spec['box'];
+        $name = $signature->user()->withTrashed()->value('name');
+        if ($name !== null && $name !== '') {
+            $this->inBox($pdf, [$x, $y + $h - 7, $w, 7], $name, 'C', 7);
+            $h -= 6;
+        }
+
         $file = Storage::disk('local')->path($signature->image_path);
         $info = is_file($file) ? @getimagesize($file) : false;
         if ($info !== false && in_array($info[2], [IMAGETYPE_PNG, IMAGETYPE_JPEG], true) && $info[0] > 0 && $info[1] > 0) {
-            [$x, $y, $w, $h] = $spec['box'];
             $scale = min($w / $info[0], $h / $info[1]);
             [$iw, $ih] = [$info[0] * $scale, $info[1] * $scale];
             $pdf->Image($file, $x + ($w - $iw) / 2, $y + ($h - $ih) / 2, $iw, $ih, $info[2] === IMAGETYPE_PNG ? 'PNG' : 'JPG');
