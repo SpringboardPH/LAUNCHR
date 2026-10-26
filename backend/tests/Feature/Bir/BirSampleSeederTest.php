@@ -6,7 +6,9 @@ use App\Models\BirFormDraft;
 use App\Models\Employee;
 use App\Services\BIR\BirAggregationService;
 use Database\Seeders\BirSampleSeeder;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /** BirSampleSeeder: one taxable, one not taxable (P250,000 and below) and one minimum wage employee for 2025. */
@@ -45,5 +47,24 @@ class BirSampleSeederTest extends TestCase
             $this->assertSame(['2316', '2025', 'draft'], [$draft->form_type, $draft->period, $draft->status]);
             $this->assertSame([], $draft->validation_errors, $employee->employee_id);
         }
+    }
+
+    public function test_a_run_again_removes_the_signature_images_of_what_it_deletes(): void
+    {
+        Storage::fake('local');
+        $this->seed(BirSampleSeeder::class);
+        $teresa = User::firstWhere('email', 'teresa.go@bir-sample.test');
+        $draft = BirFormDraft::whereHas('employee', fn ($q) => $q->where('employee_id', 'TST-001'))->sole();
+
+        // Her saved signature, and the copy frozen on her signed 2316.
+        Storage::disk('local')->put("signatures/{$teresa->id}/saved.png", 'png');
+        $teresa->signature()->create(['path' => "signatures/{$teresa->id}/saved.png", 'mime' => 'image/png']);
+        Storage::disk('local')->put("bir-signatures/{$draft->id}/employee.png", 'png');
+        $draft->signatures()->create(['role' => 'employee', 'user_id' => $teresa->id, 'image_path' => "bir-signatures/{$draft->id}/employee.png",
+            'signed_at' => now(), 'fields_hash' => str_repeat('0', 64)]);
+
+        $this->seed(BirSampleSeeder::class);
+
+        $this->assertSame([], Storage::disk('local')->allFiles());
     }
 }
