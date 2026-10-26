@@ -18,6 +18,7 @@ use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Database\Seeder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
@@ -149,10 +150,14 @@ class BirSampleSeeder extends Seeder
 
         // Revisions point at their parent, so the highest versions go first. Removed for good, not
         // soft-deleted: a deleted correction still counts toward the amendment limit.
-        BirFormDraft::everything()->whereIn('employee_id', $old)->orderByDesc('version')->get()->each->forceDelete();
+                $forms = BirFormDraft::everything()->whereIn('employee_id', $old)->with('signatures')->orderByDesc('version')->get();
+        // A signature's image is a file on the private disk: its row goes with the form or login, the file doesn't.
+        Storage::disk('local')->delete($forms->flatMap->signatures->pluck('image_path')->all());
+        $forms->each->forceDelete();
         Payroll::whereIn('employee_id', $old)->delete();
         Employee::withTrashed()->whereIn('id', $old)->forceDelete(); // schedules and leave balances go with it
         User::withTrashed()->where('email', 'like', '%' . self::EMAIL_DOMAIN)->get()->each(function (User $user) {
+            Storage::disk('local')->delete($user->signature()->pluck('path')->all());
             $user->tokens()->delete();
             $user->forceDelete();
         });
