@@ -230,9 +230,10 @@ class PayrollService
         return $fallback[$frequency] ?? $fallback['semi_monthly'];
     }
 
+    public const REST_DAY_RATE = 1.30;
     public const SNWH_WEEKDAY_REGULAR_EXTRA = 1.30 - 1.00;
     public const SNWH_WEEKDAY_OT_EXTRA = 1.69 - 1.25;
-    public const SNWH_REST_REGULAR_EXTRA = 1.50 - 1.30;
+    public const SNWH_REST_REGULAR_EXTRA = 1.50 - self::REST_DAY_RATE;
     public const SNWH_REST_OT_EXTRA = 1.95 - 1.69;
 
     public static function isSpecialNonWorkingHoliday(?string $typeName): bool
