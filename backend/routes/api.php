@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\BirFormController;
 use App\Http\Controllers\Api\BirFormRecordController;
 use App\Http\Controllers\Api\BirChatController;
+use App\Http\Controllers\Api\BirTokenUsageController;
 use App\Http\Controllers\Api\BirEmployeeListController;
 use App\Http\Controllers\Api\BirSwitchController;
 use App\Http\Controllers\Api\BirSigningController;
@@ -166,6 +167,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/drafts/{id}/export', [BirFormController::class, 'export']);
             Route::get('/drafts/{id}/employees', [BirEmployeeListController::class, 'show']);
             Route::post('/chat', [BirChatController::class, 'message']);
+            Route::get('/token-usage', [BirTokenUsageController::class, 'show']);
         });
     });
 

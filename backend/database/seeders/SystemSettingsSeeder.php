@@ -241,6 +241,8 @@ class SystemSettingsSeeder extends Seeder
             ['key' => 'bir_forms_enabled', 'value' => 'false', 'description' => 'Master switch for the BIR Form Assistant feature (dtr_page_enabled pattern) — release to accounting first', 'type' => 'boolean'],
             ['key' => 'company_tin',                'value' => '000-000-000-000', 'description' => "Company TIN — BIR 1601-C item 6 / 2316 item 12",        'type' => 'string'],
             ['key' => 'rdo_code',                   'value' => '000',             'description' => 'Company RDO code — BIR 1601-C item 7',                    'type' => 'string'],
+            ['key' => 'bir_token_budget',           'value' => '0',               'description' => 'AI tokens the BIR chat may use per bir_token_period (0 = no budget; the chat shows tokens used)', 'type' => 'integer'],
+            ['key' => 'bir_token_period',           'value' => 'week',            'description' => 'When the BIR chat token budget resets: day, week (Monday) or month (the 1st)', 'type' => 'string'],
             ['key' => 'atc_code',                   'value' => 'WW010',           'description' => 'Alphanumeric Tax Code printed on 1601-C item 5 (fixed)', 'type' => 'string'],
 
             // Keys match Form1601CSchema/Form2316Schema field keys 1:1 for direct

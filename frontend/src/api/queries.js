@@ -586,6 +586,7 @@ export const birKeys = {
   formEmployees: (id) => ['bir', 'drafts', id, 'employees'],
   pdf: (id) => ['bir', 'drafts', id, 'pdf'],
   history: (id) => ['bir', 'drafts', id, 'history'],
+  tokenUsage: ['bir', 'token-usage'],
 }
 
 // Returns { enabled, form_types, status_flow, schemas? } — schemas is the per-form field
@@ -801,6 +802,12 @@ export const setBirSwitchPassword = bir(
 // answer, done }; an answer is { field, value } for the caller to save with updateBirDraft.
 // actions: true says this caller runs the workflow steps the chat asks for (action:
 // { type: 'revise' | 'submit', draft_id }), so it may offer them ("reply yes", "say done").
+// { period, budget, used, left, requests, since, resets_at }: the chat's AI tokens until the budget resets.
+export const getBirTokenUsage = bir(
+  () => api.get('/bir/token-usage').then(r => r.data.data),
+  async () => ({ period: 'week', budget: null, used: 0, left: null, requests: 0, since: null, resets_at: null }),
+)
+
 export const sendBirChatMessage = bir(
   (message, { reset = false, draftId, field, actions = false } = {}) => api.post('/bir/chat', {
     ...(message != null && { message }),

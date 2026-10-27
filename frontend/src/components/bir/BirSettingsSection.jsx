@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, Power, KeyRound, Building2, Save } from 'lucide-react'
+import { FileText, Power, KeyRound, Building2, Save, Gauge } from 'lucide-react'
 import clsx from 'clsx'
 import {
   birKeys, getBirConfig, setBirSwitch, setBirSwitchPassword, adminSettingsKeys, getAdminSettings, updateAdminSetting,
@@ -188,7 +188,65 @@ function DetailsCard() {
   )
 }
 
-/** System Settings → BIR Forms (admin only): the switch, its company password, and the company's BIR details. */
+// When the chat's token budget starts again (BirTokenUsage::PERIODS).
+const PERIODS = [['day', 'Every day'], ['week', 'Every week (Monday)'], ['month', 'Every month (the 1st)']]
+
+/** The AI tokens the chat may use until the budget resets; everyone using the chat sees what is left. */
+function TokenBudgetCard() {
+  const qc = useQueryClient()
+  const { data: settings } = useQuery({ queryKey: adminSettingsKeys.all, queryFn: getAdminSettings })
+  const stored = (key, fallback) => (settings ?? []).find(s => s.key === key)?.value ?? fallback
+  const [budget, setBudget] = useState('')
+  const [period, setPeriod] = useState('week')
+  const [note, setNote] = useState(null)
+  useEffect(() => {
+    if (settings) { setBudget(String(stored('bir_token_budget', 0) || '')); setPeriod(stored('bir_token_period', 'week')) }
+  }, [settings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const value = budget.replace(/[,\s]/g, '')
+  const invalid = value !== '' && !/^\d{1,10}$/.test(value)
+  const changed = (value || '0') !== String(stored('bir_token_budget', 0) || 0) || period !== stored('bir_token_period', 'week')
+  const save = useMutation({
+    mutationFn: async () => {
+      await updateAdminSetting('bir_token_budget', value || '0', 'AI tokens the BIR chat may use per bir_token_period (0 = no budget; the chat shows tokens used)', 'integer')
+      await updateAdminSetting('bir_token_period', period, 'When the BIR chat token budget resets: day, week (Monday) or month (the 1st)', 'string')
+    },
+    onMutate: () => setNote(null),
+    onSuccess: () => {
+      setNote({ tone: 'ok', text: value && value !== '0' ? 'Token budget saved. The chat shows how many are left.' : 'No budget: the chat shows the tokens used.' })
+      qc.invalidateQueries({ queryKey: adminSettingsKeys.all })
+      qc.invalidateQueries({ queryKey: birKeys.tokenUsage })
+    },
+    onError: (err) => setNote({ tone: 'error', text: errorText(err) }),
+  })
+
+  return (
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); save.mutate() }}>
+      <Header icon={Gauge} title="AI token budget"
+        description="How many AI tokens the form assistant may use until the budget resets. Everyone using the chat sees how many are left. Ollama Cloud doesn't report its own limit, so this is the team's budget. Leave it empty for no budget." />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-gray-600">
+          Tokens per period
+          <input className={clsx('input mt-1', invalid && 'border-amber-300')} inputMode="numeric" value={budget} placeholder="500000"
+            onChange={(e) => setBudget(e.target.value)} />
+          {invalid && <span className="mt-0.5 block text-[11px] text-amber-700">Should be a whole number.</span>}
+        </label>
+        <label className="text-xs text-gray-600">
+          Resets
+          <select className="input mt-1" value={period} onChange={(e) => setPeriod(e.target.value)}>
+            {PERIODS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        </label>
+      </div>
+      <button type="submit" className="btn-primary" disabled={!settings || !changed || invalid || save.isPending}>
+        <Save size={15} /> {save.isPending ? 'Saving…' : 'Save token budget'}
+      </button>
+      <Note note={note} />
+    </form>
+  )
+}
+
+/** System Settings → BIR Forms (admin only): the switch, its company password, the company's BIR details and the AI token budget. */
 export default function BirSettingsSection() {
   const { data: config } = useQuery({ queryKey: birKeys.config, queryFn: getBirConfig })
   return (
@@ -206,6 +264,7 @@ export default function BirSettingsSection() {
         <SwitchCard config={config} />
         <PasswordCard config={config} />
         <DetailsCard />
+        <TokenBudgetCard />
       </div>
     </div>
   )

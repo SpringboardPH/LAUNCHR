@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR\Llm;
 
+use App\Services\BIR\BirTokenUsage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -55,6 +56,7 @@ class OllamaClient implements LlmClientInterface
             throw new RuntimeException('The assistant is unavailable right now.');
         }
 
+        BirTokenUsage::record((int) $response->json('prompt_eval_count', 0), (int) $response->json('eval_count', 0));
         $decoded = $this->decodeObject((string) $response->json('message.content'));
 
         if ($decoded === null) {

@@ -6,6 +6,7 @@ import {
   birKeys, sendBirChatMessage, createBirDraft, updateBirDraft, validateBirDraft, getBirEmployees, reviseBirDraft, submitBirDraft,
 } from '../../api/queries'
 import { ExistingFormButton, existingForm } from './BirExistingForm'
+import BirTokenMeter from './BirTokenMeter'
 import { useAuth } from '../../store/AuthContext'
 
 // The 2316 example names someone who is really on file, so it works on any database.
@@ -287,6 +288,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
       // The chat can change a form itself (a due date, a box): the lists and the to-do catch up.
       qc.invalidateQueries({ queryKey: birKeys.allDrafts })
       qc.invalidateQueries({ queryKey: [...birKeys.lists, 'list'] })
+      qc.invalidateQueries({ queryKey: birKeys.tokenUsage })
       // An answer the chat read is saved first; "Got it" is only shown once it is.
       if (res.answer) {
         save.mutate({ draftId: res.draft_id, ...res.answer, reply: res.reply })
@@ -481,6 +483,7 @@ export default function BirChatPanel({ onDraftCreated, onQuestion, openDraftId =
           )}
         </div>
       </div>
+      <BirTokenMeter />
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4" role="log" aria-live="polite">
         {messages.map(m => (

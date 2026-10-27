@@ -2,6 +2,7 @@
 
 namespace App\Services\BIR\Llm;
 
+use App\Services\BIR\BirTokenUsage;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -65,6 +66,7 @@ class AnthropicClient implements LlmClientInterface
             throw new RuntimeException('The assistant is unavailable right now.');
         }
 
+        BirTokenUsage::record((int) $response->json('usage.input_tokens', 0), (int) $response->json('usage.output_tokens', 0));
         foreach ($response->json('content', []) as $block) {
             if (($block['type'] ?? null) === 'tool_use' && is_array($block['input'] ?? null)) {
                 return $block['input'];
