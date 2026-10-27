@@ -3,7 +3,7 @@ import {
   CheckCircle2, Signature, History, BookOpen, ListTodo,
 } from 'lucide-react'
 import { fmt } from '../OnboardingTutorial'
-import BirGuideTour from './BirGuideTour'
+import GuideTour from '../GuideTour'
 
 const OPEN_A_FORM = 'Open a form from Saved forms to see this part. It is pointed at the form preview for now.'
 
@@ -123,5 +123,5 @@ export const BIR_GUIDE_STEPS = [
 
 /** The guide itself: a tour that points at each part of the BIR Forms page. */
 export default function BirAccountantGuide({ open, onDismiss }) {
-  return <BirGuideTour open={open} onDismiss={onDismiss} steps={BIR_GUIDE_STEPS} />
+  return <GuideTour open={open} onDismiss={onDismiss} steps={BIR_GUIDE_STEPS} />
 }

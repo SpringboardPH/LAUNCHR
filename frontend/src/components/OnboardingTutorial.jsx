@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import GuideTour from './GuideTour'
 import {
-  X, ChevronRight, ChevronLeft,
   LayoutDashboard, Clock, ClipboardList, CalendarRange, User,
   FileText, CheckCircle2, Users, Banknote, Settings, UserCog,
   Building2, Sliders, History, Wallet,
@@ -118,6 +118,7 @@ export const EMPLOYEE_STEPS = [
   {
     icon: CheckCircle2,
     title: "You're all set!",
+    target: 'help',
     body: "You know the essentials of LAUNCHR. Click Done to get started, or revisit this guide anytime by clicking the Help & Tutorial button at the bottom of the sidebar.",
   },
 ]
@@ -240,6 +241,7 @@ export const HR_STEPS = [
   {
     icon: CheckCircle2,
     title: "You're all set!",
+    target: 'help',
     body: "You now know the key features of LAUNCHR. Click Done to start managing, or revisit this guide anytime via the Help & Tutorial button at the bottom of the sidebar.",
   },
 ]
@@ -416,6 +418,7 @@ export const ADMIN_STEPS = [
   {
     icon: CheckCircle2,
     title: "You're all set!",
+    target: 'help',
     body: "You have full visibility over LAUNCHR. Click Done to get started, or revisit this guide anytime via the Help & Tutorial button at the bottom of the sidebar.",
   },
 ]
@@ -431,77 +434,9 @@ export function useOnboardingTutorial(key) {
   return { open, show, dismiss }
 }
 
-// ─── Modal component ──────────────────────────────────────────
+// ─── The tour ─────────────────────────────────────────────────
+// Points at each step's page in the sidebar (its route), as the BIR Forms guide does; a step
+// without a page (the welcome) is shown in the middle, and the last one points at Help & Tutorial.
 export default function OnboardingTutorial({ open, onDismiss, steps }) {
-  const [step, setStep] = useState(0)
-
-  useEffect(() => {
-    if (open) setStep(0)
-  }, [open])
-
-  if (!open || !steps?.length) return null
-
-  const current = steps[step]
-  const Icon = current.icon
-  const isFirst = step === 0
-  const isLast = step === steps.length - 1
-
-  const next = () => (isLast ? onDismiss() : setStep(s => s + 1))
-  const prev = () => setStep(s => Math.max(0, s - 1))
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="bg-brand-600 px-6 py-5 text-white relative">
-          <button onClick={onDismiss} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-white/20 transition-colors" aria-label="Close tutorial">
-            <X size={16} />
-          </button>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <Icon size={18} />
-            </div>
-            <span className="text-xs font-semibold text-white/70 uppercase tracking-wider">
-              Step {step + 1} of {steps.length}
-            </span>
-          </div>
-          <h2 className="text-xl font-bold pr-8">{current.title}</h2>
-          {current.route && <p className="text-xs text-white/50 font-mono mt-1">{current.route}</p>}
-        </div>
-
-        <div className="px-6 py-5 min-h-[180px]">
-          <p className="text-sm text-gray-700 mb-4 leading-relaxed">{current.body}</p>
-          {current.bullets?.length > 0 && (
-            <ul className="space-y-2">
-              {current.bullets.map((b, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-500 mt-[7px] shrink-0" />
-                  <span>{b}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="px-6 pb-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            {steps.map((_, i) => (
-              <button key={i} onClick={() => setStep(i)} aria-label={`Go to step ${i + 1}`}
-                className={`h-2 rounded-full transition-all ${i === step ? 'bg-brand-600 w-4' : 'bg-gray-200 hover:bg-gray-300 w-2'}`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            {!isFirst && (
-              <button onClick={prev} className="btn-secondary flex items-center gap-1 px-3 py-2 text-sm">
-                <ChevronLeft size={14} /> Back
-              </button>
-            )}
-            <button onClick={next} className="btn-primary flex items-center gap-1 px-4 py-2 text-sm">
-              {isLast ? 'Done' : <>Next <ChevronRight size={14} /></>}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  return <GuideTour open={open} onDismiss={onDismiss} steps={steps.map(step => ({ ...step, target: step.target ?? step.route }))} width={380} />
 }

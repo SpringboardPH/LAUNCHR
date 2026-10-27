@@ -71,7 +71,7 @@ export default function EmployeeLayout() {
           ...(myFormsError ? [] : [{ to: '/my-bir-forms', icon: FileSignature, label: 'Forms to sign', count: toSign }]),
         ].map(({ to, icon: Icon, label, count }) => (
             <a
-              key={to} href={to} onClick={(e) => {
+              key={to} href={to} data-guide={`nav:${to}`} onClick={(e) => {
                 e.preventDefault()
                 navigate(to)
                 setOpen(false)
@@ -101,7 +101,7 @@ export default function EmployeeLayout() {
               <p className="text-xs text-gray-500 truncate">Employee</p>
             </div>
           </div>
-          <button onClick={tutorial.show} className="btn-ghost w-full justify-start text-xs mb-1">
+          <button onClick={tutorial.show} data-guide="help" className="btn-ghost w-full justify-start text-xs mb-1">
             <HelpCircle size={14} /> Help & Tutorial
           </button>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">

@@ -141,6 +141,7 @@ export default function AppLayout() {
         <div key={item.label}>
           <button
             onClick={() => toggleGroup(item.label)}
+            data-guide-group={visibleChildren.map(c => c.to).join(' ')}
             className={clsx(
               'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
               isGroupActive ? 'text-brand-700 font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -161,6 +162,7 @@ export default function AppLayout() {
                 <NavLink
                   key={child.to}
                   to={child.to}
+                  data-guide={`nav:${child.to}`}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) => clsx(
                     'flex items-center px-2 py-1.5 rounded-md text-sm transition-colors',
@@ -182,7 +184,7 @@ export default function AppLayout() {
     const { to, icon: Icon, label, end, badge } = item
     return (
       <NavLink
-        key={to} to={to} end={end}
+        key={to} to={to} end={end} data-guide={`nav:${to}`}
         onClick={() => setOpen(false)}
         className={({ isActive }) => clsx(
           'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
@@ -227,7 +229,7 @@ export default function AppLayout() {
               </div>
               {EMPLOYEE_NAV.filter(i => !(i.mySign && myFormsError)).map(({ to, icon: Icon, label, end, mySign }) => (
                 <NavLink
-                  key={to} to={to} end={end}
+                  key={to} to={to} end={end} data-guide={`nav:${to}`}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) => clsx(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
@@ -255,7 +257,7 @@ export default function AppLayout() {
               </div>
               {ADMIN_ONLY_NAV.map(({ to, icon: Icon, label, end }) => (
                 <NavLink
-                  key={to} to={to} end={end}
+                  key={to} to={to} end={end} data-guide={`nav:${to}`}
                   onClick={() => setOpen(false)}
                   className={({ isActive }) => clsx(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
@@ -282,7 +284,7 @@ export default function AppLayout() {
               </p>
             </div>
           </div>
-          <button onClick={tutorial.show} className="btn-ghost w-full justify-start text-xs mb-1">
+          <button onClick={tutorial.show} data-guide="help" className="btn-ghost w-full justify-start text-xs mb-1">
             <HelpCircle size={14} /> Help & Tutorial
           </button>
           <button onClick={handleLogout} className="btn-ghost w-full justify-start text-xs">
