@@ -51,7 +51,7 @@ class PayrollLateGraceDeductionTest extends TestCase
 
         $payroll = Payroll::where('employee_id', $employee->id)->sole();
         $this->assertArrayNotHasKey('Late', $payroll->deductions);
-        $this->assertEquals(1000.00, (float) $payroll->net_pay);
+        $this->assertEquals(805.00, (float) $payroll->net_pay);
     }
 
     public function test_late_status_log_still_produces_a_late_deduction()

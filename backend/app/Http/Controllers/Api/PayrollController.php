@@ -9,6 +9,8 @@ use App\Models\AttendanceLog;
 use App\Models\EmployeeSchedule;
 use App\Services\AttendanceService;
 use App\Services\HolidayAttendanceService;
+use App\Services\PayrollService;
+use App\Services\StatutoryStamp;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -437,15 +439,10 @@ class PayrollController extends Controller
                 }
 
                 if ($isRestDay) {
-                    // Rest day: regular pay is a day rate (like Base Pay), not an hourly
-                    // rate — completing the required hours earns the full daily_rate * 1.30,
-                    // prorated if they clocked out early. Hours beyond that only count once
-                    // OT is approved (status === 'overtime') — while pending, the excess
-                    // isn't paid at all yet.
                     $restRegularHours = min($details['hours_worked'], $expectedHours);
                     $metrics['rest_day_hours'] += $restRegularHours;
                     $metrics['rest_day_pay'] += $expectedHours > 0
-                        ? ($restRegularHours / $expectedHours) * $dailyRate * 1.30
+                        ? ($restRegularHours / $expectedHours) * $dailyRate * PayrollService::REST_DAY_RATE
                         : 0;
                     $metrics['rest_day_ot_hours'] += $overtimeHours;
                     if ($isSnwh) {
@@ -610,9 +607,6 @@ class PayrollController extends Controller
                 ? 0  // Daily rate: undeclared is not an allowance, it's the base rate
                 : $undeclaredDiff / $periods;
 
-            // OT Pay:          daily_rate * 1.25 / 8 * OT hours
-            // Rest Day Pay:    daily_rate * 1.30, prorated by hours worked / required hours
-            // Rest Day OT Pay: daily_rate * 1.69 / 8 * rest day OT hours
             $overtimePay = $metrics['overtime_hours'] * ($dailyRate * 1.25 / 8) + $requestOvertimePay;
             $restDayPay = $metrics['rest_day_pay'];
             $restDayOTPay = $metrics['rest_day_ot_hours'] * ($dailyRate * 1.69 / 8);
@@ -649,11 +643,20 @@ class PayrollController extends Controller
 
             // Gov't mandatory contributions — applied every cutoff
             // (HR deducts these on every payslip, not just end-of-month)
-            // Daily rate: contributions based on undeclared_salary; Monthly: based on base_salary
-            $contributionBasis = $isDaily ? $undeclaredSalary : $baseSalary;
-            $sss = \App\Services\PayrollService::calculateSSS($contributionBasis, $periods);
-            $philhealth = \App\Services\PayrollService::calculatePhilHealth($contributionBasis, $periods);
-            $pagibig = \App\Services\PayrollService::calculatePagIBIG($contributionBasis, $periods);
+            $stamp = $isDaily
+                ? StatutoryStamp::forDaily(
+                    $daysWorkedCount,
+                    $dailyRate,
+                    $lateDeduction,
+                    $undertimeDeduction,
+                    $metrics['rest_day_pay'],
+                    $periods,
+                )
+                : StatutoryStamp::forMonthlySalary($baseSalary, $periods);
+            $shares = $stamp->shares();
+            $sss = $shares->sss;
+            $philhealth = $shares->philhealth;
+            $pagibig = $shares->pagibig;
 
             $totalAllowances = $overtimePay + $restDayPay + $restDayOTPay + $undeclaredAllowance + $leavePay + $nightDiffPay + $specialHolidayPay;
             $finalGross = $grossBase + $totalAllowances;
@@ -682,9 +685,6 @@ class PayrollController extends Controller
                         'Undertime' => round($undertimeDeduction, 2),
                         'Absent' => round($absentDeduction, 2),
                         'Half Day' => round($halfDayDeduction, 2),
-                        'SSS EE Contribution' => round($sss, 2),
-                        'PhilHealth EE Contribution' => round($philhealth, 2),
-                        'Pag-IBIG EE Contribution' => round($pagibig, 2),
                         'Withholding Tax' => round($wTax, 2),
                     ], fn($val) => $val > 0);
 
@@ -698,30 +698,29 @@ class PayrollController extends Controller
                         ['label' => 'Night Differential (' . round($totalNightHours, 2) . ' hrs)', 'amount' => round($nightDiffPay, 2)],
                     ], fn($a) => $a['amount'] > 0);
 
-            $payroll = Payroll::updateOrCreate(
-                [
-                    'employee_id' => $employee->id,
-                    'cutoff_start' => $start,
-                    'cutoff_end' => $end,
-                ],
-                [
-                    'base_salary' => $baseSalary,
-                    'undeclared_salary' => $undeclaredSalary > $baseSalary ? $undeclaredSalary : null,
-                    'daily_rate' => round($dailyRate, 2),
-                    'total_hours' => round($metrics['total_hours'] + $metrics['rest_day_hours'], 2),
-                    'days_worked' => $daysWorkedCount,
-                    'overtime_hours' => round($metrics['overtime_hours'] + $metrics['rest_day_ot_hours'], 2),
-                    'late_minutes' => $metrics['late_minutes'],
-                    'undertime_minutes' => $metrics['undertime_minutes'],
-                    'gross_pay' => round($finalGross, 2),
-                    'deductions' => $deductions,
-                    'allowances' => array_values($allowances), // Reset indices
-                    'net_pay' => round($finalNet, 2),
-                    'status' => 'draft',
-                    'use_undeclared' => false,
-                    'processed_at' => \App\Helpers\SystemClock::now(),
-                ]
-            );
+            $payroll = Payroll::firstOrNew([
+                'employee_id' => $employee->id,
+                'cutoff_start' => $start,
+                'cutoff_end' => $end,
+            ]);
+
+            $stamp->writeOnto($payroll, [
+                'base_salary' => $baseSalary,
+                'undeclared_salary' => $undeclaredSalary > $baseSalary ? $undeclaredSalary : null,
+                'daily_rate' => round($dailyRate, 2),
+                'total_hours' => round($metrics['total_hours'] + $metrics['rest_day_hours'], 2),
+                'days_worked' => $daysWorkedCount,
+                'overtime_hours' => round($metrics['overtime_hours'] + $metrics['rest_day_ot_hours'], 2),
+                'late_minutes' => $metrics['late_minutes'],
+                'undertime_minutes' => $metrics['undertime_minutes'],
+                'gross_pay' => round($finalGross, 2),
+                'deductions' => $deductions,
+                'allowances' => array_values($allowances),
+                'net_pay' => round($finalNet, 2),
+                'status' => 'draft',
+                'use_undeclared' => false,
+                'processed_at' => \App\Helpers\SystemClock::now(),
+            ]);
 
             $loanResult = \App\Services\LoanService::chargeForPayroll(
                 $employee->id,
@@ -734,7 +733,7 @@ class PayrollController extends Controller
 
             if ($loanResult['total'] > 0) {
                 $payroll->update([
-                    'deductions' => array_merge($deductions, $loanResult['deductions']),
+                    'deductions' => array_merge($payroll->deductions ?? [], $loanResult['deductions']),
                     'net_pay' => max(0, round($payroll->net_pay - $loanResult['total'], 2)),
                 ]);
             }
@@ -803,7 +802,10 @@ class PayrollController extends Controller
                     $normalized[$key] = $value;
                 }
             }
-            $data['deductions'] = $normalized;
+            $data['deductions'] = StatutoryStamp::keepStoredShares(
+                is_array($payroll->deductions) ? $payroll->deductions : [],
+                $normalized,
+            );
         }
 
         $payroll->fill($data);
@@ -1009,6 +1011,8 @@ class PayrollController extends Controller
             ], 422);
         }
 
+        $storedDeductions = is_array($payroll->deductions) ? $payroll->deductions : [];
+
         // Calculate the appropriate salary to use for deductions
         $salaryForDeductions = $payroll->use_undeclared 
             ? $payroll->base_salary 
@@ -1100,6 +1104,8 @@ class PayrollController extends Controller
                 unset($deductions[$key]);
             }
         }
+
+        $deductions = StatutoryStamp::keepStoredShares($storedDeductions, $deductions);
 
         // Recalculate totals
         $totalDeductions = array_sum($deductions);
