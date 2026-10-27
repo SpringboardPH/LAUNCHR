@@ -109,7 +109,9 @@ export default function EmployeeFormPage() {
           ]},
           { heading: 'Employment Details', items: [
             'Set the hire date, select Monthly or Daily as the pay rate type, and enter the base salary.',
-            'Benefits is an optional separate amount used for internal payroll calculations while keeping the declared salary different.',
+            ...(rateType === 'monthly' ? [
+              'Benefits is an optional separate amount used for internal payroll calculations while keeping the declared salary different.',
+            ] : []),
           ]},
           { heading: 'Bank & Government IDs', items: [
             'Enter the bank account number, SSS, PhilHealth, Pag-IBIG, and TIN numbers.',
@@ -215,12 +217,11 @@ export default function EmployeeFormPage() {
           </FormField>
         </div>
 
-        <FormField label="Benefits (Salary + Optional)" error={errors.undeclared_salary?.message}>
-          <input type="number" step="0.01" {...register('undeclared_salary')} className="input" placeholder="Optional side information" />
-          {rateType === 'daily' && (
-            <p className="text-xs text-gray-500 mt-1">This field is required for daily rate employees to enable contributions to appear in the payroll.</p>
-          )}
-        </FormField>
+        {rateType === 'monthly' && (
+          <FormField label="Benefits (Salary + Optional)" error={errors.undeclared_salary?.message}>
+            <input type="number" step="0.01" {...register('undeclared_salary')} className="input" placeholder="Optional side information" />
+          </FormField>
+        )}
 
         <FormField label="Bank Account Number" error={errors.bank_account_number?.message}>
           <input {...register('bank_account_number')} className={`input ${errors.bank_account_number ? 'input-error' : ''}`} placeholder="10-12 digits" />
