@@ -39,6 +39,7 @@ function splitAllowanceLines(allowances) {
 // (cash-advance repayments + any custom-typed deduction) is an "Other" deduction
 // that currently lumps into the single O36 total — we itemize these.
 const DEDICATED_DEDUCTIONS = ['Late', 'Undertime', 'Absent', 'Half Day', 'SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution', 'SSS Loan', 'Pag-IBIG Loan', 'Withholding Tax']
+const LOCKED_CONTRIBUTION_LABELS = new Set(['SSS EE Contribution', 'PhilHealth EE Contribution', 'Pag-IBIG EE Contribution'])
 
 // Custom-typed "Other" fields have editable labels; standard fields (Absent, SSS,
 // Cash Advance, etc.) show a fixed label — only their amount is editable. A blank
@@ -59,6 +60,55 @@ function splitDeductionLines(deductions) {
     others.push({ label: label === 'Cash Advance/Others' ? 'Cash Advance' : label, amt })
   }
   return { others }
+}
+
+function employerShares(basis, periods, adminSettings) {
+  const zeros = { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
+  if (basis === null || basis === undefined || basis === '') return zeros
+  const amount = Number(basis)
+  if (!Number.isFinite(amount) || amount <= 0) return zeros
+
+  let sssER = 0
+  if (adminSettings && Array.isArray(adminSettings)) {
+    const sssSetting = adminSettings.find(s => s.key === 'sss_contribution_table')
+
+    if (sssSetting && sssSetting.value) {
+      let sssTable = sssSetting.value
+      if (typeof sssTable === 'string') {
+        try {
+          sssTable = JSON.parse(sssTable)
+        } catch {
+          sssTable = null
+        }
+      }
+
+      if (Array.isArray(sssTable) && sssTable.length > 0) {
+        const bracket = sssTable.find(b =>
+          amount >= b.min && (b.max === null || amount <= b.max)
+        )
+        sssER = bracket ? (bracket.er || 0) / periods : 0
+      }
+    }
+  }
+
+  let phicER = 0
+  if (amount < 10000) {
+    phicER = (500 * 0.5) / periods
+  } else if (amount > 100000) {
+    phicER = (5000 * 0.5) / periods
+  } else {
+    phicER = ((amount * 0.05) * 0.5) / periods
+  }
+
+  const pagibigBase = Math.min(amount, 10000)
+  const hdmfER = (pagibigBase * 0.02) / periods
+
+  return {
+    sssER: Number(sssER.toFixed(2)),
+    phicER: Number(phicER.toFixed(2)),
+    hdmfER: Number(hdmfER.toFixed(2)),
+    totalER: Number((sssER + phicER + hdmfER).toFixed(2))
+  }
 }
 
 // Row 36 is the static "Others" header line (C36 earnings side, J36 deductions
@@ -1011,72 +1061,11 @@ export default function PayrollPage() {
     return item ? Number(item.amount) : 0
   }
   
-  const calculateERContributions = () => {
-    if (!selectedPayroll) return { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
-    
-    // Get contribution basis: undeclared for daily rate, base_salary for monthly.
-    // Must match PayrollController's backend basis exactly (no base_salary fallback
-    // for daily employees — base_salary there is a per-day wage, not a monthly figure).
-    const isDaily = selectedPayroll.employee?.rate_type === 'daily'
-    const contributionBasis = isDaily
-      ? Number(selectedPayroll.undeclared_salary)
-      : Number(selectedPayroll.base_salary)
-
-    if (contributionBasis <= 0) return { sssER: 0, phicER: 0, hdmfER: 0, totalER: 0 }
-
-    // Calculate SSS ER from contribution table
-    let sssER = 0
-    if (adminSettings && Array.isArray(adminSettings)) {
-      const sssSetting = adminSettings.find(s => s.key === 'sss_contribution_table')
-      
-      if (sssSetting && sssSetting.value) {
-        let sssTable = sssSetting.value
-        
-        // Handle double-encoded JSON (parse multiple times if needed)
-        let parseAttempts = 0
-        while (typeof sssTable === 'string' && parseAttempts < 3) {
-          try {
-            sssTable = JSON.parse(sssTable)
-            parseAttempts++
-          } catch (e) {
-            console.error('Failed to parse SSS table:', e)
-            break
-          }
-        }
-        
-        // Ensure it's an array
-        if (Array.isArray(sssTable) && sssTable.length > 0) {
-          const bracket = sssTable.find(b => 
-            contributionBasis >= b.min && (b.max === null || contributionBasis <= b.max)
-          )
-          sssER = bracket ? (bracket.er || 0) / payPeriods : 0
-        }
-      }
-    }
-
-    // Calculate PhilHealth ER: 5% total, 2.5% ER share
-    let phicER = 0
-    if (contributionBasis < 10000) {
-      phicER = (500 * 0.5) / payPeriods
-    } else if (contributionBasis > 100000) {
-      phicER = (5000 * 0.5) / payPeriods
-    } else {
-      phicER = ((contributionBasis * 0.05) * 0.5) / payPeriods
-    }
-
-    // Calculate Pag-IBIG ER: 2% capped at 10k salary
-    const pagibigBase = Math.min(contributionBasis, 10000)
-    const hdmfER = (pagibigBase * 0.02) / payPeriods
-    
-    return {
-      sssER: Number(sssER.toFixed(2)),
-      phicER: Number(phicER.toFixed(2)),
-      hdmfER: Number(hdmfER.toFixed(2)),
-      totalER: Number((sssER + phicER + hdmfER).toFixed(2))
-    }
-  }
-  
-  const { sssER, phicER, hdmfER, totalER } = calculateERContributions()
+  const { sssER, phicER, hdmfER, totalER } = employerShares(
+    selectedPayroll?.contribution_basis ?? null,
+    payPeriods,
+    adminSettings,
+  )
 
   const totals = useMemo(() => {
     return payrolls.reduce((acc, p) => ({
@@ -1519,9 +1508,6 @@ export default function PayrollPage() {
                       <option value="Undertime">Undertime</option>
                       <option value="Absent">Absent</option>
                       <option value="Half Day">Half Day</option>
-                      <option value="SSS EE Contribution">SSS EE Contribution</option>
-                      <option value="PhilHealth EE Contribution">PhilHealth EE Contribution</option>
-                      <option value="Pag-IBIG EE Contribution">Pag-IBIG EE Contribution</option>
                       <option value="SSS Loan">SSS Loan</option>
                       <option value="Pag-IBIG Loan">Pag-IBIG Loan</option>
                       <option value="Cash Advance">Cash Advance</option>
@@ -1546,15 +1532,21 @@ export default function PayrollPage() {
                             <span className="text-red-700 capitalize flex-1 mr-2">{item.label === 'Cash Advance/Others' ? 'Cash Advance' : (item.label || '').replace('_', ' ')}</span>
                           )}
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="number" 
-                              className="w-20 text-right bg-transparent font-semibold focus:outline-none text-red-700"
-                              value={item.amount}
-                              onChange={(e) => handleFieldChange('deductions', idx, 'amount', e.target.value)}
-                            />
-                            <button onClick={() => handleRemoveField('deductions', idx)} className="text-red-400 hover:text-red-600">
-                              <Plus size={14} className="rotate-45" />
-                            </button>
+                            {LOCKED_CONTRIBUTION_LABELS.has(item.label) ? (
+                              <span className="font-semibold text-red-700">₱{Number(item.amount).toLocaleString()}</span>
+                            ) : (
+                              <>
+                                <input
+                                  type="number"
+                                  className="w-20 text-right bg-transparent font-semibold focus:outline-none text-red-700"
+                                  value={item.amount}
+                                  onChange={(e) => handleFieldChange('deductions', idx, 'amount', e.target.value)}
+                                />
+                                <button onClick={() => handleRemoveField('deductions', idx)} className="text-red-400 hover:text-red-600">
+                                  <Plus size={14} className="rotate-45" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       ) : (
@@ -1658,12 +1650,17 @@ export default function PayrollPage() {
                         <span className="text-gray-500">Base Salary</span>
                         <span className="font-bold text-gray-700">₱{Number(selectedPayroll.base_salary).toLocaleString()}</span>
                       </div>
-                      {selectedPayroll.undeclared_salary && (
+                      {selectedPayroll.employee.rate_type === 'daily' ? (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Contribution basis</span>
+                          <span className="font-bold text-blue-700">₱{Number(selectedPayroll.contribution_basis || 0).toLocaleString()}</span>
+                        </div>
+                      ) : selectedPayroll.undeclared_salary ? (
                         <div className="flex justify-between text-xs">
                           <span className="text-gray-500">Benefits</span>
                           <span className="font-bold text-blue-700">₱{Number(selectedPayroll.undeclared_salary).toLocaleString()}</span>
                         </div>
-                      )}
+                      ) : null}
                       <div className="flex justify-between text-xs pt-1 border-t border-gray-100">
                         <span className="text-gray-500">Derived Daily Rate</span>
                         <span className="font-bold text-brand-600">₱{Number(selectedPayroll.daily_rate).toLocaleString()}</span>

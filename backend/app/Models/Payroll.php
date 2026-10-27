@@ -44,6 +44,7 @@ class Payroll extends Model
         'overtime_hours' => 'decimal:2',
         'gross_pay' => 'decimal:2',
         'net_pay' => 'decimal:2',
+        'contribution_basis' => 'decimal:2',
         'deductions' => 'array',
         'allowances' => 'array',
         'use_undeclared' => 'boolean',

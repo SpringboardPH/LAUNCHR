@@ -103,7 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/revert-to-draft', [PayrollController::class, 'revertToDraft'])->middleware('role:admin,hr,accounting');
         Route::post('/{id}/toggle-undertime-calc', [PayrollController::class, 'toggleUndertimeCalculation'])->middleware('role:admin,hr,accounting');
         Route::get('/{id}', [PayrollController::class, 'show'])->middleware('role:admin,hr,accounting');
-        Route::put('/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr,accounting');
+        Route::match(['put', 'patch'], '/{id}', [PayrollController::class, 'update'])->middleware('role:admin,hr,accounting');
         Route::get('/{id}/export', [PayrollController::class, 'export'])->middleware('role:admin,hr,accounting');
     });
     

@@ -15,6 +15,7 @@ use App\Models\SystemSettings;
 use App\Models\User;
 use App\Services\LoanService;
 use App\Services\PayrollService;
+use App\Services\StatutoryStamp;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Seeder;
@@ -313,48 +314,49 @@ class DemoOpsSeeder extends Seeder
                 }
             }
             $gross = round($dailyRate * $daysWorked, 2);
-            $basis = $isDaily ? (float) ($employee->undeclared_salary ?? 0) : (float) $employee->salary;
-            $sss = PayrollService::calculateSSS($basis, 2);
-            $philhealth = PayrollService::calculatePhilHealth($basis, 2);
-            $pagibig = PayrollService::calculatePagIBIG($basis, 2);
+            $stamp = $isDaily
+                ? StatutoryStamp::forDaily($daysWorked, $dailyRate, 0, 0, 0, 2)
+                : StatutoryStamp::forMonthlySalary((float) $employee->salary, 2);
+            $shares = $stamp->shares();
             if ($isDaily) {
-                $taxable = max(0, $gross - $sss - $philhealth - $pagibig);
+                $taxable = max(0, $gross - $shares->sss - $shares->philhealth - $shares->pagibig);
                 $tax = PayrollService::calculateWithholdingTax($taxable, 'semi_monthly');
             } else {
                 $tax = PayrollService::calculateMonthlyBasicWithholdingTax((float) $employee->salary, 2);
             }
-            $deductions = array_filter([
-                'SSS EE Contribution' => round($sss, 2),
-                'PhilHealth EE Contribution' => round($philhealth, 2),
-                'Pag-IBIG EE Contribution' => round($pagibig, 2),
-                'Withholding Tax' => round($tax, 2),
-            ]);
-            $totalDeductions = array_sum($deductions);
+            $taxAmount = round($tax, 2);
+            $deductions = $taxAmount > 0 ? ['Withholding Tax' => $taxAmount] : [];
+            $shareTotal = 0.0;
+            foreach ([$shares->sss, $shares->philhealth, $shares->pagibig] as $share) {
+                $rounded = round($share, 2);
+                if ($rounded > 0) {
+                    $shareTotal += $rounded;
+                }
+            }
+            $totalDeductions = $shareTotal + ($taxAmount > 0 ? $taxAmount : 0);
 
-            Payroll::updateOrCreate(
-                [
-                    'employee_id' => $employee->id,
-                    'cutoff_start' => $startStr,
-                    'cutoff_end' => $endStr,
-                ],
-                [
-                    'base_salary' => $employee->salary,
-                    'undeclared_salary' => $employee->undeclared_salary,
-                    'daily_rate' => round($dailyRate, 2),
-                    'total_hours' => $daysWorked * (float) ($template->expected_hours_per_day ?? 9),
-                    'days_worked' => $daysWorked,
-                    'overtime_hours' => 0,
-                    'late_minutes' => 0,
-                    'undertime_minutes' => 0,
-                    'gross_pay' => $gross,
-                    'deductions' => $deductions,
-                    'allowances' => [],
-                    'net_pay' => round($gross - $totalDeductions, 2),
-                    'status' => 'finalized',
-                    'use_undeclared' => false,
-                    'processed_at' => $now,
-                ]
-            );
+            $payroll = Payroll::firstOrNew([
+                'employee_id' => $employee->id,
+                'cutoff_start' => $startStr,
+                'cutoff_end' => $endStr,
+            ]);
+            $stamp->writeOnto($payroll, [
+                'base_salary' => $employee->salary,
+                'undeclared_salary' => $employee->undeclared_salary,
+                'daily_rate' => round($dailyRate, 2),
+                'total_hours' => $daysWorked * (float) ($template->expected_hours_per_day ?? 9),
+                'days_worked' => $daysWorked,
+                'overtime_hours' => 0,
+                'late_minutes' => 0,
+                'undertime_minutes' => 0,
+                'gross_pay' => $gross,
+                'deductions' => $deductions,
+                'allowances' => [],
+                'net_pay' => round($gross - $totalDeductions, 2),
+                'status' => 'finalized',
+                'use_undeclared' => false,
+                'processed_at' => $now,
+            ]);
         }
     }
 

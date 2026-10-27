@@ -122,6 +122,7 @@ class LoanTest extends TestCase
 
         $payroll = \App\Models\Payroll::where('employee_id', $employee->id)->first();
         $this->assertEquals(1000.00, (float) ($payroll->deductions['Cash Advance/Others'] ?? 0));
+        $this->assertGreaterThan(0, (float) ($payroll->deductions['SSS EE Contribution'] ?? 0));
         $this->assertEquals(1, \App\Models\LoanPayment::where('loan_id', $loan->id)->count());
 
         $loan->refresh();
