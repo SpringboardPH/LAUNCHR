@@ -91,8 +91,9 @@ export default function BirTodoPanel({ onOpen, onShowEmployees, draftId }) {
           {pending.length === 0 ? (
             <p className="flex items-center gap-1.5 text-xs text-green-700"><CheckCircle2 size={13} /> Nothing pending in the next 30 days.</p>
           ) : (
-            <ul className="space-y-1.5">
-              {limited('pending', pending).map(item => {
+            // Every item, scrolling past about four rows (no Show more), so the card keeps its size.
+            <ul className="max-h-[17.5rem] space-y-1.5 overflow-y-auto pr-1">
+              {pending.map(item => {
                 const tone = TONE[stateOf(item, today)]
                 return (
                   // Fixed columns, so every row's status and button line up.
@@ -109,7 +110,6 @@ export default function BirTodoPanel({ onOpen, onShowEmployees, draftId }) {
               })}
             </ul>
           )}
-          {more('pending', pending)}
           {error && <p className="mt-2 text-xs text-red-600" role="alert">{error}</p>}
           <p className="mt-2 text-[10px] text-gray-400">1601-C: filed from the 1st to the 10th of the next month · 2316: filed January 1–31 of the next year</p>
         </div>
